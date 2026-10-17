@@ -196,8 +196,8 @@ test("transfers: offered, declined, offered again and accepted; another cancelle
   const otherId = await createDeck(owner.context, other);
   await call(owner.context, "POST", `/v1/decks/${otherId}/transfer`, { to: friend.id });
   await owner.page.goto("/transfers");
-  await owner.page.getByRole("button", { name: `Cancel the transfer of ${other}` }).click();
-  await expect(owner.page.getByRole("button", { name: `Cancel the transfer of ${other}` })).toHaveCount(0);
+  await owner.page.getByRole("button", { name: `Cancel transfer of ${other}` }).click();
+  await expect(owner.page.getByRole("button", { name: `Cancel transfer of ${other}` })).toHaveCount(0);
   await friend.page.goto("/transfers");
   await expect(friend.page.getByRole("button", { name: `Accept ${other}` })).toHaveCount(0);
 });

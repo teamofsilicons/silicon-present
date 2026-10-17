@@ -82,7 +82,7 @@ export function TrashView({ initial, me }: { initial: Listing; me: { uuid: strin
                     Restore
                   </Button>
                   {owned ? (
-                    <Button size="sm" variant="ghost" onClick={() => setConfirming(entry)} aria-label={`Delete ${entry.name} forever`}>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirming(entry)} aria-label={`Delete forever: ${entry.name}`}>
                       <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
                       Delete forever
                     </Button>

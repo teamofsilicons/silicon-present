@@ -95,7 +95,9 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await expect(ada.page.frameLocator('[data-element-id="e_cmhtml"] iframe').locator("#live")).toContainText("tick");
   const h = await at(ada.page, 1450, 500);
   await ada.page.mouse.click(h.x, h.y);
+  console.log("DEBUG sel", await ada.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().selection)), await ada.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y)!; return e.tagName + " " + e.className; }, [h.x, h.y]));
   await ada.page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+m" : "Control+Alt+m");
+  console.log("DEBUG composer", await ada.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().composer)));
   await postComposer(ada.page, "Slow this animation down");
 
   // Every anchor kind reached the service, and each page shows the other's threads live.

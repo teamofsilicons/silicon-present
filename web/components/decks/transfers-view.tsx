@@ -95,7 +95,7 @@ export function TransfersView({ initial, me }: { initial: Transfer[]; me: { uuid
         {outgoing.length ? (
           <ul role="list" className={styles.list}>
             {outgoing.map(transfer => row(transfer, (
-              <Button size="sm" variant="secondary" onClick={() => void answer(transfer, "cancel")} loading={busy === `${transfer.id}:cancel`} disabled={!!busy} aria-label={`Cancel the transfer of ${transfer.title}`}>Cancel transfer</Button>
+              <Button size="sm" variant="secondary" onClick={() => void answer(transfer, "cancel")} loading={busy === `${transfer.id}:cancel`} disabled={!!busy} aria-label={`Cancel transfer of ${transfer.title}`}>Cancel transfer</Button>
             )))}
           </ul>
         ) : <p className={styles.quiet}>You have not offered anything. Offer a deck or folder from its “More actions” menu.</p>}

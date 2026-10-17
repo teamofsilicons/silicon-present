@@ -1,27 +1,25 @@
 import { test } from "@playwright/test";
-import { createDeck, signedIn } from "./pages-support";
+import { call, createDeck, edit, signedIn } from "./pages-support";
 import { openDeck } from "./editor-support";
 
-test("scratch: idb", async ({ browser }) => {
+test("scratch: click html", async ({ browser }) => {
   const a = await signedIn(browser, "carbon");
-  const id = await createDeck(a.context, "IDB deck");
-  await openDeck(a.page, id);
-  await a.context.setOffline(true);
-  await a.page.waitForTimeout(2000);
-  await a.page.getByTestId("speaker-notes").fill("Kept in this browser");
-  await a.page.waitForTimeout(1000);
-  const dump = await a.page.evaluate(async (deck) => {
-    const ed = (window as any).__presentEditor;
-    const dbs = await indexedDB.databases();
-    return { notes: ed.jsonNow().slides[0].notes, dbs: dbs.map(d => d.name), status: ed.status.get() };
-  }, id);
-  console.log(JSON.stringify(dump));
-  await a.page.close();
-  await a.context.setOffline(false);
-  const p = await a.context.newPage();
-  p.on("console", m => console.log("console", m.text().slice(0, 200)));
-  await p.goto(`/decks/${id}`);
-  await p.waitForTimeout(4000);
-  const dump2 = await p.evaluate(() => { const ed = (window as any).__presentEditor; return { notes: ed.jsonNow().slides[0].notes, status: ed.status.get() }; });
-  console.log(JSON.stringify(dump2));
+  const deck = await createDeck(a.context, "Click html");
+  const first = (await call<{ slides: Array<{ id: string }> }>(a.context, "GET", `/v1/decks/${deck}/content?format=json`)).body.slides[0]!.id;
+  await edit(a.context, deck, [
+    { op: "add_slide", after: first, slide: { id: "s_cmnt01", layout: "blank", elements: [
+      { id: "e_cmhtml", kind: "html", x: 1100, y: 300, w: 700, h: 400, html: '<div id="live">running</div>', css: "", js: "" } ] } },
+    { op: "delete_slide", slide: first },
+  ]);
+  await openDeck(a.page, deck);
+  const box = (await a.page.getByTestId("slide-canvas").boundingBox())!;
+  const x = box.x + (1450 / 1920) * box.width, y = box.y + (500 / 1080) * box.height;
+  const el = await a.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y)!; return e.tagName + " " + e.className + " " + (e.getAttribute("data-testid") ?? ""); }, [x, y]);
+  console.log("at point:", el);
+  await a.page.mouse.click(x, y);
+  await a.page.waitForTimeout(300);
+  console.log(await a.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().selection)));
+  await a.page.keyboard.press("Meta+Alt+m");
+  await a.page.waitForTimeout(300);
+  console.log(await a.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().composer)));
 });

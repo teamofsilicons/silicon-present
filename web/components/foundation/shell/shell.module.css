@@ -42,8 +42,9 @@
 .page { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 
 .footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; width: 100%; max-width: calc(var(--page-max) + 2 * var(--gutter)); margin-inline: auto; padding: 24px var(--gutter); border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--text-sm); }
-.footer a { color: var(--text-secondary); text-decoration: none; }
-.footer a:hover, .footer a:focus-visible { color: var(--foreground); text-decoration: underline; text-underline-offset: .2em; }
+/* Links inside the line are underlined, so they never rely on colour alone (WCAG 1.4.1). */
+.footer a { color: var(--text-secondary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: .2em; }
+.footer a:hover, .footer a:focus-visible { color: var(--foreground); text-decoration-color: currentColor; outline: none; }
 
 /* The ⌘K palette's layer. */
 .paletteOverlay { position: fixed; inset: 0; z-index: 70; background: var(--overlay); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }

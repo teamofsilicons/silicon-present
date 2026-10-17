@@ -113,7 +113,7 @@ test("trash, restore, and delete for good after typing the name", async () => {
 
   await call(context, "DELETE", `/v1/decks/${id}`);
   await page.goto("/trash");
-  await page.getByRole("button", { name: `Delete ${title} forever` }).click();
+  await page.getByRole("button", { name: `Delete forever: ${title}` }).click();
   const confirm = page.getByRole("dialog", { name: `Delete “${title}” forever?` });
   const button = confirm.getByRole("button", { name: "Delete forever" });
   await expect(button).toBeDisabled();

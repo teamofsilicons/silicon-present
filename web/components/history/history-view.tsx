@@ -121,7 +121,8 @@ export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: V
                       </p>
                     ))}
                     <div className={styles.version} data-open={open ? "" : undefined} data-testid="version">
-                      <button type="button" className={styles.versionMain} onClick={() => setPanel({ type: "version", version: version.version })} aria-current={open ? "true" : undefined} aria-label={`Open version ${version.version}: ${version.name ? `${version.name}, ` : ""}${version.summary || who(version.author)}`}>
+                      <button type="button" className={styles.versionMain} onClick={() => setPanel({ type: "version", version: version.version })} aria-current={open ? "true" : undefined}>
+                        <span className="sr-only">Open version {version.version}: </span>
                         {version.name ? <span className={styles.versionName}>{version.name}</span> : null}
                         <span className={styles.versionSummary}>{version.summary || `${who(version.author)} changed the deck`}</span>
                         <span className={styles.versionMeta}>
@@ -267,9 +268,9 @@ function VersionPanel({ deck, version, number, latest, canEdit, onRestore, onCha
               <ol role="list" className={styles.strip} aria-label="Slides in this version">
                 {json.slides.map((item, index) => (
                   <li key={item.id}>
-                    <button type="button" className={styles.thumb} data-sq="clip" aria-current={item.id === slide.id ? "true" : undefined} aria-label={`Slide ${index + 1}${item.skipped ? " (skipped)" : ""}`} onClick={() => { setSlideId(item.id); setElement(null); }}>
-                      <SlideView deck={json} slide={item.id} html="static" media="static" links={false} />
-                      <span className={styles.thumbNumber}>{index + 1}</span>
+                    <button type="button" className={styles.thumb} data-sq="clip" aria-current={item.id === slide.id ? "true" : undefined} onClick={() => { setSlideId(item.id); setElement(null); }}>
+                      <span aria-hidden="true" className={styles.thumbPicture}><SlideView deck={json} slide={item.id} html="static" media="static" links={false} /></span>
+                      <span className={styles.thumbNumber}><span className="sr-only">Slide </span>{index + 1}{item.skipped ? <span className="sr-only"> (skipped)</span> : null}</span>
                     </button>
                   </li>
                 ))}
