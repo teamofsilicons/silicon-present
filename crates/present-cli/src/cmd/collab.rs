@@ -18,6 +18,15 @@ fn nums(s: &str, n: usize, what: &str) -> R<Vec<f64>> {
     }
 }
 
+/// A slide coordinate without a needless `.0`.
+fn num(v: &Value) -> String {
+    match v.as_f64() {
+        Some(f) if f.fract() == 0.0 => format!("{f:.0}"),
+        Some(f) => format!("{f}"),
+        None => v.to_string(),
+    }
+}
+
 fn anchor_label(t: &Thread) -> String {
     let a = &t.anchor;
     let kind = a.get("kind").and_then(Value::as_str).unwrap_or("deck");
@@ -31,9 +40,9 @@ fn anchor_label(t: &Thread) -> String {
     let what = match kind {
         "deck" => "the deck".into(),
         "slide" => format!("slide {slide}"),
-        "point" => format!("slide {slide} at {},{}", a["x"], a["y"]),
-        "area" => format!("slide {slide} area {},{} {}x{}", a["x"], a["y"], a["w"], a["h"]),
-        "element" => format!("slide {slide} {} {label}", a.get("element").and_then(Value::as_str).unwrap_or_default()),
+        "point" => format!("slide {slide} at {},{}", num(&a["x"]), num(&a["y"])),
+        "area" => format!("slide {slide} area {},{} {}x{}", num(&a["x"]), num(&a["y"]), num(&a["w"]), num(&a["h"])),
+        "element" => format!("slide {slide} element {}", a.get("element").and_then(Value::as_str).unwrap_or_default()),
         "text" => format!("slide {slide} text \"{}\"", a.get("quote").and_then(Value::as_str).unwrap_or_default()),
         k => format!("{k} on slide {slide}"),
     };
@@ -348,9 +357,9 @@ pub async fn compare(ctx: &Ctx, deck_ref: &str, from: u64, to: u64) -> R<()> {
         let sid = s["id"].as_str().unwrap_or_default();
         let by: Vec<&str> = authors.get(sid).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.get("id").and_then(Value::as_str)).collect()).unwrap_or_default();
         let fields: Vec<&str> = s.get("fields").and_then(Value::as_array).map(|f| f.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+        let which = if sid == "master" || s["number"] == 0 { "master".to_owned() } else { format!("slide {} ({sid})", s["number"]) };
         println!(
-            "  slide {} ({sid}){}{}",
-            s["number"],
+            "  {which}{}{}",
             if fields.is_empty() { String::new() } else { format!(" {}", fields.join(", ")) },
             if by.is_empty() { String::new() } else { format!("  by {}", by.join(", ")) }
         );
