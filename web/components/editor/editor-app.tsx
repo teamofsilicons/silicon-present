@@ -10,7 +10,8 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Editor } from "@/lib/editor/editor";
 import type { DeckMeta, Me } from "@/lib/editor/types";
-import { EditorContext, useAbilities, useDeck, useEditor, useUi } from "./editor-context";
+import { appConfig } from "@/lib/app.config";
+import { EditorContext, useAbilities, useDeck, useEditor, useMeta, useUi } from "./editor-context";
 import { TopBar } from "./top-bar";
 import { Toolbar } from "./toolbar";
 import { SlideStrip } from "./slide-strip";
@@ -36,10 +37,10 @@ function usePhone(): boolean {
   return phone;
 }
 
-export function EditorApp({ deckId, meta, me, initialSlide }: { deckId: string; meta: DeckMeta; me: Me | null; initialSlide: string | null }) {
+export function EditorApp({ deckId, meta, me, initialSlide, initialThread = null }: { deckId: string; meta: DeckMeta; me: Me | null; initialSlide: string | null; initialThread?: string | null }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   useEffect(() => {
-    const next = new Editor({ deckId, meta, me, slide: initialSlide });
+    const next = new Editor({ deckId, meta, me, slide: initialSlide, thread: initialThread });
     // The editor is an external system (a Y.Doc, IndexedDB, a live stream) made once in the browser, never on the server.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditor(next);
@@ -70,6 +71,23 @@ function EditorLayout() {
   const { canEdit } = useAbilities();
   const { panelOpen, codeElement } = useUi(s => ({ panelOpen: s.panelOpen, codeElement: s.codeElement }));
   useShortcuts(editor);
+
+  // The tab's title follows the deck's (a rename here or by someone else).
+  const title = useMeta().title;
+  useEffect(() => {
+    document.title = `${title} · ${appConfig.name}`;
+  }, [title]);
+
+  // Leaving with changes that haven't reached the service yet: they are kept in this browser, but say so.
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!editor.unsent || !navigator.onLine) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [editor]);
 
   // Load the rich text editor ahead of the first double-click.
   useEffect(() => {

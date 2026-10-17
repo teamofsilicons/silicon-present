@@ -98,6 +98,8 @@ export interface EditorOptions {
   me: Me | null;
   /** Initial slide (from the URL's ?slide=). */
   slide?: string | null;
+  /** A thread to open (from the URL's ?thread=, the link every ting carries). */
+  thread?: string | null;
 }
 
 const CLIPBOARD_KEY = "silicon-present:clipboard";
@@ -163,7 +165,7 @@ export class Editor {
       trackedOrigins: new Set([LOCAL_ORIGIN]),
       captureTimeout: 450,
     });
-    this.provider = new LiveProvider({ deckId: this.deckId, doc: this.doc, canEdit: this.canEdit, sendPresence: Boolean(this.me) });
+    this.provider = new LiveProvider({ deckId: this.deckId, doc: this.doc, canEdit: this.canEdit, sendPresence: Boolean(this.me), owner: this.me?.uuid ?? null });
     this.cleanup.push(
       this.provider.on("status", status => this.status.set({ status })),
       this.provider.on("synced", () => {
@@ -193,7 +195,34 @@ export class Editor {
     const onStackChange = () => this.pruneSelection();
     this.undoManager.on("stack-item-popped", onStackChange);
     this.cleanup.push(() => this.undoManager.off("stack-item-popped", onStackChange));
-    void this.loadThreads();
+    void this.loadThreads().then(() => {
+      if (options.thread) this.openThread(options.thread);
+    });
+  }
+
+  /** Opens a thread: its slide, the comments list, the thread itself. */
+  openThread(id: string) {
+    const thread = this.threads.get().list.find(t => t.id === id);
+    if (!thread) return;
+    const slide = thread.anchor.kind === "deck" ? null : thread.anchor.slide;
+    const go = () => {
+      // Read the doc itself: the JSON mirror catches up a moment after a sync.
+      if (slide && slide !== MASTER && orderArray(this.doc).toArray().includes(slide)) this.goToSlide(slide);
+      this.ui.set({ activeThread: id, panel: "comments", panelOpen: true });
+    };
+    // The deck may still be on its way: go once it has arrived.
+    if (this.status.get().synced) go();
+    else {
+      const stop = this.provider.on("synced", () => {
+        stop();
+        go();
+      });
+    }
+  }
+
+  /** Whether changes made here have not reached the service yet. */
+  get unsent(): boolean {
+    return this.canEdit && !this.provider.idle;
   }
 
   destroy() {

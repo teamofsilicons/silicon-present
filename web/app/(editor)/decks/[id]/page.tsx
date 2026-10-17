@@ -20,11 +20,13 @@ export default async function DeckPage({ params, searchParams }: PageProps<"/dec
   const { id } = await params;
   const query = await searchParams;
   const slide = typeof query.slide === "string" ? query.slide : null;
+  const thread = typeof query.thread === "string" ? query.thread : null;
   const { me, meta, error } = await loadDeckPage(id);
   if (!meta) {
     const status = error?.status ?? 0;
     const signedOut = !me;
-    const here = `/decks/${encodeURIComponent(id)}`;
+    const back = new URLSearchParams(Object.entries({ slide, thread }).filter(([, v]) => v) as [string, string][]).toString();
+    const here = `/decks/${encodeURIComponent(id)}${back ? `?${back}` : ""}`;
     if (status === 401 || status === 403 || (signedOut && status === 404)) {
       return (
         <Problem
@@ -52,5 +54,5 @@ export default async function DeckPage({ params, searchParams }: PageProps<"/dec
       </Problem>
     );
   }
-  return <EditorApp deckId={id} meta={meta} me={me} initialSlide={slide} />;
+  return <EditorApp deckId={id} meta={meta} me={me} initialSlide={slide} initialThread={thread} />;
 }

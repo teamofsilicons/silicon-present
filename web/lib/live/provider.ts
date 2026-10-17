@@ -63,6 +63,8 @@ export interface LiveProviderOptions {
   sendPresence: boolean;
   /** Keep the doc in IndexedDB (on by default). */
   persist?: boolean;
+  /** Whose copy this is: each account keeps its own (a shared computer never mixes two people's unsent edits). */
+  owner?: string | null;
   /** Where the service is reached from the browser (the kit's proxy). */
   base?: string;
 }
@@ -112,7 +114,7 @@ export class LiveProvider {
     this.sendPresence = options.sendPresence;
     this.base = options.base ?? "/api";
     this.session = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    this.idb = options.persist === false || typeof indexedDB === "undefined" ? null : new IndexeddbPersistence(`silicon-present:${options.deckId}`, this.doc);
+    this.idb = options.persist === false || typeof indexedDB === "undefined" ? null : new IndexeddbPersistence(`silicon-present:${options.deckId}:${options.owner ?? "anonymous"}`, this.doc);
     this.doc.on("update", this.onDocUpdate);
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.onOnline);

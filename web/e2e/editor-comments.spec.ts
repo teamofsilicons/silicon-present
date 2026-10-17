@@ -210,3 +210,18 @@ test("a viewer can't edit or comment; a signed-out visitor is asked to sign in",
   await ada.context.close();
   await bo.context.close();
 });
+
+test("a ting's link opens the deck at the thread", async ({ browser }) => {
+  const ada = await signedIn(browser, "carbon");
+  const deck = await createDeck(ada.context, "Linked thread");
+  const first = (await call<{ slides: Array<{ id: string }> }>(ada.context, "GET", `/v1/decks/${deck}/content?format=json`)).body.slides[0]!.id;
+  await edit(ada.context, deck, [{ op: "add_slide", after: first, slide: { id: "s_link02", layout: "blank", elements: [] } }]);
+  const created = await call<{ id: string }>(ada.context, "POST", `/v1/decks/${deck}/threads`, { anchor: { kind: "point", slide: "s_link02", x: 300, y: 300 }, body: "Look at this one" });
+  await ada.page.goto(`/decks/${deck}?thread=${created.body.id}`);
+  await ada.page.getByTestId("slide-canvas").waitFor();
+  await expect(ada.page.getByTestId("slide-canvas")).toHaveAttribute("data-slide-id", "s_link02");
+  await expect(ada.page.getByRole("complementary", { name: "Properties and comments" })).toContainText("Look at this one");
+  await expect(ada.page.getByRole("combobox", { name: "Reply" })).toBeVisible();
+  await expect(ada.page).toHaveTitle(/Linked thread/);
+  await ada.context.close();
+});
