@@ -1,0 +1,126 @@
+{
+  "apps": [
+    {
+      "app_id": "present",
+      "name": "Silicon Present",
+      "description": "Slides that Carbons and Silicons make, present and comment on together.",
+      "homepage_url": "http://127.0.0.1:4320/",
+      "owner_id": "c:saket",
+      "owner_email": "saketdev12@example.test",
+      "secret": "sa_app_present_noQ6fumQAegqeG8AybsTfcg6JbJtXEAcebieyNi0",
+      "status": "active",
+      "created_at": "2026-10-17T00:00:00.000Z",
+      "signin_defaults": {
+        "methods": {
+          "email": true,
+          "phone": false,
+          "google": false,
+          "apple": false
+        },
+        "method_order": [
+          "email"
+        ],
+        "required_fields": [],
+        "optional_fields": [
+          "email"
+        ],
+        "allow_signup": true,
+        "remember_browser": true,
+        "copy": {
+          "title": "Sign in to Silicon Present",
+          "subtitle": "Slides that Carbons and Silicons make, present and comment on together.",
+          "terms_url": "https://teamofsilicons.com/legal/terms",
+          "privacy_url": "https://teamofsilicons.com/legal/privacy",
+          "support_email": "support@teamofsilicons.com"
+        },
+        "redirect_uris": [
+          "http://127.0.0.1:4320/auth/callback",
+          "http://localhost:4320/auth/callback"
+        ],
+        "allowed_origins": [
+          "http://127.0.0.1:4320",
+          "http://localhost:4320"
+        ],
+        "allowed_email_domains": [],
+        "device_flow": true,
+        "public_client": true
+      },
+      "testkit": {
+        "category": "present",
+        "purpose": "Slides that Carbons and Silicons make, present and comment on together.",
+        "exercises": [],
+        "integration": "hosted",
+        "proofs": {
+          "user_verification_issuer_to": [
+            "ting"
+          ],
+          "user_verification_receiver": false,
+          "app_verification_issuer_to": [
+            "ting"
+          ],
+          "app_verification_receiver": false
+        },
+        "silicon_slt": true,
+        "accent": "#1F5FB8",
+        "authorize_params": {}
+      }
+    },
+    {
+      "app_id": "ting",
+      "name": "Silicon Ting",
+      "description": "Every signal, in sync.",
+      "homepage_url": "http://127.0.0.1:4320/",
+      "owner_id": "c:saket",
+      "owner_email": "saketdev12@example.test",
+      "secret": "sa_app_ting_y6sF67H08lmxyGG7p3aIyxa6fpRLxdpxcdYIMN86",
+      "status": "active",
+      "created_at": "2026-10-17T00:00:00.000Z",
+      "signin_defaults": {
+        "methods": {
+          "email": true,
+          "phone": false,
+          "google": false,
+          "apple": false
+        },
+        "method_order": [
+          "email"
+        ],
+        "required_fields": [],
+        "optional_fields": [],
+        "allow_signup": true,
+        "remember_browser": true,
+        "copy": {
+          "title": "Sign in to Silicon Ting",
+          "subtitle": "Every signal, in sync.",
+          "terms_url": "https://teamofsilicons.com/legal/terms",
+          "privacy_url": "https://teamofsilicons.com/legal/privacy",
+          "support_email": "support@teamofsilicons.com"
+        },
+        "redirect_uris": [
+          "http://127.0.0.1:4323/auth/callback"
+        ],
+        "allowed_origins": [
+          "http://127.0.0.1:4323"
+        ],
+        "allowed_email_domains": [],
+        "device_flow": true,
+        "public_client": true
+      },
+      "testkit": {
+        "category": "present",
+        "purpose": "Every signal, in sync.",
+        "exercises": [],
+        "integration": "hosted",
+        "proofs": {
+          "user_verification_issuer_to": [],
+          "user_verification_receiver": true,
+          "app_verification_issuer_to": [],
+          "app_verification_receiver": true
+        },
+        "silicon_slt": true,
+        "accent": "#1F5FB8",
+        "authorize_params": {}
+      }
+    }
+  ]
+}

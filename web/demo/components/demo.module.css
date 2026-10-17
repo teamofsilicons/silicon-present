@@ -1,0 +1,51 @@
+/* The demo pages: lists, detail tabs and settings, built only from the kit's tokens, layout primitives and Arc. */
+.muted { color: var(--text-secondary); font-size: var(--text-sm); }
+
+/* List */
+.listBlock { display: grid; gap: var(--space-4); }
+.toolbar { display: grid; grid-template-columns: minmax(220px, 340px) minmax(0, 1fr); align-items: end; gap: var(--space-3); }
+.toolbar > * { min-width: 0; }
+.filtersPhone, .chipsPhone { display: none; }
+.search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.titleCell { display: grid; min-width: 0; gap: 2px; }
+.rowLink { width: fit-content; max-width: 100%; overflow: hidden; color: var(--foreground); font-weight: 500; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.rowLink:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: .2em; }
+.rowLink:focus-visible { color: var(--accent-ink); }
+.rowDescription { overflow: hidden; color: var(--text-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+/* Words a cell shows only where the table has no headers (phones) or only where it has them. */
+.onPhone { display: none; }
+@media (max-width: 620px) {
+  .onPhone { display: inline; }
+  .onWide { display: none; }
+}
+.emptyFrame { --sq-r: var(--radius-surface); --sq-fill: var(--surface); --sq-stroke: var(--border); border: 1px solid var(--sq-stroke); background: var(--sq-fill); }
+
+/* Detail */
+.headerMeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-1); }
+.tabs { display: grid; gap: var(--space-5); }
+.history { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.history li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: baseline; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle); font-size: var(--text-sm); }
+.history li:first-child { border-top: 0; padding-top: 0; }
+.history strong { font-weight: 600; }
+.historyDot { --sq-r: 3px; --sq-fill: var(--accent); width: 7px; height: 7px; align-self: center; background: var(--sq-fill); }
+.accountList { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+
+/* Forms and sharing */
+.dialog.dialog { width: min(calc(100vw - var(--space-8)), 520px); }
+.form { display: grid; gap: var(--space-5); }
+.formActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+.sharing { display: grid; gap: var(--space-5); }
+.accountCard { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4); }
+
+@media (max-width: 720px) {
+  .toolbar { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .filtersWide { display: none; }
+  .filtersPhone { display: block; }
+  .chipsPhone { display: block; }
+}
+@media (max-width: 520px) {
+  .formActions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .formActions > * { width: 100%; }
+  .history li { grid-template-columns: 10px minmax(0, 1fr); }
+  .history time { grid-column: 2; }
+}

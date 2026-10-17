@@ -1,0 +1,29 @@
+{
+  "accounts_public_url": "http://localhost:9740",
+  "accounts_api_url": "http://127.0.0.1:9741",
+  "issuer": "http://localhost:9740",
+  "jwks_url": "http://127.0.0.1:9741/.well-known/jwks.json",
+  "mock_messaging_url": "http://127.0.0.1:9743",
+  "mock_iris_url": "http://127.0.0.1:9745",
+  "apps": {
+    "present": {
+      "app_secret": "sa_app_present_noQ6fumQAegqeG8AybsTfcg6JbJtXEAcebieyNi0"
+    },
+    "ting": {
+      "app_secret": "sa_app_ting_y6sF67H08lmxyGG7p3aIyxa6fpRLxdpxcdYIMN86"
+    }
+  },
+  "ports": {
+    "web": 4320,
+    "service": 4321,
+    "converter": 4322,
+    "ting": 4323,
+    "postgres": 5490,
+    "accounts_site": 9740,
+    "accounts_api": 9741
+  },
+  "accounts_checkout": "/Users/codanium/Documents/silicon/silicon-accounts",
+  "start": "cd silicon-accounts && ACCOUNTS_PORT=9740 ACCOUNTS_API_PORT=9741 MOCK_OIDC_PORT=9742 MOCK_MESSAGING_PORT=9743 FAKE_APPS_PORT=9744 MOCK_IRIS_PORT=9745 DEVELOPER_PORT=9746 APPS_API_PORT=9747 ACCOUNTS_PGPORT=5491 ACCOUNTS_PGDATA=$PWD/.dev/pg-present ACCOUNTS_DB_NAME=accounts_present CARGO_TARGET_DIR=target/integration scripts/dev.sh --detach --developer=off --no-build",
+  "seed": "( set -a; . .dev/run/9740/accounts-api.env; set +a; target/integration/debug/accounts-seed --fake-apps <silicon-present>/e2e/stack/apps.json --force )",
+  "stop": "ACCOUNTS_PORT=9740 scripts/stop.sh   (never --all or --db)"
+}
