@@ -1,0 +1,14 @@
+{
+  "name": "silicon-present",
+  "private": true,
+  "description": "Silicon Present: slides that Carbons and Silicons make, present and comment on together.",
+  "scripts": {
+    "test:deck": "pnpm --filter @silicon-present/deck test",
+    "test:render": "pnpm --filter @silicon-present/render test",
+    "test:renderer": "pnpm --filter @silicon-present/renderer test"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

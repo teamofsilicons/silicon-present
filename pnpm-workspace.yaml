@@ -1,3 +1,7 @@
+packages:
+  - packages/*
+  - renderer
+  - web
 onlyBuiltDependencies:
   - esbuild
 ignoredBuiltDependencies:

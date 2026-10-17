@@ -1,0 +1,29 @@
+{
+  "name": "@silicon-present/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Converter sidecar for Silicon Present: slide images, exports to every format, imports from every format.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
+    "fixtures": "tsx test/make-fixtures.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@silicon-present/deck": "workspace:*",
+    "@silicon-present/render": "workspace:*",
+    "fast-xml-parser": "5.11.2",
+    "jszip": "3.10.2",
+    "playwright": "1.56.1",
+    "pptxgenjs": "4.0.1",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

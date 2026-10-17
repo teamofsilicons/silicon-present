@@ -1,0 +1,26 @@
+{
+  "name": "@silicon-present/deck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Silicon Present deck as a Yjs document: JSON <-> Yjs, typed helpers to read and change a deck.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

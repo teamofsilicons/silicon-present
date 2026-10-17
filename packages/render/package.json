@@ -1,0 +1,28 @@
+{
+  "name": "@silicon-present/render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The one definition of how a Silicon Present slide looks: deck JSON -> static slide HTML.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "visual": "tsx test/visual.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@silicon-present/deck": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "playwright": "1.56.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
