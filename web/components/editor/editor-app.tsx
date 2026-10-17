@@ -71,6 +71,11 @@ function EditorLayout() {
   const { panelOpen, codeElement } = useUi(s => ({ panelOpen: s.panelOpen, codeElement: s.codeElement }));
   useShortcuts(editor);
 
+  // Load the rich text editor ahead of the first double-click.
+  useEffect(() => {
+    if (canEdit) void import("@/lib/editor/quill-setup");
+  }, [canEdit]);
+
   useEffect(() => {
     // A phone gets the read-and-comment view: never in the middle of an edit there.
     if (phone) editor.ui.set({ selection: [], editing: null, panelOpen: false });

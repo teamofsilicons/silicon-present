@@ -865,6 +865,25 @@
   cursor: crosshair;
 }
 
+.emptyText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  outline: 2px dashed rgb(92 99 112 / 0.35);
+  outline-offset: -2px;
+  color: rgb(92 99 112 / 0.75);
+  font: 400 40px/1.2 var(--font-body);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.emptyText[data-heading] {
+  font-size: 64px;
+  font-weight: 600;
+}
+
 .selectionBox {
   position: absolute;
   outline: 1.5px solid var(--accent);

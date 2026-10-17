@@ -334,7 +334,11 @@ export class Editor {
     if (!slide) return;
     // Clicking one member of a group picks the whole group.
     const expanded = new Set<string>();
-    for (const id of ids) for (const member of groupMembers(slide, id)) expanded.add(member);
+    for (const id of ids) {
+      const members = groupMembers(slide, id);
+      // An element made a moment ago may not be in the JSON mirror yet: keep it as it is.
+      for (const member of members.length ? members : [id]) expanded.add(member);
+    }
     const current = new Set(this.ui.get().selection);
     let next: string[];
     if (mode === "replace") next = [...expanded];

@@ -99,7 +99,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await page.getByTestId("insert-chart").click();
   const [chartId] = await selection(page);
   await place(page, 1300, 420);
-  await page.getByLabel("Chart type").selectOption("line");
+  await page.getByRole("combobox", { name: "Chart type" }).selectOption("line");
   const cell = page.getByLabel("2026, Q2");
   await cell.fill("42");
   await cell.press("Enter");
@@ -117,8 +117,8 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   // An animation on the text, a transition on the slide.
   await page.mouse.click(...Object.values(await center(page, textId!)) as [number, number]);
   await page.getByTestId("tab-animate").click();
-  await page.getByLabel("Effect", { exact: true }).selectOption("fade");
-  await page.getByLabel("Transition").selectOption("push");
+  await page.getByRole("combobox", { name: "Effect", exact: true }).selectOption("fade");
+  await page.getByRole("combobox", { name: "Transition" }).selectOption("push");
   await page.getByTestId("tab-theme").click();
   await page.getByTestId("theme-option").filter({ hasText: "Ivory" }).click();
 

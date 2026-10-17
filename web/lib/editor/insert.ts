@@ -8,7 +8,7 @@ import type { Editor } from "./editor";
 export const DEFAULT_HTML = {
   html: `<div class="card">\n  <h1>Hello from HTML</h1>\n  <p id="clock"></p>\n</div>`,
   css: `.card {\n  height: 100%;\n  display: grid;\n  place-content: center;\n  text-align: center;\n  font-family: system-ui, sans-serif;\n}\nh1 { margin: 0; font-size: 64px; animation: rise 1.2s ease-out both; }\np { font-size: 32px; opacity: .7; }\n@keyframes rise { from { opacity: 0; transform: translateY(24px); } }`,
-  js: `const clock = document.getElementById("clock");\nconst tick = () => (clock.textContent = new Date().toLocaleTimeString());\ntick();\nsetInterval(tick, 1000);`,
+  js: `const tick = () => {\n  const clock = document.getElementById("clock");\n  if (clock) clock.textContent = new Date().toLocaleTimeString();\n};\ntick();\nsetInterval(tick, 1000);`,
 };
 
 function centered(editor: Editor, w: number, h: number, at?: { x: number; y: number }) {

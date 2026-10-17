@@ -396,6 +396,7 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
                 hideText={editingEl?.id === element.id}
                 html={paused[element.id] ? "static" : "live"}
                 runKey={runKeys[element.id] ?? 0}
+                placeholder={canEdit && !commenting}
               />
             ))}
           </div>
