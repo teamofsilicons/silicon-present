@@ -19,15 +19,18 @@ let presentation = "";
 const OUT = "screens";
 
 async function shoot(page: Page, name: string) {
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-  await page.waitForTimeout(500);
+  // Live pages (follow-along) keep a stream open, so the network never goes idle there: wait a little, not forever.
+  await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
+  await page.waitForTimeout(800);
   const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(sideways, `${name} scrolls sideways by ${sideways}px`).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
+  // The first screenful at full size too, for reading the details.
+  await page.screenshot({ path: `${OUT}/top/${name}.png` });
 }
 
 test.beforeAll(async ({ browser }) => {
-  mkdirSync(OUT, { recursive: true });
+  mkdirSync(`${OUT}/top`, { recursive: true });
   owner = await signedIn(browser, "carbon", { reducedMotion: "reduce" });
   friend = await signedIn(browser, "friend", { reducedMotion: "reduce" });
   folder = await createFolder(owner.context, `Quarterly reviews ${run}`);
@@ -87,12 +90,12 @@ for (const [width, height, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]
     await page.keyboard.press("Escape");
 
     await page.goto(`/decks/${deck}/history`);
-    await page.getByRole("button", { name: "Compare" }).click();
-    await page.getByTestId("comparison").waitFor().catch(() => undefined);
-    await shoot(page, `history-compare-${tag}`);
     await page.getByRole("button", { name: "Download" }).first().click();
     await shoot(page, `export-menu-${tag}`);
     await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Compare" }).click();
+    await page.getByTestId("comparison").waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await shoot(page, `history-compare-${tag}`);
 
     const anonymous = await page.context().browser()!.newContext({ baseURL: BASE, viewport: { width, height }, reducedMotion: "reduce" });
     const visitor = await anonymous.newPage();

@@ -84,6 +84,10 @@
 @media (max-width: 899px) {
   .presenterBody { grid-template-columns: minmax(0, 1fr); }
 }
+/* On a phone the deck's title gets a line of its own, whole, above the timer and the buttons. */
+@media (max-width: 559px) {
+  .presenterTitle { flex: 1 1 100%; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+}
 
 /* Following a presentation. */
 .followView { position: fixed; inset: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; background: #000; color: #f7f8fa; }

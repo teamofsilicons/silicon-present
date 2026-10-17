@@ -262,7 +262,7 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
             </div>
             {publicMode !== "off" ? (
               <div className={styles.publicMode}>
-                <Select label="Anyone with the link" options={PUBLIC_OPTIONS} value={publicMode} disabled={!can.own(myRole) || busy === "public"} onValueChange={value => void changePublic(value as PublicMode)} />
+                <Select label="What anyone with the link can do" options={PUBLIC_OPTIONS} value={publicMode} disabled={!can.own(myRole) || busy === "public"} onValueChange={value => void changePublic(value as PublicMode)} />
               </div>
             ) : null}
             <div className={styles.linkRow}>

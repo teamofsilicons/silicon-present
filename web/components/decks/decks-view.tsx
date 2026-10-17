@@ -17,6 +17,7 @@ import { SearchField } from "@/components/arc/search-field/search-field";
 import SegmentedControl from "@/components/arc/segmented-control/segmented-control";
 import { ErrorAlert } from "@/components/foundation/feedback/error-alert";
 import { LocalTime } from "@/components/foundation/time/local-time";
+import { MetaLine } from "@/components/meta/meta-line";
 import { ActionMenu, type ActionMenuItem } from "@/components/menu/action-menu";
 import { ShareDialog } from "@/components/share";
 import { ApiError } from "@/lib/errors";
@@ -237,7 +238,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
                   <Presentation size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />
                   <span className={styles.main}>
                     <Link className={styles.name} href={`/decks/${encodeURIComponent(hit.deck.id)}`}>{hit.deck.title || "Untitled deck"}</Link>
-                    <span className={styles.meta}>{[hit.deck.owner?.id ? `Owner ${hit.deck.owner.id}` : null, hit.where, hit.excerpt].filter(Boolean).join(" · ")}</span>
+                    <MetaLine parts={[hit.deck.owner?.id ? `Owner ${hit.deck.owner.id}` : null, hit.where ? `In ${hit.where}` : null, hit.excerpt]} />
                   </span>
                 </li>
               ))}
@@ -265,12 +266,14 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
                 {entry.kind === "folder" ? <FolderIcon size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} /> : <Presentation size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />}
                 <span className={styles.main}>
                   <Link className={styles.name} href={href}>{nameOf(entry)}</Link>
-                  <span className={styles.meta}>
-                    {entry.kind === "folder" ? "Folder" : entry.item.public !== "off" ? "Public deck" : "Deck"}
-                    {owner && !mine ? <> · Owner {owner.id}</> : null}
-                    {creator && owner && creator.uuid !== owner.uuid ? <> · Made by {creator.id}</> : null}
-                    {when ? <> · <LocalTime value={when} prefix={entry.kind === "deck" ? "Edited " : "Changed "} /></> : null}
-                  </span>
+                  <MetaLine
+                    parts={[
+                      entry.kind === "folder" ? "Folder" : entry.item.public !== "off" ? "Public deck" : "Deck",
+                      owner && !mine ? `Owner ${owner.id}` : null,
+                      creator && owner && creator.uuid !== owner.uuid ? `Made by ${creator.id}` : null,
+                      when ? <LocalTime value={when} prefix={entry.kind === "deck" ? "Edited " : "Changed "} /> : null,
+                    ]}
+                  />
                 </span>
                 <ActionMenu label={`More actions for ${nameOf(entry)}`} iconOnly icon={<MoreIcon />} items={menuFor(entry)} />
               </li>

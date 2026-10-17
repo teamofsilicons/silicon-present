@@ -13,6 +13,7 @@ import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
 import { Input } from "@/components/arc/input/input";
 import { LocalTime } from "@/components/foundation/time/local-time";
+import { MetaLine } from "@/components/meta/meta-line";
 import { ApiError } from "@/lib/errors";
 import { notify, notifyError } from "@/lib/notify";
 import { deleteForever, listPlace, restoreItem, type Listing } from "@/lib/present/decks";
@@ -70,11 +71,7 @@ export function TrashView({ initial, me }: { initial: Listing; me: { uuid: strin
                 {entry.kind === "folder" ? <FolderIcon size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} /> : <Presentation size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />}
                 <span className={styles.main}>
                   <span className={styles.name}>{entry.name}</span>
-                  <span className={styles.meta}>
-                    {entry.kind === "folder" ? "Folder" : "Deck"}
-                    {entry.owner && !owned ? <> · Owner {entry.owner.id}</> : null}
-                    {entry.trashedAt ? <> · <LocalTime value={entry.trashedAt} prefix="Deleted " /></> : null}
-                  </span>
+                  <MetaLine parts={[entry.kind === "folder" ? "Folder" : "Deck", entry.owner && !owned ? `Owner ${entry.owner.id}` : null, entry.trashedAt ? <LocalTime value={entry.trashedAt} prefix="Deleted " /> : null]} />
                 </span>
                 <span className={styles.rowActions}>
                   <Button size="sm" variant="secondary" onClick={() => void restore(entry)} loading={busy === entry.id} disabled={busy === entry.id} aria-label={`Restore ${entry.name}`}>

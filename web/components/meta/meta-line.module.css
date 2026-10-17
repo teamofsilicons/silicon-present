@@ -1,0 +1,7 @@
+/*
+ * The facts sit in a wrapping row; each has a dot in the gap before it. The row is pulled left by the gap and clipped
+ * by the same amount, so the dot of a fact that starts a line falls outside and is not drawn.
+ */
+.line { --meta-gap: 14px; display: flex; min-width: 0; flex-wrap: wrap; margin-left: calc(-1 * var(--meta-gap)); clip-path: inset(0 0 0 var(--meta-gap)); color: var(--text-muted); font-size: var(--text-sm); line-height: 1.45; }
+.part { position: relative; min-width: 0; margin-left: var(--meta-gap); overflow-wrap: anywhere; }
+.part::before { content: "·"; position: absolute; left: calc(-1 * var(--meta-gap) / 2 - .2em); color: var(--text-muted); }

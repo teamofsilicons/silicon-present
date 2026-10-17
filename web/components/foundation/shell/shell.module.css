@@ -18,7 +18,8 @@
   backdrop-filter: saturate(1.5) blur(14px);
 }
 .top[data-scrolled] { border-bottom-color: var(--border-subtle); }
-.bar { display: flex; height: var(--topbar-height); align-items: center; justify-content: space-between; gap: var(--space-3); max-width: calc(var(--page-max) + 2 * var(--gutter)); margin-inline: auto; padding: 0 var(--gutter); }
+/* The same width and gutters as the page (components/foundation/layout), so the wordmark lines up with the title. */
+.bar { display: flex; height: var(--topbar-height); align-items: center; justify-content: space-between; gap: var(--space-3); max-width: var(--page-max); margin-inline: auto; padding: 0 var(--gutter); }
 
 /* The padding (taken back by the negative margin, so nothing moves) gives keyboard focus a soft fill to show in. */
 .brand { --sq-r: 12px; --sq-fill: transparent; display: inline-flex; min-width: 0; align-items: center; margin: -6px -8px; padding: 6px 8px; background: var(--sq-fill); color: var(--foreground); text-decoration: none; }
@@ -41,7 +42,7 @@
 .main > * { min-width: 0; }
 .page { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 
-.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; width: 100%; max-width: calc(var(--page-max) + 2 * var(--gutter)); margin-inline: auto; padding: 24px var(--gutter); border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--text-sm); }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; width: 100%; max-width: var(--page-max); margin-inline: auto; padding: 24px var(--gutter); border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: var(--text-sm); }
 /* Links inside the line are underlined, so they never rely on colour alone (WCAG 1.4.1). */
 .footer a { color: var(--text-secondary); text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: .2em; }
 .footer a:hover, .footer a:focus-visible { color: var(--foreground); text-decoration-color: currentColor; outline: none; }

@@ -49,7 +49,7 @@ test("the export menu lists every format and downloads a PDF named after the dec
   await page.goto(`/decks/${deck}/history`);
   await page.getByRole("button", { name: "Download" }).first().click();
   const menu = page.getByRole("menu");
-  for (const label of ["PowerPoint (.pptx)", "PowerPoint 97–2003 (.ppt)", "Keynote (.key)", "OpenDocument (.odp)", "PDF (.pdf)", "Web page (.html)", "Images (PNG) (.zip)", "Images (JPG) (.zip)"]) {
+  for (const label of ["PowerPoint (.pptx)", "PowerPoint 97–2003 (.ppt)", "Keynote (.key)", "OpenDocument (.odp)", "PDF (.pdf)", "Web page (.html)", "PNG images (.zip)", "JPG images (.zip)"]) {
     await expect(menu.getByRole("menuitem", { name: new RegExp(label.replace(/[()[\].*+?^$|\\]/g, "\\$&")) })).toBeVisible();
   }
   const [download] = await Promise.all([page.waitForEvent("download"), menu.getByRole("menuitem", { name: /^PDF/ }).click()]);

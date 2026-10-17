@@ -200,8 +200,8 @@ export const EXPORT_FORMATS: ReadonlyArray<{ format: ExportFormat; label: string
   { format: "odp", label: "OpenDocument", extension: ".odp" },
   { format: "pdf", label: "PDF", extension: ".pdf" },
   { format: "html", label: "Web page", extension: ".html", note: "One file; HTML elements stay live" },
-  { format: "png", label: "Images (PNG)", extension: ".zip", note: "One image per slide; a single slide is one .png" },
-  { format: "jpg", label: "Images (JPG)", extension: ".zip", note: "One image per slide; a single slide is one .jpg" },
+  { format: "png", label: "PNG images", extension: ".zip", note: "One image per slide, in a .zip" },
+  { format: "jpg", label: "JPG images", extension: ".zip", note: "One image per slide, in a .zip" },
 ];
 
 /** Files Present opens (UNDERSTANDING.md "Formats", plus a deck's own pictures, video and audio as slides). */

@@ -12,7 +12,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Copy, Eye, GitCompareArrows, History as HistoryIcon, Pencil, RotateCcw, Undo2 } from "lucide-react";
 import type { DeckJson } from "@silicon-present/deck";
 import { Button } from "@/components/arc/button/button";
@@ -22,10 +22,12 @@ import { NameDialog } from "@/components/decks/dialogs";
 import { ExportMenu } from "@/components/export";
 import { ErrorAlert } from "@/components/foundation/feedback/error-alert";
 import { LocalTime } from "@/components/foundation/time/local-time";
+import { MetaLine } from "@/components/meta/meta-line";
 import { ActionMenu } from "@/components/menu/action-menu";
 import { SlideStyles, SlideView } from "@/components/slides/slide-view";
 import { ApiError } from "@/lib/errors";
 import { notify, notifyError } from "@/lib/notify";
+import { resolveAccount } from "@/lib/present/sharing";
 import { compare, deckFromVersion, getContent, listVersions, nameVersion, restore, undoAccount } from "@/lib/present/versions";
 import type { Account, Comparison, Deck, HistoryEvent, Version } from "@/lib/present/types";
 import { ALWAYS_FRESH } from "@/lib/present/fresh";
@@ -35,25 +37,69 @@ type Panel = { type: "version"; version: number } | { type: "compare"; from: num
 
 const who = (account: Account | null) => account?.id ?? "Someone";
 
-/** Words for an event the service sends without a sentence of its own. */
-function eventWords(event: HistoryEvent): string {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Events that only repeat what a version already says (the version is in the list). */
+const REPEATS = new Set(["deck.created", "deck.imported", "version.restored", "account.undone"]);
+
+const PUBLIC_WORDS: Record<string, string> = { view: "view", comment: "comment on", edit: "edit" };
+
+/**
+ * Words for an event (the service records the kind and its data; accounts in the data are uuids, shown here by their
+ * c:/si: id through `name`).
+ */
+function eventWords(event: HistoryEvent, name: (value: unknown) => string): string {
   if (event.summary) return event.summary;
   const actor = who(event.actor);
   const data = event.data as Record<string, unknown>;
   const text = (key: string) => (typeof data[key] === "string" ? (data[key] as string) : "");
   switch (event.type) {
-    case "rename": case "renamed": case "deck.renamed": return `${actor} renamed it to “${text("title") || text("to") || text("name")}”`;
-    case "move": case "moved": case "deck.moved": return `${actor} moved it`;
-    case "share": case "shared": case "access.added": return `${actor} shared it with ${text("to") || text("member") || "someone"}`;
-    case "access.changed": return `${actor} changed what ${text("member") || "someone"} can do`;
-    case "access.removed": case "unshared": return `${actor} removed ${text("member") || "someone"}`;
-    case "public": case "public.changed": return text("mode") === "off" ? `${actor} made it private` : `${actor} made it public (${text("mode") || "view"})`;
-    case "trash": case "trashed": return `${actor} moved it to the trash`;
-    case "untrash": case "restored": return `${actor} restored it from the trash`;
-    case "transfer": case "transferred": case "transfer.accepted": return `${actor} became the owner`;
-    case "version.named": return `${actor} named a version “${text("name")}”`;
+    case "deck.created_from": return `${actor} made this deck from version ${String(data.version ?? "")} of another deck`;
+    case "deck.renamed": case "folder.renamed": return `${actor} renamed it from “${text("from")}” to “${text("to")}”`;
+    case "deck.moved": case "folder.moved": return data.to ? `${actor} moved it to another folder` : `${actor} moved it to the top of their decks`;
+    case "deck.trashed": case "folder.trashed": return `${actor} moved it to the trash`;
+    case "deck.restored": case "folder.restored": return `${actor} restored it from the trash`;
+    case "version.named": return text("name") ? `${actor} named version ${String(data.version ?? "")} “${text("name")}”` : `${actor} took the name off version ${String(data.version ?? "")}`;
+    case "shared": return `${actor} shared it with ${name(data.to)}${text("role") ? ` as ${text("role")}` : ""}`;
+    case "role_changed": return `${actor} made ${name(data.member ?? data.to)} ${text("role") ? `a${text("role") === "editor" ? "n" : ""} ${text("role")}` : "something else"}`;
+    case "unshared": return `${actor} removed ${name(data.member)}`;
+    case "public_changed": return text("to") === "off" ? `${actor} made it private` : `${actor} made it public: anyone with the link can ${PUBLIC_WORDS[text("to")] ?? "view"} it`;
+    case "transfer.started": return `${actor} offered it to ${name(data.to)}`;
+    case "transfer.accepted": return `${name(data.to)} accepted it and became the owner`;
+    case "transfer.declined": return `${name(data.to)} declined the transfer`;
+    case "transfer.cancelled": return `${actor} cancelled the transfer to ${name(data.to)}`;
+    case "thread.resolved": return `${actor} resolved a comment thread`;
+    case "thread.reopened": return `${actor} reopened a comment thread`;
+    case "comment.deleted": return `${actor} deleted a comment`;
     default: return `${actor}: ${event.type.replace(/[._]/g, " ")}`;
   }
+}
+
+/** Every account uuid an event's data names, to look up and show by id. */
+function uuidsIn(events: HistoryEvent[]): string[] {
+  const found = new Set<string>();
+  for (const event of events) for (const value of Object.values(event.data)) if (typeof value === "string" && UUID.test(value)) found.add(value);
+  return [...found];
+}
+
+/** Shows uuids in event data by c:/si: id: from the accounts the page already knows, else looked up once. */
+function useAccountNames(versions: Version[]): (value: unknown) => string {
+  const known = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const version of versions) {
+      if (version.author) map.set(version.author.uuid, version.author.id);
+      for (const event of version.events) if (event.actor) map.set(event.actor.uuid, event.actor.id);
+    }
+    return map;
+  }, [versions]);
+  const missing = useMemo(() => uuidsIn(versions.flatMap(version => version.events)).filter(uuid => !known.has(uuid)), [versions, known]);
+  const looked = useQueries({ queries: missing.map(uuid => ({ queryKey: ["account", uuid], queryFn: ({ signal }: { signal: AbortSignal }) => resolveAccount(uuid, signal), staleTime: Infinity, retry: false })) });
+  return (value: unknown) => {
+    if (typeof value !== "string" || !value) return "someone";
+    if (!UUID.test(value)) return value;
+    const id = known.get(value) ?? looked[missing.indexOf(value)]?.data?.id;
+    return id && !UUID.test(id) ? id : "someone";
+  };
 }
 
 export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: Version[]; canEdit: boolean }) {
@@ -61,6 +107,7 @@ export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: V
   const queryClient = useQueryClient();
   const versions = useQuery({ queryKey: ["versions", deck.id], queryFn: ({ signal }) => listVersions(deck.id, signal), initialData: initial, ...ALWAYS_FRESH });
   const list = versions.data;
+  const nameOf = useAccountNames(list);
   const latest = list[0]?.version ?? deck.version ?? 0;
   const [panel, setPanel] = useState<Panel>(list[0] ? { type: "version", version: list[0].version } : null);
   const [naming, setNaming] = useState<Version | null>(null);
@@ -113,10 +160,10 @@ export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: V
                 const open = panel?.type === "version" && panel.version === version.version;
                 return (
                   <li key={version.version} className={styles.entry}>
-                    {version.events.map((event, eventIndex) => (
+                    {version.events.filter(event => !REPEATS.has(event.type)).map((event, eventIndex) => (
                       <p key={`${event.id}-${eventIndex}`} className={styles.event} data-testid="history-event">
                         <span className={styles.eventDot} aria-hidden="true" />
-                        <span>{eventWords(event)}</span>
+                        <span>{eventWords(event, nameOf)}</span>
                         {event.at ? <LocalTime value={event.at} className={styles.eventTime} /> : null}
                       </p>
                     ))}
@@ -125,12 +172,15 @@ export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: V
                         <span className="sr-only">Open version {version.version}: </span>
                         {version.name ? <span className={styles.versionName}>{version.name}</span> : null}
                         <span className={styles.versionSummary}>{version.summary || `${who(version.author)} changed the deck`}</span>
-                        <span className={styles.versionMeta}>
-                          {who(version.author)}
-                          {version.endedAt ? <> · <LocalTime value={version.endedAt} format="datetime" /></> : null}
-                          {index === 0 ? " · Current" : ""}
-                          {version.origin === "restore" ? " · Restore" : version.origin === "undo" ? " · Undo" : version.origin === "import" ? " · Opened from a file" : ""}
-                        </span>
+                        <MetaLine
+                          className={styles.versionMeta}
+                          parts={[
+                            version.summary && version.author && version.summary.includes(version.author.id) ? null : who(version.author),
+                            version.endedAt ? <LocalTime value={version.endedAt} format="datetime" /> : null,
+                            index === 0 ? "Current" : null,
+                            version.origin === "restore" ? "Restore" : version.origin === "undo" ? "Undo" : version.origin === "import" ? "Opened from a file" : null,
+                          ]}
+                        />
                       </button>
                       {canEdit ? (
                         <ActionMenu
@@ -237,11 +287,7 @@ function VersionPanel({ deck, version, number, latest, canEdit, onRestore, onCha
       <div className={styles.panelHead}>
         <div className={styles.panelText}>
           <h2 className={styles.sectionTitle}>{version?.name ? `“${version.name}”` : `Version ${number}`}{isCurrent ? " (current)" : ""}</h2>
-          <p className={styles.versionMeta}>
-            {version ? who(version.author) : null}
-            {version?.endedAt ? <> · <LocalTime value={version.endedAt} format="datetime" /></> : null}
-            {json ? ` · ${json.slides.length} ${json.slides.length === 1 ? "slide" : "slides"}` : null}
-          </p>
+          <MetaLine className={styles.versionMeta} parts={[version ? who(version.author) : null, version?.endedAt ? <LocalTime value={version.endedAt} format="datetime" /> : null, json ? `${json.slides.length} ${json.slides.length === 1 ? "slide" : "slides"}` : null]} />
         </div>
         <div className={styles.panelActions}>
           <ExportMenu deck={deck.id} version={number} />

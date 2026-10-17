@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Folder as FolderIcon, Presentation, X } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { LocalTime } from "@/components/foundation/time/local-time";
+import { MetaLine } from "@/components/meta/meta-line";
 import { notify, notifyError } from "@/lib/notify";
 import { answerTransfer, listTransfers } from "@/lib/present/transfers";
 import type { Transfer } from "@/lib/present/types";
@@ -57,12 +58,14 @@ export function TransfersView({ initial, me }: { initial: Transfer[]; me: { uuid
         ) : (
           <span className={styles.name}>{transfer.title || "Untitled"}</span>
         )}
-        <span className={styles.meta}>
-          {transfer.kind === "folder" ? "Folder" : "Deck"}
-          {isMe(transfer.to) ? <> · From {transfer.from?.id ?? "someone"}</> : <> · To {transfer.to?.id ?? "someone"}</>}
-          {transfer.state !== "pending" ? <> · {STATE_WORDS[transfer.state]}</> : null}
-          {transfer.createdAt ? <> · <LocalTime value={transfer.createdAt} prefix="Offered " /></> : null}
-        </span>
+        <MetaLine
+          parts={[
+            transfer.kind === "folder" ? "Folder" : "Deck",
+            isMe(transfer.to) ? `From ${transfer.from?.id ?? "someone"}` : `To ${transfer.to?.id ?? "someone"}`,
+            transfer.state !== "pending" ? STATE_WORDS[transfer.state] : null,
+            transfer.createdAt ? <LocalTime value={transfer.createdAt} prefix="Offered " /> : null,
+          ]}
+        />
       </span>
       {actions ? <span className={styles.rowActions}>{actions}</span> : null}
     </li>
