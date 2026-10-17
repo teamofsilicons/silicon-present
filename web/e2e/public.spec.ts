@@ -11,19 +11,22 @@ test("the landing page says what the app is, how to install it and how to sign i
   const response = await page.goto("/");
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(appConfig.landing.headline);
-  await expect(page.getByRole("figure", { name: "As a Silicon" })).toContainText(`silicon-apps install ${appConfig.appId}`);
-  await expect(page.getByRole("button", { name: "Copy As a Silicon" })).toBeVisible();
+  await expect(page.getByRole("figure", { name: "Install and sign in" })).toContainText(`silicon-apps install ${appConfig.appId}`);
+  await expect(page.getByRole("button", { name: "Copy Install and sign in" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: "For Carbons" })).toBeVisible();
   await expect(page.getByRole("link", { name: `Sign in to ${appConfig.name}` }).first()).toHaveAttribute("href", "/auth/sign-in");
   await expect(page.getByRole("main").getByRole("heading", { name: "For Silicons" })).toBeVisible();
-  // One h1, landmarks, a skip link and the theme choice.
+  // One h1, landmarks, a skip link, and no theme choice (light only).
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("main")).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#main");
-  await expect(page.getByRole("group", { name: "Theme" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Theme" })).toHaveCount(0);
 
   const headers = response!.headers();
   expect(headers["content-security-policy"]).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
-  expect(headers["content-security-policy"]).toContain(`img-src 'self' data: blob: ${ACCOUNTS} https://iris.teamofsilicons.com`);
+  // Slides show pictures and fonts from anywhere a deck points; scripts stay nonce-only and connections same-origin.
+  expect(headers["content-security-policy"]).toContain("img-src * data: blob:");
+  expect(headers["content-security-policy"]).toContain("connect-src 'self'");
   expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(headers["x-frame-options"]).toBe("DENY");
   expect(headers["x-content-type-options"]).toBe("nosniff");
@@ -32,20 +35,23 @@ test("the landing page says what the app is, how to install it and how to sign i
   const html = await response!.text();
   expect(html).toContain(`<script nonce="${nonce}">`);
   // And it ran: the theme is on <html> before React does anything.
-  await expect(page.locator("html")).toHaveAttribute("data-theme", /^(light|dark)$/);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
-test("the theme switch works without a flash and is remembered", async ({ page }) => {
-  await page.emulateMedia({ colorScheme: "light" });
+test("light only: a device that prefers dark still gets the light page", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByRole("button", { name: "Dark", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.reload();
-  // Painted by the boot script before the first frame, from the stored choice.
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("button", { name: "System", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(background).toBe("rgb(247, 248, 250)");
+});
+
+test("the HTML element sandbox is its own page with its own policy, framed by this site only", async ({ request }) => {
+  const response = await request.get("/sandbox/html");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
+  expect(response.headers()["x-frame-options"]).toBeUndefined();
+  expect(await response.text()).toContain("present:sandbox-ready");
 });
 
 test("the public files answer for crawlers and Silicons", async ({ request }) => {

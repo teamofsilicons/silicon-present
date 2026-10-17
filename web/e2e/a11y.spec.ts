@@ -1,11 +1,11 @@
 /**
- * Accessibility: axe-core's WCAG 2.2 A and AA rules on every page, light and dark, desktop and phone, plus the keyboard
+ * Accessibility: axe-core's WCAG 2.2 A and AA rules on every page (light only), desktop and phone, plus the keyboard
  * path through the shell. A violation fails with the rule, the element and how to fix it. (The CSP is bypassed only so
  * axe's script can be injected.)
  */
 import { join } from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { accountsSession, appConfig, BASE, runAccounts, signIn } from "./support";
+import { accountsSession, appConfig, BASE, runAccounts, sameOrigin, signIn } from "./support";
 
 const AXE = join(process.cwd(), "node_modules", "axe-core", "axe.min.js");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
@@ -13,6 +13,7 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 test.describe.configure({ mode: "serial" });
 
 let signedIn: BrowserContext;
+let deckId = "";
 
 async function audit(page: Page, label: string) {
   await page.waitForLoadState("networkidle").catch(() => undefined);
@@ -36,6 +37,11 @@ test.beforeAll(async ({ browser }) => {
   signedIn = await accountsSession(browser, "carbon");
   const page = await signedIn.newPage();
   await signIn(page, runAccounts().carbon.email, appConfig.home);
+  // A deck with a slide, for the history page and present mode.
+  const made = await signedIn.request.post(`${BASE}/api/v1/decks`, { headers: sameOrigin({ "Content-Type": "application/json" }), data: JSON.stringify({ title: "Accessibility check" }) });
+  const body = (await made.json()) as { id?: string; deck?: { id: string } };
+  deckId = body.id ?? body.deck?.id ?? "";
+  await signedIn.request.post(`${BASE}/api/v1/decks/${deckId}/edits`, { headers: sameOrigin({ "Content-Type": "application/json" }), data: JSON.stringify({ ops: [{ op: "add_slide", after: null, slide: { id: "s_a11y01", layout: "blank", notes: "Notes", elements: [{ id: "e_a11y01", kind: "text", x: 100, y: 100, w: 1200, h: 200, rotation: 0, text: { paragraphs: [{ runs: [{ text: "Hello" }] }] } }] } }] }) });
   await page.close();
 });
 
@@ -43,7 +49,7 @@ test.afterAll(async () => {
   await signedIn?.close();
 });
 
-for (const theme of ["light", "dark"] as const) {
+for (const theme of ["light"] as const) {
   for (const mobile of [false, true]) {
     const where = `${theme}, ${mobile ? "phone" : "desktop"}`;
     test(`public pages pass WCAG 2.2 AA (${where})`, async ({ browser }) => {
@@ -63,16 +69,20 @@ for (const theme of ["light", "dark"] as const) {
         await page.goto(item.href);
         await audit(page, `${item.href} (${where})`);
       }
-      // The demo's detail page with its tabs and a dialog open.
-      await page.goto("/items");
-      await page.getByRole("table", { name: "Items" }).getByRole("link").first().click();
-      await page.getByRole("tab", { name: "Overview" }).waitFor();
-      await audit(page, `item (${where})`);
-      await page.getByRole("tab", { name: "Sharing" }).click();
-      await audit(page, `item sharing (${where})`);
-      await page.getByRole("button", { name: "Edit" }).click();
-      await page.getByRole("dialog", { name: "Edit item" }).waitFor();
-      await audit(page, `edit dialog (${where})`);
+      // Present's own pages: a folder view, Shared with me, the history, the presenter view, a dialog open.
+      for (const path of ["/decks?scope=shared", `/decks/${deckId}/history`, `/decks/${deckId}/presenter`]) {
+        await page.goto(path);
+        await audit(page, `${path} (${where})`);
+      }
+      await page.goto("/decks");
+      await page.getByRole("button", { name: "New folder" }).click();
+      await page.getByRole("dialog", { name: "New folder" }).waitFor();
+      await audit(page, `new folder dialog (${where})`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "More actions for Accessibility check" }).first().click();
+      await page.getByRole("menuitem", { name: "Share" }).click();
+      await page.getByRole("dialog", { name: "Share “Accessibility check”" }).getByText("People with access").waitFor();
+      await audit(page, `share dialog (${where})`);
       await context.close();
     });
   }
