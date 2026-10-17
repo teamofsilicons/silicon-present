@@ -54,7 +54,9 @@ export function toAccount(value: unknown): Account | null {
   if (!uuid && !id) return null;
   const rawKind = str(pick(value, "kind"));
   const kind: AccountKind = rawKind === "silicon" || id.startsWith("si:") ? "silicon" : "carbon";
-  return { uuid, id: id || uuid, kind, displayName: str(pick(value, "displayName", "name")) ?? "", pfpUrl: str(pick(value, "pfpUrl", "photo", "avatarUrl")) };
+  const name = str(pick(value, "displayName", "name")) ?? "";
+  // The service shows the id as the name when the account has none: keep the name empty then, so it is not shown twice.
+  return { uuid, id: id || uuid, kind, displayName: name === id ? "" : name, pfpUrl: str(pick(value, "pfpUrl", "pfp", "photo", "avatarUrl")) };
 }
 
 const roles = new Set(["owner", "editor", "commenter", "viewer"]);
@@ -134,7 +136,7 @@ export function toTransfer(value: unknown): Transfer {
   const state = str(pick(transfer, "state", "status")) ?? "pending";
   return {
     id: str(transfer.id) ?? "",
-    kind: str(pick(transfer, "kind", "resourceKind")) === "folder" ? "folder" : "deck",
+    kind: (str(pick(transfer, "kind", "resourceKind")) ?? (isObject(resource) ? str(resource.kind) : null)) === "folder" ? "folder" : "deck",
     resource: idOf(resource) ?? "",
     title: str(pick(transfer, "title", "name")) ?? (isObject(resource) ? str(pick(resource, "title", "name")) ?? "" : ""),
     from: toAccount(pick(transfer, "from", "fromAccount")),
@@ -157,6 +159,12 @@ export function toEvent(value: unknown): HistoryEvent {
   };
 }
 
+/** The one origin worth saying out of a version's origins (restore, undo and import before plain edits). */
+function originOf(value: unknown): string | null {
+  const origins = listOf(value ?? []).map(String);
+  return ["restore", "undo", "import", "create"].find(origin => origins.includes(origin)) ?? origins[0] ?? null;
+}
+
 export function toVersion(value: unknown): Version {
   const version = isObject(value) ? value : {};
   return {
@@ -168,7 +176,7 @@ export function toVersion(value: unknown): Version {
     summary: str(pick(version, "summary")) ?? "",
     name: str(pick(version, "name")),
     namedBy: toAccount(pick(version, "namedBy")),
-    origin: str(pick(version, "origin")),
+    origin: str(pick(version, "origin")) ?? originOf(pick(version, "origins")),
     events: listOf(pick(version, "events") ?? []).map(toEvent),
   };
 }
@@ -227,12 +235,47 @@ function toSlideChange(value: unknown): SlideChange {
 }
 
 /**
- * The comparison: either `{ slides: [...] }` with one entry per slide, or the three lists `{ added, removed, changed }`
- * of slides (each with its elements), merged into one list.
+ * The comparison. The service sends `{ from, to, summary, diff: { slidesAdded, slidesRemoved, slidesMoved,
+ * slidesChanged }, authors: { <slideId>: [Account] } }` (present-deck's DeckDiff); a flat `{ slides: [...] }` or
+ * `{ added, removed, changed }` is read too. Everything becomes one list of slide changes.
  */
 export function toComparison(value: unknown, from: number, to: number): Comparison {
   const body = isObject(value) ? value : {};
   if (Array.isArray(body.slides)) return { from, to, slides: body.slides.map(toSlideChange) };
+  const authors = isObject(body.authors) ? body.authors : {};
+  const by = (slide: string) => listOf(authors[slide] ?? []).map(toAccount).filter((a): a is Account => !!a);
+  const diff = isObject(body.diff) ? body.diff : null;
+  if (diff) {
+    const slides: SlideChange[] = [];
+    const ref = (item: unknown, change: SlideChange["change"]): SlideChange => {
+      const r = isObject(item) ? item : {};
+      const id = str(r.id) ?? "";
+      const number = num(r.number);
+      return { slide: id, change, fromNumber: change === "added" ? null : change === "moved" ? num(r.from) : number, toNumber: change === "removed" ? null : number, label: "", by: by(id), elements: [] };
+    };
+    for (const item of listOf(pick(diff, "slidesAdded") ?? [])) slides.push(ref(item, "added"));
+    for (const item of listOf(pick(diff, "slidesRemoved") ?? [])) slides.push(ref(item, "removed"));
+    for (const item of listOf(pick(diff, "slidesChanged") ?? [])) {
+      const r = isObject(item) ? item : {};
+      const id = str(r.id) ?? "";
+      const fields = listOf(r.fields ?? []).map(String);
+      const elements: ElementChange[] = [];
+      const add = (list: unknown, change: ElementChange["change"]) => {
+        for (const element of listOf(list ?? [])) {
+          const e = isObject(element) ? element : {};
+          const changedFields = listOf(e.fields ?? []).map(String);
+          elements.push({ element: str(e.id) ?? "", change, kind: str(e.kind), label: `${str(e.kind) ?? "element"}${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`, by: [] });
+        }
+      };
+      add(pick(r, "elementsAdded"), "added");
+      add(pick(r, "elementsRemoved"), "removed");
+      add(pick(r, "elementsChanged"), "changed");
+      if (r.elementsReordered === true || r.elements_reordered === true) elements.push({ element: "", change: "moved", kind: null, label: "the order of elements", by: [] });
+      slides.push({ slide: id, change: "changed", fromNumber: num(r.number), toNumber: num(r.number), label: fields.length ? fields.join(", ") : "", by: by(id), elements });
+    }
+    for (const item of listOf(pick(diff, "slidesMoved") ?? [])) slides.push(ref(item, "moved"));
+    return { from, to, slides };
+  }
   const slides: SlideChange[] = [];
   for (const kind of ["added", "removed", "changed", "moved"] as const) {
     const group = isObject(body.slides) ? (body.slides as Json)[kind] : body[kind];
@@ -258,5 +301,13 @@ export function toPresentation(value: unknown): Presentation {
 export function toSearchHit(value: unknown): SearchHit {
   const hit = isObject(value) ? value : {};
   const deck = isObject(hit.deck) ? hit.deck : hit;
+  // The service sends `matches: [{ where, slideNumber?, text }]`: say where the first one is and quote it.
+  const first = listOf(hit.matches ?? []).find(isObject) as Json | undefined;
+  if (first) {
+    const number = num(pick(first, "slideNumber"));
+    const where = str(pick(first, "where"));
+    const place = number ? `slide ${number}${where === "notes" ? " notes" : ""}` : where === "title" ? "title" : where;
+    return { deck: toDeck(deck), where: place, excerpt: str(pick(first, "text", "snippet")) };
+  }
   return { deck: toDeck(deck), where: str(pick(hit, "where", "field", "match")), excerpt: str(pick(hit, "excerpt", "snippet", "text")) };
 }

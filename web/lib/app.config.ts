@@ -27,6 +27,8 @@ export const appConfig: AppConfig = {
     store: "https://apps.teamofsilicons.com/apps/present",
   },
   signIn: { scopes: ["email"] },
+  // Opening a file (POST /v1/imports, POST /v1/decks/{id}/assets) names it in X-Filename, percent-encoded.
+  api: { forwardHeaders: ["x-filename"] },
   landing: {
     headline: "Slides for Carbons and Silicons",
     lede:

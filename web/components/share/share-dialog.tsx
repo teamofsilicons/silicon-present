@@ -258,11 +258,11 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
                   {publicMode === "off" ? "Off: only people with access can open it." : publicMode === "view" ? "Can open it without signing in. Nothing is listed anywhere." : "Can open it without signing in, and sign in to comment or edit."}
                 </span>
               </span>
-              <Switch aria-labelledby={`${listId}-public`} checked={publicMode !== "off"} disabled={!can.edit(myRole) || busy === "public"} onCheckedChange={next => void changePublic(next ? "view" : "off")} />
+              <Switch aria-labelledby={`${listId}-public`} checked={publicMode !== "off"} disabled={!can.own(myRole) || busy === "public"} onCheckedChange={next => void changePublic(next ? "view" : "off")} />
             </div>
             {publicMode !== "off" ? (
               <div className={styles.publicMode}>
-                <Select label="Anyone with the link" options={PUBLIC_OPTIONS} value={publicMode} disabled={!can.edit(myRole) || busy === "public"} onValueChange={value => void changePublic(value as PublicMode)} />
+                <Select label="Anyone with the link" options={PUBLIC_OPTIONS} value={publicMode} disabled={!can.own(myRole) || busy === "public"} onValueChange={value => void changePublic(value as PublicMode)} />
               </div>
             ) : null}
             <div className={styles.linkRow}>

@@ -5,8 +5,9 @@
 import "server-only";
 import type { ApiErrorInit } from "../errors";
 import { tryApiFetch } from "../server/rsc";
-import { listPaths, type Listing } from "./decks";
-import { listOf, toDeck, toFolder, toTransfer, toVersions } from "./normalize";
+import { listPaths, topOfShared, type Listing } from "./decks";
+import { listOf, toDeck, toFolder, toVersions } from "./normalize";
+import { transfersFrom } from "./transfers";
 import type { Deck, Folder, FolderPath, Scope, Transfer, Version } from "./types";
 
 export type Loaded<T> = { data: T; error: null } | { data: null; error: ApiErrorInit };
@@ -27,7 +28,8 @@ export async function loadPlace(scope: Scope, folder: string | null): Promise<Lo
     if (listed.error) return listed;
     folders = listOf(listed.data, "folders").map(toFolder);
   }
-  return { data: { decks: listOf(body, "decks").map(toDeck), folders: folders.filter(item => item.id !== folder) }, error: null };
+  const listing = { decks: listOf(body, "decks").map(toDeck), folders: folders.filter(item => item.id !== folder) };
+  return { data: scope === "shared" && !folder ? topOfShared(listing) : listing, error: null };
 }
 
 export async function loadFolderPath(id: string): Promise<Loaded<FolderPath>> {
@@ -52,8 +54,8 @@ export async function loadDeck(id: string): Promise<Loaded<Deck>> {
 }
 
 export async function loadTransfers(): Promise<Loaded<Transfer[]>> {
-  const answer = await tryApiFetch<unknown>("/v1/transfers");
-  return answer.error ? answer : { data: listOf(answer.data, "transfers").map(toTransfer), error: null };
+  const answer = await tryApiFetch<unknown>("/v1/transfers", { query: { state: "all" } });
+  return answer.error ? answer : { data: transfersFrom(answer.data), error: null };
 }
 
 export async function loadVersions(deck: string): Promise<Loaded<Version[]>> {

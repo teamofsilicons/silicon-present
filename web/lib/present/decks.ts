@@ -10,10 +10,23 @@ import type { Deck, Folder, FolderPath, ResourceKind, Scope, SearchHit } from ".
 const collection = (kind: ResourceKind) => (kind === "deck" ? "decks" : "folders");
 
 /** The paths a listing reads, shared by the server page and the client view. */
+/**
+ * The paths a listing reads, shared by the server page and the client view. At the top of My decks the service is asked
+ * for `folder=root` / `parent=root` (without it, scope=mine lists every deck and folder the caller owns).
+ */
 export const listPaths = {
-  decks: (scope: Scope, folder?: string | null) => ({ path: "/v1/decks", query: { scope, folder: folder ?? undefined } }),
-  folders: (scope: Scope, parent?: string | null) => ({ path: "/v1/folders", query: { scope, parent: parent ?? undefined, folder: parent ?? undefined } }),
+  decks: (scope: Scope, folder?: string | null) => ({ path: "/v1/decks", query: { scope, folder: folder ?? (scope === "mine" ? "root" : undefined) } }),
+  folders: (scope: Scope, parent?: string | null) => ({ path: "/v1/folders", query: { scope, parent: parent ?? (scope === "mine" ? "root" : undefined) } }),
 };
+
+/**
+ * At the top of Shared with me the service lists every deck shared with the caller, also those inside shared folders;
+ * those show inside their folder instead (decks deeper down in a shared folder's subfolders still show at the top).
+ */
+export function topOfShared(listing: Listing): Listing {
+  const shared = new Set(listing.folders.map(folder => folder.id));
+  return { folders: listing.folders, decks: listing.decks.filter(deck => !deck.folder || !shared.has(deck.folder)) };
+}
 
 export interface Listing {
   decks: Deck[];
@@ -36,7 +49,8 @@ export async function listPlace(scope: Scope, folder: string | null, signal?: Ab
     folders = listOf(await api.get<unknown>(path.path, { query: path.query, signal }), "folders").map(toFolder);
   }
   // A folder listing never shows the folder itself.
-  return { decks: deckList, folders: folders.filter(item => item.id !== folder) };
+  const listing = { decks: deckList, folders: folders.filter(item => item.id !== folder) };
+  return scope === "shared" && !folder ? topOfShared(listing) : listing;
 }
 
 export async function getDeck(id: string, signal?: AbortSignal): Promise<Deck> {
