@@ -198,8 +198,15 @@ pub async fn on_signed_in(state: &AppState, t: VerifiedToken) {
         }
         seen.insert(t.uuid, now);
     }
+    // The token's id is the one at issue time and can be stale, so it only seeds an account we don't know yet;
+    // Accounts (refresh, webhooks) stays the source of truth.
     if let (Some(handle), Some(kind)) = (&t.handle, &t.kind) {
-        let _ = upsert_identity(state, &DirAccount { uuid: t.uuid, handle: handle.clone(), kind: kind.clone() }).await;
+        let _ = sqlx::query("insert into accounts (uuid, handle, kind) values ($1, $2, $3) on conflict (uuid) do nothing")
+            .bind(t.uuid)
+            .bind(handle)
+            .bind(kind)
+            .execute(&state.pool)
+            .await;
     }
     let st = state.clone();
     let uuid = t.uuid;
@@ -227,7 +234,9 @@ pub async fn accounts_json(state: &AppState, uuids: &[Uuid]) -> HashMap<Uuid, Va
     if unique.is_empty() {
         return out;
     }
-    let rows: Vec<Row> = sqlx::query_as("select uuid, handle, kind, display_name, pfp_url, refreshed_at from accounts where uuid = any($1)")
+    let rows: Vec<Row> = sqlx::query_as("select uuid, handle, kind, display_name, pfp_url,
+                case when isfinite(refreshed_at) then refreshed_at else 'epoch' end as refreshed_at
+         from accounts where uuid = any($1)")
         .bind(&unique)
         .fetch_all(&state.pool)
         .await

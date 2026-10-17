@@ -326,6 +326,8 @@ pub struct ExportQuery {
     format: Option<String>,
     version: Option<i64>,
     slide: Option<String>,
+    width: Option<u32>,
+    at: Option<u32>,
 }
 
 const FORMATS: [&str; 8] = ["pptx", "ppt", "key", "odp", "pdf", "html", "png", "jpg"];
@@ -338,8 +340,20 @@ pub async fn export(State(st): State<AppState>, caller: MaybeCaller, Path(id): P
     }
     let converter = st.converter.clone().ok_or_else(crate::converter::not_configured)?;
     let json = deck_json_for(&st, &deck, q.version, q.slide.as_deref()).await?;
-    let file = converter.export(json!({ "deck": json, "format": format, "assetBase": asset_base(&st, &id) })).await?;
-    let ext = if file.content_type.contains("zip") { "zip".to_string() } else { format.clone() };
+    // The deck is trimmed to the slide, and the converter is told which slide too: with `slide`, png/jpg come back as
+    // one image instead of a zip of one.
+    let mut body = json!({ "deck": json, "format": format, "assetBase": asset_base(&st, &id) });
+    if let Some(slide) = &q.slide {
+        body["slide"] = json!(slide);
+    }
+    if let Some(w) = q.width {
+        body["width"] = json!(w.clamp(16, 7680));
+    }
+    if let Some(at) = q.at {
+        body["at"] = json!(at);
+    }
+    let file = converter.export(body).await?;
+    let ext = file.ext.clone().unwrap_or_else(|| if file.content_type.contains("zip") { "zip".to_string() } else { format.clone() });
     let name = format!("{}.{ext}", deck.title.replace(['/', '\\'], "-"));
     Ok((
         [(header::CONTENT_TYPE, file.content_type.clone()), (header::CONTENT_DISPOSITION, attachment(&name))],

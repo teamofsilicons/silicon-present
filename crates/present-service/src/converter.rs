@@ -13,6 +13,8 @@ use crate::error::ApiError;
 pub struct ConvertedFile {
     pub bytes: Bytes,
     pub content_type: String,
+    /// The file's extension when the converter says it (`X-Export-Extension`), e.g. `zip` for a whole deck as png.
+    pub ext: Option<String>,
 }
 
 #[async_trait]
@@ -72,8 +74,14 @@ impl HttpConverter {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("application/octet-stream")
             .to_string();
+        let ext = resp
+            .headers()
+            .get("x-export-extension")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.trim().trim_start_matches('.').to_string())
+            .filter(|s| !s.is_empty() && s.len() <= 8 && s.chars().all(|c| c.is_ascii_alphanumeric()));
         let bytes = resp.bytes().await.map_err(|e| ApiError::internal(format!("reading the converter's answer: {e}")))?;
-        Ok(ConvertedFile { bytes, content_type })
+        Ok(ConvertedFile { bytes, content_type, ext })
     }
 }
 

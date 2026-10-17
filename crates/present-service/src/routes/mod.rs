@@ -6,6 +6,7 @@ pub mod files;
 pub mod folders;
 pub mod live;
 pub mod presentations;
+pub mod reports;
 pub mod search;
 pub mod sharing;
 pub mod versions;
@@ -136,6 +137,8 @@ pub fn router(st: AppState) -> Router {
         .route("/health", get(search::health))
         .route("/v1/me", get(search::me))
         .route("/v1/accounts/resolve", get(search::resolve))
+        .route("/v1/accounts/webhook", post(search::accounts_webhook))
+        .route("/v1/reports", post(reports::create))
         .route("/v1/search", get(search::search))
         .route("/v1/decks", get(decks::list).post(decks::create))
         .route("/v1/decks/{id}", get(decks::get).patch(decks::patch).delete(decks::delete))

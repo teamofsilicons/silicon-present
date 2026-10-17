@@ -29,7 +29,10 @@ Optional
                               ting_outbox marked ting_not_configured
   PRESENT_TING_APP_ID         Ting's app id at Silicon Accounts (default: ting)
   PRESENT_TING_TIMEOUT_SECONDS  Timeout for each Ting call (default 15)
-  PRESENT_POSTMARK_TOKEN      Postmark server token for invite emails; unset = emails stay in email_outbox and are logged
+  PRESENT_ACCOUNTS_WEBHOOK_SECRET  The whsec_ secret of the present app's Accounts webhook; set it to accept
+                              POST /v1/accounts/webhook (id changes and profile updates refresh the cache at once)
+  PRESENT_POSTMARK_TOKEN      Postmark server token for invite and report emails; unset = emails stay in email_outbox and
+                              are logged
   PRESENT_MAIL_FROM           From address for invite emails (default present@teamofsilicons.com)
   RUST_LOG                    Log filter (default info)
 
@@ -55,6 +58,7 @@ pub struct Config {
     pub ting_timeout: Duration,
     pub postmark_token: Option<String>,
     pub mail_from: String,
+    pub accounts_webhook_secret: Option<String>,
 }
 
 fn trim_url(s: String) -> String {
@@ -125,6 +129,7 @@ impl Config {
             ting_timeout,
             postmark_token: get("PRESENT_POSTMARK_TOKEN"),
             mail_from: get("PRESENT_MAIL_FROM").unwrap_or_else(|| "present@teamofsilicons.com".into()),
+            accounts_webhook_secret: get("PRESENT_ACCOUNTS_WEBHOOK_SECRET"),
         })
     }
 }

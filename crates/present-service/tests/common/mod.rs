@@ -51,6 +51,14 @@ impl FakeDirectory {
         self.accounts.lock().unwrap().push((DirAccount { uuid, handle: handle.into(), kind: kind.into() }, profile));
         uuid
     }
+    pub fn rename(&self, uuid: Uuid, handle: &str) {
+        for (a, _) in self.accounts.lock().unwrap().iter_mut() {
+            if a.uuid == uuid {
+                a.handle = handle.to_string();
+            }
+        }
+    }
+
     pub fn set_profile(&self, uuid: Uuid, profile: Profile) {
         for (a, p) in self.accounts.lock().unwrap().iter_mut() {
             if a.uuid == uuid {
@@ -105,17 +113,22 @@ pub const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 0];
 impl Converter for FakeConverter {
     async fn render(&self, body: Value) -> Result<ConvertedFile, ApiError> {
         self.calls.lock().unwrap().push(("render".into(), body));
-        Ok(ConvertedFile { bytes: PNG.to_vec().into(), content_type: "image/png".into() })
+        Ok(ConvertedFile { bytes: PNG.to_vec().into(), content_type: "image/png".into(), ext: None })
     }
     async fn export(&self, body: Value) -> Result<ConvertedFile, ApiError> {
         let format = body["format"].as_str().unwrap_or("").to_string();
+        let one_slide = body["slide"].is_string();
         self.calls.lock().unwrap().push(("export".into(), body));
+        // Like the real converter: png/jpg of a whole deck is a zip, of one named slide the image itself.
+        if one_slide && (format == "png" || format == "jpg") {
+            return Ok(ConvertedFile { bytes: PNG.to_vec().into(), content_type: if format == "png" { "image/png".into() } else { "image/jpeg".into() }, ext: None });
+        }
         let ct = match format.as_str() {
             "pdf" => "application/pdf",
             "png" | "jpg" => "application/zip",
             _ => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         };
-        Ok(ConvertedFile { bytes: format!("FILE:{format}").into_bytes().into(), content_type: ct.into() })
+        Ok(ConvertedFile { bytes: format!("FILE:{format}").into_bytes().into(), content_type: ct.into(), ext: None })
     }
     async fn import(&self, body: Value) -> Result<Value, ApiError> {
         self.calls.lock().unwrap().push(("import".into(), body.clone()));
@@ -219,6 +232,7 @@ impl Stack {
             ("ACCOUNTS_API_URL", accounts_url.clone()),
             ("PRESENT_APP_SECRET", "sa_app_test".to_string()),
             ("PRESENT_IRIS_URL", "http://iris.test".to_string()),
+            ("PRESENT_ACCOUNTS_WEBHOOK_SECRET", "whsec_test".to_string()),
         ]
         .into();
         let cfg = Config::from_lookup(|k| env.get(k).cloned()).unwrap();

@@ -141,3 +141,39 @@ pub async fn health(State(st): State<AppState>) -> Json<Value> {
         "ting": st.ting.is_some(),
     }))
 }
+
+/// `POST /v1/accounts/webhook`: Silicon Accounts tells Present about id changes and profile updates, so names and
+/// photos refresh at once instead of within the cache's hour.
+pub async fn accounts_webhook(State(st): State<AppState>, headers: axum::http::HeaderMap, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    let Some(secret) = st.cfg.accounts_webhook_secret.clone() else {
+        return Err(ApiError::not_found(
+            "webhook_not_configured",
+            "This service doesn't accept Silicon Accounts webhooks: PRESENT_ACCOUNTS_WEBHOOK_SECRET isn't set.",
+            "Set it to the present app's webhook secret (whsec_…).",
+        ));
+    };
+    let h = |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let event = silicon_accounts_client::verify_and_parse_webhook(
+        &secret,
+        &h(silicon_accounts_client::TIMESTAMP_HEADER),
+        &h(silicon_accounts_client::SIGNATURE_HEADER),
+        &body,
+        silicon_accounts_client::DEFAULT_WEBHOOK_TOLERANCE,
+    )
+    .map_err(|e| ApiError::unauthorized("bad_webhook_signature", format!("The webhook couldn't be verified: {e}."), "Check PRESENT_ACCOUNTS_WEBHOOK_SECRET matches the app's webhook secret."))?;
+    use silicon_accounts_client::WebhookPayload as P;
+    let uuid = match &event.payload {
+        P::AccountIdChanged(c) => Some(c.uuid.clone()),
+        P::AccountUpdated(u) => Some(u.uuid.clone()),
+        _ => None,
+    };
+    if let Some(uuid) = uuid.and_then(|u| uuid::Uuid::parse_str(&u).ok()) {
+        let st2 = st.clone();
+        tokio::spawn(async move {
+            if let Err(e) = accounts::refresh(&st2, uuid).await {
+                tracing::warn!("refreshing {uuid} after a webhook failed: {e}");
+            }
+        });
+    }
+    Ok(Json(json!({ "ok": true, "event": event.event_id })))
+}

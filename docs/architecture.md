@@ -306,8 +306,9 @@ notify the person who caused the event.
 
 - `POST /v1/imports` (raw body, `Content-Type`, `X-Filename`, optional `?folder=`) → a new deck from any supported
   file. `POST /v1/decks/{id}/imports` → opening a file on top of a deck makes it the deck's next version.
-- `GET /v1/decks/{id}/export?format=pptx|ppt|key|odp|pdf|html|png|jpg&version=&slide=` → the file
-  (`Content-Disposition` with the deck title). png/jpg of a whole deck is a `.zip` with one image per slide.
+- `GET /v1/decks/{id}/export?format=pptx|ppt|key|odp|pdf|html|png|jpg&version=&slide=&width=&at=` → the file
+  (`Content-Disposition` with the deck title). png/jpg of a whole deck is a `.zip` with one image per slide; with
+  `slide` the deck is trimmed to that slide and the converter gets `slide` too, so png/jpg is the image itself.
 - `GET /v1/decks/{id}/slides/{slide}/render?format=png|jpg&width=1920&version=&at=<ms>` → one slide as an image, how a
   Carbon would see it (HTML elements run for `at` ms first, default 1500).
 - `POST /v1/decks/{id}/assets` (raw body, `Content-Type`, `X-Filename`) → `{ id, url, contentType, size }`;
@@ -327,6 +328,12 @@ notify the person who caused the event.
 - `GET /v1/search?q=` — every deck the caller can view whose title, slide text, notes or table text matches.
 - `GET /v1/accounts/resolve?q=c:ada` — for invites and mentions.
 - `GET /v1/me`.
+- `POST /v1/reports { message (≤ 10,000 chars), pr?: url, context?: object }` (any signed-in Carbon or Silicon;
+  `present report`) → `{ id }`. Each report is kept in `reports` (who, when, message, pr, context, service version,
+  User-Agent) and mailed through the mail adapter to saketdev12@gmail.com, shubhastro2@gmail.com and
+  bugs@teamofsilicons.com, the same destinations as the other Silicon apps' report commands.
+- `POST /v1/accounts/webhook` — Silicon Accounts' signed webhook (`account.id_changed`, `account.updated`) refreshes
+  how that account is shown at once; on only when `PRESENT_ACCOUNTS_WEBHOOK_SECRET` is set.
 
 ### Answers (shapes the service returns)
 

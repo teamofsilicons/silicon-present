@@ -214,7 +214,7 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
             .await?;
         } else if let Some(e) = &email {
             let who = by["id"].as_str().unwrap_or("Someone").to_string();
-            crate::mail::send_invite(
+            crate::mail::queue_email(
                 &st,
                 &format!("invite:{kind}:{id}:{row_id}"),
                 e,

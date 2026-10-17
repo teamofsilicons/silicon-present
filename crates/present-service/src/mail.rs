@@ -1,12 +1,13 @@
-//! Invite emails to addresses that have no Silicon Accounts account yet. Present sends them itself (Accounts
-//! doesn't send app invites): through Postmark when `PRESENT_POSTMARK_TOKEN` is set, otherwise the message is kept
-//! in `email_outbox` (state `not_configured`) and logged — that is what tests read.
+//! Emails Present sends itself: invites to addresses that have no Silicon Accounts account yet (Accounts doesn't
+//! send app invites) and reports to the team. Through Postmark when `PRESENT_POSTMARK_TOKEN` is set, otherwise the
+//! message is kept in `email_outbox` (state `not_configured`) and logged — that is what tests read. The key makes a
+//! retried request queue each email once.
 
 use serde_json::json;
 
 use crate::state::AppState;
 
-pub async fn send_invite(state: &AppState, key: &str, to: &str, subject: &str, body: &str) -> Result<(), sqlx::Error> {
+pub async fn queue_email(state: &AppState, key: &str, to: &str, subject: &str, body: &str) -> Result<(), sqlx::Error> {
     let configured = state.cfg.postmark_token.is_some();
     let inserted: Option<i64> = sqlx::query_scalar(
         "insert into email_outbox (idempotency_key, to_email, subject, body, state) values ($1, $2, $3, $4, $5)
@@ -21,7 +22,7 @@ pub async fn send_invite(state: &AppState, key: &str, to: &str, subject: &str, b
     .await?;
     let Some(id) = inserted else { return Ok(()) };
     match &state.cfg.postmark_token {
-        None => tracing::info!("invite email to {to} kept in email_outbox (no PRESENT_POSTMARK_TOKEN): {subject}"),
+        None => tracing::info!("email to {to} kept in email_outbox (no PRESENT_POSTMARK_TOKEN): {subject}"),
         Some(token) => {
             let st = state.clone();
             let (token, to, subject, body) = (token.clone(), to.to_string(), subject.to_string(), body.to_string());

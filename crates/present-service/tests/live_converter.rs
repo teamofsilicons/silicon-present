@@ -48,6 +48,14 @@ async fn exports_renders_and_imports_through_the_real_converter() {
         let start = String::from_utf8_lossy(&body[..20.min(body.len())]).trim_start().as_bytes().to_vec();
         assert!(start.starts_with(&magic), "{format} starts with {:?}", &body[..8.min(body.len())]);
     }
+    // One slide as an image is the image itself (not a zip of one).
+    let r = get(format!("/v1/decks/{id}/export?format=png&slide=s_second")).await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    assert!(r.headers()["content-disposition"].to_str().unwrap().contains(".png"));
+    assert_eq!(&r.bytes().await.unwrap()[..4], &[0x89, b'P', b'N', b'G']);
+    let r = get(format!("/v1/decks/{id}/export?format=png")).await.unwrap();
+    assert!(r.headers()["content-disposition"].to_str().unwrap().contains(".zip"));
+    assert_eq!(&r.bytes().await.unwrap()[..2], b"PK");
     // Open the pptx we just made as a new deck.
     let pptx = get(format!("/v1/decks/{id}/export?format=pptx")).await.unwrap().bytes().await.unwrap();
     let r = s.http.post(format!("{}/v1/imports", s.url)).bearer_auth(&ada.token)

@@ -41,7 +41,8 @@ Migrations run at start. A missing setting stops it with one line per problem. E
 | `PRESENT_TING_URL` | no | Silicon Ting; without it tings stay in `ting_outbox` as `ting_not_configured` |
 | `PRESENT_TING_APP_ID` | no (`ting`) | Ting's app id (receiving app of the proofs) |
 | `PRESENT_TING_TIMEOUT_SECONDS` | no (15) | Timeout per Ting call |
-| `PRESENT_POSTMARK_TOKEN`, `PRESENT_MAIL_FROM` | no | Invite emails; without a token they stay in `email_outbox` and are logged |
+| `PRESENT_ACCOUNTS_WEBHOOK_SECRET` | no | The present app's Accounts webhook secret; enables `POST /v1/accounts/webhook` (id changes, profile updates) |
+| `PRESENT_POSTMARK_TOKEN`, `PRESENT_MAIL_FROM` | no | Invite and report emails; without a token they stay in `email_outbox` and are logged |
 | `ACCOUNTS_ALLOW_INSECURE_HTTP` | no | Allow plain http to a non-loopback Accounts (loopback is always allowed) |
 | `RUST_LOG` | no (`info`) | Log filter |
 

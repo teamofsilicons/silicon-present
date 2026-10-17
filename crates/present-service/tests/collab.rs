@@ -370,6 +370,18 @@ async fn assets_imports_exports_and_renders() {
     let r = get(Some(&ada), format!("/v1/decks/{id}/export?format=png")).await.unwrap();
     assert!(r.headers()["content-disposition"].to_str().unwrap().contains(".zip"));
     assert_eq!(get(Some(&ada), format!("/v1/decks/{id}/export?format=doc")).await.unwrap().status().as_u16(), 400);
+    // One slide as an image is the image itself, and the converter is told which slide.
+    let one = first_slide(&s.content(&id, &ada).await);
+    for (format, ct) in [("png", "image/png"), ("jpg", "image/jpeg")] {
+        let r = get(Some(&ada), format!("/v1/decks/{id}/export?format={format}&slide={one}&width=800")).await.unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        assert_eq!(r.headers()["content-type"], ct);
+        assert!(r.headers()["content-disposition"].to_str().unwrap().contains(&format!("Files & things.{format}")));
+        let call = s.converter.calls.lock().unwrap().last().cloned().unwrap();
+        assert_eq!(call.1["slide"], one.as_str());
+        assert_eq!(call.1["width"], 800);
+        assert_eq!(call.1["deck"]["slides"].as_array().unwrap().len(), 1);
+    }
     // Render one slide.
     let c = s.content(&id, &ada).await;
     let slide = first_slide(&c);
@@ -462,5 +474,37 @@ async fn snapshots_every_200_updates_and_old_versions_read_across_them() {
     assert_eq!(present_deck::plain_text(&old["slides"][0]["elements"][1]["text"]), "count 148\n");
     let (_, old) = s.get(&format!("/v1/decks/{id}/content?version=203"), Some(&ada)).await;
     assert_eq!(present_deck::plain_text(&old["slides"][0]["elements"][1]["text"]), "count 201\n");
+    s.stop().await;
+}
+
+#[tokio::test]
+async fn reports_are_kept_and_mailed_to_the_team() {
+    let s = Stack::start().await;
+    let bot = s.person("si:reporter");
+    let ((st, r), _) = s.req_h("POST", "/v1/reports", Some(&bot), Some(json!({ "message": "Export of one slide returns a zip\nDetails below", "pr": "https://github.com/teamofsilicons/silicon-present/pull/1", "context": { "deck": "dk1", "command": "present export" } })), &[("User-Agent", "present-cli/0.1.0")]).await;
+    assert_eq!(st, 201, "{r}");
+    let id = r["id"].as_str().unwrap().to_string();
+    let (account, message, pr, context, client): (uuid::Uuid, String, Option<String>, Value, Option<String>) =
+        sqlx::query_as("select account, message, pr, context, client from reports where id = $1").bind(&id).fetch_one(&s.pool).await.unwrap();
+    assert_eq!(account, bot.uuid);
+    assert!(message.starts_with("Export of one slide"));
+    assert_eq!(pr.as_deref(), Some("https://github.com/teamofsilicons/silicon-present/pull/1"));
+    assert_eq!(context["command"], "present export");
+    assert_eq!(client.as_deref(), Some("present-cli/0.1.0"));
+    let mails: Vec<(String, String, String)> = sqlx::query_as("select to_email, subject, body from email_outbox order by id").fetch_all(&s.pool).await.unwrap();
+    let to: Vec<&str> = mails.iter().map(|m| m.0.as_str()).collect();
+    assert_eq!(to, vec!["saketdev12@gmail.com", "shubhastro2@gmail.com", "bugs@teamofsilicons.com"]);
+    assert_eq!(mails[0].1, "Silicon Present report from si:reporter: Export of one slide returns a zip");
+    assert!(mails[0].2.contains(&id) && mails[0].2.contains("present export"), "{}", mails[0].2);
+    for (body, code) in [
+        (json!({}), "message_required"),
+        (json!({ "message": "x".repeat(10_001) }), "message_too_long"),
+        (json!({ "message": "hi", "pr": "not a url" }), "invalid_pr"),
+        (json!({ "message": "hi", "context": [1] }), "invalid_context"),
+    ] {
+        let (st, e) = s.post("/v1/reports", &bot, body).await;
+        assert_eq!((st, e["error"]["code"].as_str().unwrap()), (400, code));
+    }
+    assert_eq!(s.req("POST", "/v1/reports", None, Some(json!({ "message": "hi" }))).await.0, 401);
     s.stop().await;
 }

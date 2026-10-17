@@ -294,3 +294,29 @@ async fn retried_requests_with_an_idempotency_key_act_once() {
     assert_eq!(s.content(id, &ada).await["slides"].as_array().unwrap().len(), 2);
     s.stop().await;
 }
+
+#[tokio::test]
+async fn accounts_webhooks_refresh_how_people_are_shown() {
+    let s = Stack::start().await;
+    let ada = s.person("c:ada");
+    let id = s.deck(&ada, "Webhook").await;
+    s.directory.rename(ada.uuid, "c:ada_lovelace");
+    let body = serde_json::to_vec(&json!({ "event_id": "evt_1", "type": "account.id_changed", "occurred_at": "2026-10-17T00:00:00Z",
+        "data": { "uuid": ada.uuid, "membership_id": format!("present:{}", ada.uuid), "kind": "carbon", "old_id": "c:ada", "id": "c:ada_lovelace" } })).unwrap();
+    let ts = time::OffsetDateTime::now_utc().unix_timestamp();
+    let sig = silicon_accounts_client::sign_webhook("whsec_test", ts, &body);
+    let r = s.http.post(format!("{}/v1/accounts/webhook", s.url)).header("X-Accounts-Timestamp", ts.to_string()).header("X-Accounts-Signature", sig).body(body.clone()).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "{}", r.text().await.unwrap());
+    let bad = s.http.post(format!("{}/v1/accounts/webhook", s.url)).header("X-Accounts-Timestamp", ts.to_string()).header("X-Accounts-Signature", "v1=00").body(body).send().await.unwrap();
+    assert_eq!(bad.status().as_u16(), 401);
+    let mut shown = String::new();
+    for _ in 0..50 {
+        shown = s.get(&format!("/v1/decks/{id}"), Some(&ada)).await.1["owner"]["id"].as_str().unwrap_or("").to_string();
+        if shown == "c:ada_lovelace" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(shown, "c:ada_lovelace");
+    s.stop().await;
+}
