@@ -32,6 +32,19 @@ Vocabulary in every string a Carbon or Silicon reads (pages, errors, CLI output,
 | Postgres (own Homebrew pg16 cluster at `.dev/pg`) | 5490 |
 | Silicon Accounts test stack | 9740–9747 |
 
+While several agents build in parallel, each tests on its own lane so nobody kills anybody's processes, each lane
+with its own database on the 5490 cluster (`present_<lane>`) and its own `PRESENT_DATA_DIR` under `.dev/<lane>`:
+
+| Lane | web | service | converter | Ting stand-in | database |
+| --- | --- | --- | --- | --- | --- |
+| final e2e | 4320 | 4321 | 4322 | 4323 | `present` |
+| web pages | 4330 | 4331 | 4332 | 4333 | `present_pages` |
+| web editor | 4340 | 4341 | 4342 | 4343 | `present_editor` |
+| CLI | — | 4351 | 4352 | 4353 | `present_cli` |
+| service tests | — | 4361 | 4362 | 4363 | throwaway |
+
+Web callbacks for 4320/4330/4340/4360 are registered at the Accounts test stack. Only stop processes you started.
+
 Rust builds always use `CARGO_TARGET_DIR=/Users/codanium/Documents/silicon/silicon-present/target`,
 `CARGO_BUILD_JOBS=4`, `CARGO_INCREMENTAL=0` and the dev profile with `debug = 0` (disk is tight; never make another
 target dir).

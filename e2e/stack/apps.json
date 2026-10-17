@@ -35,11 +35,23 @@
         },
         "redirect_uris": [
           "http://127.0.0.1:4320/auth/callback",
-          "http://localhost:4320/auth/callback"
+          "http://localhost:4320/auth/callback",
+          "http://127.0.0.1:4330/auth/callback",
+          "http://localhost:4330/auth/callback",
+          "http://127.0.0.1:4340/auth/callback",
+          "http://localhost:4340/auth/callback",
+          "http://127.0.0.1:4360/auth/callback",
+          "http://localhost:4360/auth/callback"
         ],
         "allowed_origins": [
           "http://127.0.0.1:4320",
-          "http://localhost:4320"
+          "http://localhost:4320",
+          "http://127.0.0.1:4330",
+          "http://localhost:4330",
+          "http://127.0.0.1:4340",
+          "http://localhost:4340",
+          "http://127.0.0.1:4360",
+          "http://localhost:4360"
         ],
         "allowed_email_domains": [],
         "device_flow": true,
