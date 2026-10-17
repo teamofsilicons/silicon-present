@@ -1,0 +1,5 @@
+/* A rendered slide scaled into its box. The stage is the slide at its own size (1920 x 1080), scaled from its corner. */
+.box { position: relative; width: 100%; overflow: hidden; background: #fff; contain: layout paint; }
+.box[data-fit="contain"] { height: 100%; background: transparent; }
+.stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.box :global(.sp-el[data-selected]) { outline: 6px solid var(--accent); outline-offset: 4px; }
