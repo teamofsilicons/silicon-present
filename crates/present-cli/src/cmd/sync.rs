@@ -21,7 +21,7 @@ use crate::fail::{Fail, R};
 use crate::state::write_atomic;
 use serde_json::{Map, Value, json};
 use silicon_present_client::deck;
-use silicon_present_client::diff::{ops_between, prepare_local};
+use silicon_present_client::diff::{ops_between, prepare_against};
 use silicon_present_client::ops::{EditRequest, Op};
 use silicon_present_client::{Client, accounts::now};
 use std::collections::BTreeSet;
@@ -303,7 +303,7 @@ fn plan(dir: &Path) -> R<Plan> {
     let version = pull.get("version").and_then(Value::as_u64).or_else(|| base.get("version").and_then(Value::as_u64));
     let mut uploads = Vec::new();
     local_media(&mut local, dir, &mut uploads);
-    prepare_local(&mut local);
+    prepare_against(&base, &mut local);
     let title = local
         .get("title")
         .and_then(Value::as_str)

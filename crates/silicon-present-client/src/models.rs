@@ -32,7 +32,7 @@ pub struct Account {
     #[serde(default, deserialize_with = "de_str", alias = "display_name")]
     pub display_name: String,
     /// Profile photo URL.
-    #[serde(default, alias = "pfp_url", skip_serializing_if = "Option::is_none")]
+    #[serde(default, alias = "pfp_url", alias = "pfp", skip_serializing_if = "Option::is_none")]
     pub pfp_url: Option<String>,
     /// Everything else.
     #[serde(flatten)]

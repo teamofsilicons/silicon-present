@@ -640,6 +640,25 @@ pub async fn set(ctx: &Ctx, deck: &str, slide: &str, element: &str, pairs: &[Str
             return Err(Fail::new("invalid_input", format!("`{key}` can't be changed."), "Delete the element and add a new one instead."));
         }
         match key.split_once('.') {
+            None if key == "text" && !raw.trim_start().starts_with('{') => {
+                // Plain text keeps the look of what it replaces: the first paragraph's attributes
+                // (heading, list, align) and the first run's (size, bold, colour, font).
+                let text = match parse_value("notes", raw)? {
+                    Value::String(t) => t,
+                    other => other.to_string(),
+                };
+                let first_p = el.pointer("/text/paragraphs/0").and_then(Value::as_object).cloned().unwrap_or_default();
+                let mut para = first_p.clone();
+                para.remove("runs");
+                let mut inline = first_p
+                    .get("runs")
+                    .and_then(|r| r.get(0))
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+                inline.remove("text");
+                set.insert("text".into(), deck::rich_text_styled(&text, &inline, &para));
+            }
             None => {
                 set.insert(key.to_owned(), parse_value(key, raw)?);
             }

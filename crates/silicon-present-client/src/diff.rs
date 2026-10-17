@@ -92,6 +92,47 @@ pub fn prepare_element(el: &mut Value) {
     }
 }
 
+/// Like [`prepare_local`], but text written as a plain string over an element that already
+/// exists in `base` keeps that element's look: the first paragraph's attributes (heading, list,
+/// align) and the first run's (size, bold, colour, font).
+pub fn prepare_against(base: &Value, local: &mut Value) {
+    // element id -> (first run's attributes, first paragraph's attributes)
+    type Look = (Map<String, Value>, Map<String, Value>);
+    let mut styles: HashMap<String, Look> = HashMap::new();
+    let mut collect = |slide: &Value| {
+        for e in list(slide, "elements") {
+            if let (Some(id), Some(p)) = (e.get("id").and_then(Value::as_str), e.pointer("/text/paragraphs/0").and_then(Value::as_object)) {
+                let mut para = p.clone();
+                para.remove("runs");
+                let mut run = p.get("runs").and_then(|r| r.get(0)).and_then(Value::as_object).cloned().unwrap_or_default();
+                run.remove("text");
+                styles.insert(id.to_owned(), (run, para));
+            }
+        }
+    };
+    list(base, "slides").iter().for_each(&mut collect);
+    if let Some(m) = base.get("master") {
+        collect(m);
+    }
+    let mut restyle = |slide: &mut Value| {
+        if let Some(els) = slide.get_mut("elements").and_then(Value::as_array_mut) {
+            for e in els {
+                let id = e.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+                if let (Some(Value::String(t)), Some((run, para))) = (e.get("text").cloned(), styles.get(&id)) {
+                    e["text"] = crate::deck::rich_text_styled(&t, run, para);
+                }
+            }
+        }
+    };
+    if let Some(slides) = local.get_mut("slides").and_then(Value::as_array_mut) {
+        slides.iter_mut().for_each(&mut restyle);
+    }
+    if let Some(m) = local.get_mut("master") {
+        restyle(m);
+    }
+    prepare_local(local);
+}
+
 /// The ops that turn `base` into `local`. Call [`prepare_local`] on `local` first.
 pub fn ops_between(base: &Value, local: &Value) -> Vec<Op> {
     let mut ops = Vec::new();
@@ -390,6 +431,16 @@ mod tests {
         let ops = ops_between(&base, &local);
         assert_eq!(ops.len(), 1, "{ops:?}");
         assert!(matches!(&ops[0], Op::ReorderElement { element, to: ZTarget::Index(0), .. } if element == "e_c"));
+    }
+
+    #[test]
+    fn plain_text_over_an_existing_element_keeps_its_look() {
+        let base = json!({"slides": [{"id": "s_1", "elements": [
+            {"id": "e_1", "kind": "text", "text": {"paragraphs": [{"heading": 1, "runs": [{"text": "Old", "bold": true}]}]}}
+        ]}]});
+        let mut local = json!({"slides": [{"id": "s_1", "elements": [{"id": "e_1", "kind": "text", "text": "New"}]}]});
+        prepare_against(&base, &mut local);
+        assert_eq!(local["slides"][0]["elements"][0]["text"], json!({"paragraphs": [{"heading": 1, "runs": [{"text": "New", "bold": true}]}]}));
     }
 
     #[test]

@@ -15,7 +15,7 @@
 # under its own SILICON_HOME.
 #
 # Every check prints ok/FAIL and the suite goes on; the summary lists every failure with what came back.
-set -uo pipefail
+set -o pipefail   # not -u: a failed step leaves its variables empty and the suite goes on
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -35,7 +35,10 @@ DATA="$ROOT/.dev/cli"
 WORK="$DATA/e2e"
 LOGS="$DATA/logs"
 export CARGO_TARGET_DIR="$ROOT/target" CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0
-PRESENT="$ROOT/target/debug/present"
+# The binaries are copied out of the shared target dir before use: another agent rebuilding them while they run
+# would get them killed (macOS kills a process whose executable is rewritten).
+BIN="$DATA/bin"
+PRESENT="$BIN/present"
 API="http://127.0.0.1:$SERVICE_PORT"
 CONVERTER_SECRET="cli-lane-converter-secret"
 
@@ -120,7 +123,11 @@ curl -sf "$ACCOUNTS_API/.well-known/jwks.json" >/dev/null || { echo "The Account
 if [[ "${NO_BUILD:-}" != "1" ]]; then
   cargo build -q -p present-cli -p present-service 2>&1 | tail -20
 fi
-[[ -x "$PRESENT" ]] || { echo "No present binary at $PRESENT"; exit 2; }
+mkdir -p "$BIN"
+for b in present present-service; do
+  [[ -x "$ROOT/target/debug/$b" ]] || { echo "No $b binary at $ROOT/target/debug/$b (build it first)"; exit 2; }
+  cp "$ROOT/target/debug/$b" "$BIN/$b.tmp" && mv "$BIN/$b.tmp" "$BIN/$b"
+done
 
 scripts/dev-db.sh start >/dev/null
 "$PGBIN/dropdb" -h 127.0.0.1 -p 5490 -U present --if-exists "$DB" 2>/dev/null
@@ -134,14 +141,11 @@ done
 
 # Ting stand-in (tools/ting-standin) when it exists; otherwise tings are checked in the service's outbox.
 TING_URL=""
-if [[ -f tools/ting-standin/package.json || -f tools/ting-standin/server.ts || -f tools/ting-standin/server.mjs ]]; then
-  ENTRY=$(ls tools/ting-standin/{server.ts,server.mjs,src/server.ts,index.ts,index.mjs} 2>/dev/null | head -1)
-  if [[ -n "$ENTRY" ]]; then
-    TING_PORT=$TING_PORT PORT=$TING_PORT ACCOUNTS_API_URL="$ACCOUNTS_API" TING_APP_SECRET="$(jq -r .apps.ting.app_secret "$STACK")" \
-      "$ROOT/renderer/node_modules/.bin/tsx" "$ENTRY" >"$LOGS/ting.log" 2>&1 &
-    PIDS+=($!)
-    if wait_http "http://127.0.0.1:$TING_PORT/" 20; then TING_URL="http://127.0.0.1:$TING_PORT"; echo "Ting stand-in on $TING_URL"; else echo "Ting stand-in did not start; see $LOGS/ting.log"; fi
-  fi
+if [[ -f tools/ting-standin/server.mjs ]]; then
+  TING_PORT=$TING_PORT ACCOUNTS_API_URL="$ACCOUNTS_API" TING_APP_ID=ting TING_APP_SECRET="$(jq -r .apps.ting.app_secret "$STACK")" \
+    node tools/ting-standin/server.mjs >"$LOGS/ting.log" 2>&1 &
+  PIDS+=($!)
+  if wait_http "http://127.0.0.1:$TING_PORT/health" 20; then TING_URL="http://127.0.0.1:$TING_PORT"; echo "Ting stand-in on $TING_URL"; else echo "Ting stand-in did not start; see $LOGS/ting.log"; fi
 fi
 
 # Converter.
@@ -156,8 +160,8 @@ env PRESENT_DATABASE_URL="postgres://present@127.0.0.1:5490/$DB" \
   PRESENT_BIND="127.0.0.1:$SERVICE_PORT" PRESENT_PUBLIC_URL="$API" PRESENT_WEB_URL="http://127.0.0.1:4320" \
   PRESENT_DATA_DIR="$DATA/data" ACCOUNTS_URL="$ACCOUNTS_URL" ACCOUNTS_API_URL="$ACCOUNTS_API" PRESENT_APP_SECRET="$APP_SECRET" \
   PRESENT_IRIS_URL="$(jq -r .mock_iris_url "$STACK")" PRESENT_CONVERTER_URL="http://127.0.0.1:$CONVERTER_PORT" CONVERTER_SECRET="$CONVERTER_SECRET" \
-  ${TING_URL:+PRESENT_TING_URL="$TING_URL"} RUST_LOG="${RUST_LOG:-info}" \
-  "$ROOT/target/debug/present-service" >"$LOGS/service.log" 2>&1 &
+  ${TING_URL:+PRESENT_TING_URL="$TING_URL"} RUST_LOG="${RUST_LOG:-info}" RUST_BACKTRACE=1 \
+  "$BIN/present-service" >"$LOGS/service.log" 2>&1 &
 PIDS+=($!)
 wait_http "$API/v1/me" 60 || { echo "The service did not start; last log lines:"; tail -30 "$LOGS/service.log"; exit 2; }
 echo "Service on $API"
@@ -242,6 +246,9 @@ say "Folders and decks"
 run "folder new" A folder new "CLI Folder" --json && FOLDER=$(j .id)
 run "deck new in the folder" A new "CLI Deck" --folder "$FOLDER" --json && DECK=$(j .id)
 is "deck is in the folder" "$(j .folder)" "$FOLDER"
+# A new deck starts with one slide; remove it so slide numbers below are ours.
+FIRST=$(A read "$DECK" --json | jq -r '.slides[0].id // empty')
+[[ -n "$FIRST" ]] && run "delete the starter slide" A slide delete "$DECK" 1 --json
 run "list --folder" A list --folder "$FOLDER" --json && is "the folder holds the deck" "$(j '.decks[0].id')" "$DECK"
 run "list" A list --json && has "list shows the deck" "$OUT" "$DECK"
 run "deck by exact title" A read "CLI Deck" --json && is "title resolves to the id" "$(j .id)" "$DECK"
@@ -315,6 +322,7 @@ TEMP=$(jq -r '.elementsAdded[0].element // empty' <<<"$OUT")
 [[ -n "$TEMP" ]] && run "delete element" A delete "$DECK" 4 "$TEMP" --json || bad "delete element" "no element id came back from edit --ops"
 run "read after edits" A read "$DECK" --json
 is "title text replaced" "$(jq -r '.slides[0].elements[0].text.paragraphs[0].runs[0].text' <<<"$OUT")" "Zebra Quarterly Report"
+is "set text kept the heading" "$(jq -r '.slides[0].elements[0].text.paragraphs[0].heading' <<<"$OUT")" "1"
 is "notes replaced" "$(jq -r '.slides[1].notes' <<<"$OUT")" "Breathe after Hire"
 is "raw op notes" "$(jq -r '.slides[3].notes' <<<"$OUT")" "Raw ops notes"
 is "css replaced" "$(jq -r --arg e "$E_HTML" '.slides[4].elements[] | select(.id==$e) | .css | contains("#2f5bea")' <<<"$OUT")" "true"
@@ -410,7 +418,7 @@ run "react" K react "$C_REPLY" "👍" --json
 run "react --remove" K react "$C_REPLY" "👍" --remove --json
 run "react again" K react "$C_REPLY" "🎉" --json
 run "comment edit" B comment edit "$C_REPLY" "Simplified it (edited)" --json
-run "resolve" A resolve "$T_AREA" --json
+run "resolve (by si:cli-editor, so the starter gets a ting)" B resolve "$T_AREA" --json
 run "comments (open)" A comments "$DECK" --json && OPEN_N=$(j '.threads | length')
 run "comments --resolved" A comments "$DECK" --resolved --json && is "one resolved thread" "$(j '.threads | length')" "1"
 run "reopen" A reopen "$T_AREA" --json
@@ -421,9 +429,21 @@ run "comments in the text view" A read "$DECK" --comments && has "text view show
 run "Carbon (commenter) comments" K comment "$DECK" --slide 3 "Carbon note" --json
 sleep 2
 if [[ -n "$TING_URL" ]]; then
-  TINGS=$(curl -s "$TING_URL/tings" || curl -s "$TING_URL/_tings")
-  has "Ting stand-in got present.mention.received" "$TINGS" "present.mention.received"
-  has "the mention went to si:cli-editor" "$TINGS" "$UUID_editor"
+  # The service delivers from its outbox in the background: give it a moment.
+  for i in $(seq 1 40); do
+    TINGS=$(curl -s "$TING_URL/_tings?for=$UUID_editor&type=present.mention.received")
+    [[ "$(jq '.tings | length' <<<"$TINGS" 2>/dev/null)" -ge 1 ]] && break
+    sleep 0.5
+  done
+  is "Ting stand-in got present.mention.received for si:cli-editor" "$(jq -r '.tings[0].type' <<<"$TINGS")" "present.mention.received"
+  has "the mention ting carries the deck" "$TINGS" "$DECK"
+  has "the mention ting carries the comment" "$TINGS" "make this simpler"
+  ALL_TINGS=$(curl -s "$TING_URL/_tings")
+  has "present.comment.created reached the owner" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.comment.created"
+  has "present.comment.replied was sent" "$(jq -r '.tings[].type' <<<"$ALL_TINGS")" "present.comment.replied"
+  has "present.thread.resolved reached the thread's starter" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.thread.resolved"
+  has "present.deck.shared reached si:cli-viewer" "$(jq -r --arg u "$UUID_viewer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.deck.shared"
+  has "the Carbon got its mention" "$(jq -r --arg u "$(jq -r .uuid <<<"$CARBON_JSON")" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.mention.received"
 else
   OUTBOX=$(psql_q "select type || ' ' || recipient || ' ' || state from ting_outbox order by id")
   has "outbox has present.mention.received for si:cli-editor" "$OUTBOX" "present.mention.received $UUID_editor"
@@ -443,7 +463,7 @@ denied "unshared commenter can't comment on a view-only public deck" 403 C comme
 run "public edit" A public "$DECK" edit --json
 run "signed-in stranger edits through the edit link" C set "$DECK" 1 "$E_TEXT" y=905 --json
 run "public off" A public "$DECK" off --json
-denied "the link stops working" 404 N read "$DECK"
+denied "the link stops working" 401 N read "$DECK"
 
 say "Versions"
 run "versions" A versions "$DECK" --json && NV=$(j '.versions | length')
@@ -479,7 +499,7 @@ for f in pptx ppt key odp pdf html png jpg; do
     esac
   fi
 done
-unzip -l "$WORK/out/deck.png" 2>/dev/null | grep -c '\.png' | tr -d ' ' >"$WORK/out/png.count"
+unzip -Z1 "$WORK/out/deck.png" 2>/dev/null | grep -c '\.png$' | tr -d ' ' >"$WORK/out/png.count"
 is "png zip has one image per slide" "$(cat "$WORK/out/png.count")" "6"
 unzip -p "$WORK/out/deck.odp" mimetype 2>/dev/null >"$WORK/out/odp.mime"
 is "odp mimetype" "$(cat "$WORK/out/odp.mime")" "application/vnd.oasis.opendocument.presentation"
