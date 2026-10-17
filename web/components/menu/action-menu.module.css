@@ -1,0 +1,11 @@
+/* Our additions to Arc's dropdown look: a quiet icon trigger, a highlight that follows Radix's own state, two-line items. */
+.quiet { --sq-r: 12px; --sq-fill: transparent; display: inline-grid; width: 36px; height: 36px; flex: none; place-items: center; border: 0; padding: 0; background: var(--sq-fill); color: var(--text-secondary); cursor: pointer; }
+.quiet:hover, .quiet:focus-visible, .quiet[data-state="open"] { --sq-fill: var(--surface-muted); color: var(--foreground); outline: none; }
+.quietIcon { display: inline-flex; }
+.menu { min-width: 13rem; }
+.item { text-decoration: none; }
+.item[data-highlighted] { background: var(--surface-muted); color: var(--foreground); }
+.item[data-tone="danger"][data-highlighted] { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); color: var(--danger); }
+.text { display: grid; min-width: 0; padding: 6px 0; }
+.hint { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.35; }
+.group { padding: 8px 11px 4px; color: var(--text-muted); font-size: var(--text-xs); font-weight: 500; }
