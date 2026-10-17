@@ -21,19 +21,23 @@ fn nums(s: &str, n: usize, what: &str) -> R<Vec<f64>> {
 fn anchor_label(t: &Thread) -> String {
     let a = &t.anchor;
     let kind = a.get("kind").and_then(Value::as_str).unwrap_or("deck");
-    let snap = a.get("snapshot");
-    let slide_n = snap.and_then(|s| s.get("slideNumber")).map(ToString::to_string);
+    // The snapshot is taken when the comment is made; `current` says where it is now.
+    let snap = t.extra.get("snapshot").or_else(|| a.get("snapshot"));
+    let now = t.extra.get("current").and_then(|c| c.get("slideNumber")).filter(|n| !n.is_null());
+    let gone = t.extra.get("current").and_then(|c| c.get("exists")).and_then(Value::as_bool) == Some(false);
+    let slide_n = now.or_else(|| snap.and_then(|s| s.get("slideNumber")).filter(|n| !n.is_null())).map(ToString::to_string);
     let label = snap.and_then(|s| s.get("label")).and_then(Value::as_str).unwrap_or_default();
     let slide = slide_n.or_else(|| a.get("slide").and_then(Value::as_str).map(str::to_owned)).unwrap_or_default();
-    match kind {
+    let what = match kind {
         "deck" => "the deck".into(),
         "slide" => format!("slide {slide}"),
         "point" => format!("slide {slide} at {},{}", a["x"], a["y"]),
-        "area" => format!("slide {slide} area {},{} {}×{}", a["x"], a["y"], a["w"], a["h"]),
+        "area" => format!("slide {slide} area {},{} {}x{}", a["x"], a["y"], a["w"], a["h"]),
         "element" => format!("slide {slide} {} {label}", a.get("element").and_then(Value::as_str).unwrap_or_default()),
         "text" => format!("slide {slide} text \"{}\"", a.get("quote").and_then(Value::as_str).unwrap_or_default()),
         k => format!("{k} on slide {slide}"),
-    }
+    };
+    if gone { format!("{what} (no longer there: {label})") } else { what }
 }
 
 pub async fn list(ctx: &Ctx, deck_ref: &str, resolved: bool, all: bool) -> R<()> {

@@ -426,6 +426,13 @@ impl Client {
         Ok(EventStream::new(resp, url.to_string()))
     }
 
+    /// `GET /v1/decks/{id}/events`: renames, moves, sharing changes, trash, restores, resolves.
+    pub async fn events(&self, id: &str) -> Result<Vec<Value>> {
+        let v = self.get_json(&["decks", id, "events"], &[]).await?;
+        let url = self.url(&["decks", id, "events"]);
+        decode(list_from(v, &["events"]), &url)
+    }
+
     // ---- folders ---------------------------------------------------------------------------
 
     /// `GET /v1/folders?scope=&parent=`.
@@ -730,7 +737,7 @@ impl Client {
 
     fn upload(&self, url: Url, filename: &str, content_type: &str, bytes: Vec<u8>) -> RequestBuilder {
         // X-Filename is percent-encoded so any file name survives the header.
-        let name: String = url::form_urlencoded::byte_serialize(filename.as_bytes()).collect();
+        let name: String = url::form_urlencoded::byte_serialize(filename.as_bytes()).collect::<String>().replace('+', "%20");
         self.request(Method::POST, url)
             .header("content-type", content_type)
             .header("x-filename", name)
@@ -766,6 +773,12 @@ impl Client {
             None => json!({}),
         };
         self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "presentation").await
+    }
+
+    /// `GET /v1/decks/{id}/presentations`: presentations of a deck running now.
+    pub async fn presentations(&self, id: &str) -> Result<Vec<Presentation>> {
+        let url = self.url(&["decks", id, "presentations"]);
+        self.typed_list(self.request(Method::GET, url.clone()), &url, &["presentations"]).await
     }
 
     /// `GET /v1/presentations/{p}`.

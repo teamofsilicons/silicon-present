@@ -10,21 +10,26 @@ use serde_json::{Map, Value};
 /// Fields this client does not model, kept as they came.
 pub type Extra = Map<String, Value>;
 
+/// Reads a string that may be `null` (a deleted comment's body, an account without a name).
+fn de_str<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
+}
+
 /// A Carbon or Silicon as Silicon Present shows them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     /// Permanent Silicon Accounts uuid.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub uuid: String,
     /// Current public id: `c:ada` or `si:designer`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub id: String,
     /// `carbon` or `silicon`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub kind: String,
     /// Display name (may be empty).
-    #[serde(default, alias = "display_name")]
+    #[serde(default, deserialize_with = "de_str", alias = "display_name")]
     pub display_name: String,
     /// Profile photo URL.
     #[serde(default, alias = "pfp_url", skip_serializing_if = "Option::is_none")]
@@ -48,7 +53,7 @@ pub struct Deck {
     /// 12-character id.
     pub id: String,
     /// Title.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub title: String,
     /// Who it belongs to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,7 +94,7 @@ pub struct Folder {
     /// 12-character id.
     pub id: String,
     /// Name.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub name: String,
     /// Who it belongs to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -194,7 +199,7 @@ pub struct Member {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// `editor`, `commenter`, `viewer` (or `owner`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub role: String,
     /// Who invited them.
     #[serde(default, alias = "invited_by", skip_serializing_if = "Option::is_none")]
@@ -256,7 +261,7 @@ pub struct Transfer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<Account>,
     /// `pending`, `accepted`, `declined` or `cancelled`.
-    #[serde(default, alias = "status")]
+    #[serde(default, deserialize_with = "de_str", alias = "status")]
     pub state: String,
     /// Everything else.
     #[serde(flatten)]
@@ -316,13 +321,13 @@ pub struct Version {
     #[serde(default, alias = "ended_at", skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<String>,
     /// What changed, e.g. "si:designer changed slide 4".
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub summary: String,
     /// The name someone gave it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// What changed, without the author ("changed slide 4").
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default, deserialize_with = "de_str", skip_serializing_if = "String::is_empty")]
     pub change: String,
     /// Everything else.
     #[serde(flatten)]
@@ -339,7 +344,7 @@ pub struct Comment {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<Account>,
     /// Plain text with `@c:id` / `@si:id` mentions.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub body: String,
     /// Written (RFC 3339).
     #[serde(default, alias = "created_at", skip_serializing_if = "Option::is_none")]
@@ -368,7 +373,7 @@ pub struct Thread {
     #[serde(default)]
     pub anchor: Value,
     /// `open` or `resolved`.
-    #[serde(default, alias = "status")]
+    #[serde(default, deserialize_with = "de_str", alias = "status")]
     pub state: String,
     /// Who resolved it.
     #[serde(default, alias = "resolved_by", skip_serializing_if = "Option::is_none")]
@@ -465,10 +470,10 @@ pub struct Asset {
     /// 12-character id; reference it as `asset:<id>`.
     pub id: String,
     /// Where to download it.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_str")]
     pub url: String,
     /// MIME type.
-    #[serde(default, alias = "content_type")]
+    #[serde(default, deserialize_with = "de_str", alias = "content_type")]
     pub content_type: String,
     /// Bytes.
     #[serde(default)]
@@ -495,7 +500,7 @@ pub struct Presentation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deck: Option<Value>,
     /// The link to follow along.
-    #[serde(default, alias = "follow_url")]
+    #[serde(default, deserialize_with = "de_str", alias = "follow_url")]
     pub follow_url: String,
     /// The slide being shown (id or number, as the service says).
     #[serde(default)]
@@ -589,7 +594,7 @@ pub(crate) fn list_from(value: Value, keys: &[&str]) -> Value {
 /// Pulls one object out of an answer that is either the object or `{key: object}`.
 pub(crate) fn one_from(value: Value, key: &str) -> Value {
     match value {
-        Value::Object(mut map) if map.len() <= 2 && map.get(key).is_some_and(Value::is_object) => {
+        Value::Object(mut map) if !map.contains_key("id") && map.get(key).is_some_and(Value::is_object) => {
             map.remove(key).unwrap_or(Value::Null)
         }
         v => v,

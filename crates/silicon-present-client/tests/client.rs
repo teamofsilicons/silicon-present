@@ -133,7 +133,7 @@ async fn uploads_send_raw_bytes_with_type_and_name() {
     Mock::given(method("POST"))
         .and(path("/v1/decks/dk7Hq2mP9xRt/assets"))
         .and(header("content-type", "image/png"))
-        .and(header("x-filename", "my+photo.png"))
+        .and(header("x-filename", "my%20photo.png"))
         .respond_with(|req: &Request| {
             assert_eq!(req.body, b"\x89PNG");
             ResponseTemplate::new(201).set_body_json(json!({ "id": "as1234567890", "url": "/v1/assets/as1234567890", "contentType": "image/png", "size": 4 }))
@@ -200,7 +200,8 @@ async fn comments_send_anchors_exactly() {
     Mock::given(method("GET"))
         .and(path("/v1/decks/dk7Hq2mP9xRt/threads"))
         .and(query_param("state", "all"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "threads": [{ "id": "th1234567890", "state": "resolved", "comments": [] }] })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "threads": [{ "id": "th1234567890", "state": "resolved", "snapshot": { "label": "Chart" },
+            "comments": [{ "id": "cm0000000001", "body": null, "deleted": true, "author": null, "reactions": [] }] }] })))
         .mount(&server)
         .await;
     let anchor = Anchor::Area {
@@ -218,7 +219,10 @@ async fn comments_send_anchors_exactly() {
     let t = c.comment("dk7Hq2mP9xRt", &anchor, "@si:designer simpler").await.unwrap();
     assert_eq!(t.comments[0].author.as_ref().unwrap().id, "c:ada");
     assert!(c.react("cm1234567890", "👍", false).await.unwrap().is_null());
-    assert_eq!(c.threads("dk7Hq2mP9xRt", "all").await.unwrap()[0].state, "resolved");
+    let threads = c.threads("dk7Hq2mP9xRt", "all").await.unwrap();
+    assert_eq!(threads[0].state, "resolved");
+    assert!(threads[0].comments[0].deleted && threads[0].comments[0].body.is_empty());
+    assert_eq!(threads[0].extra["snapshot"]["label"], "Chart");
     assert_eq!(serde_json::to_value(Anchor::Deck).unwrap(), json!({ "kind": "deck" }));
 }
 
