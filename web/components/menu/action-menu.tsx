@@ -21,7 +21,8 @@ export interface ActionMenuItem {
   onSelect?: () => void;
   /** A link instead of an action (a download goes through the proxy with its file name). */
   href?: string;
-  download?: boolean;
+  /** Download instead of opening: true (the answer names the file) or the file name to save it as. */
+  download?: boolean | string;
   disabled?: boolean;
   destructive?: boolean;
   separatorBefore?: boolean;
@@ -75,7 +76,7 @@ export function ActionMenu({ label, items, icon, iconOnly = false, align = "end"
                 {item.group ? <DropdownPrimitive.Label className={styles.group}>{item.group}</DropdownPrimitive.Label> : null}
                 {item.href ? (
                   <DropdownPrimitive.Item asChild disabled={item.disabled} className={className} style={{ "--i": index } as CSSProperties}>
-                    <a href={item.href} download={item.download ? "" : undefined} onClick={item.onSelect}>{body}</a>
+                    <a href={item.href} download={typeof item.download === "string" ? item.download : item.download ? "" : undefined} onClick={item.onSelect}>{body}</a>
                   </DropdownPrimitive.Item>
                 ) : (
                   <DropdownPrimitive.Item className={className} data-tone={item.destructive ? "danger" : undefined} style={{ "--i": index } as CSSProperties} disabled={item.disabled} onSelect={item.onSelect}>
