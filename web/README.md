@@ -6,19 +6,37 @@ this file is the kit's guide). Light mode only and minimal, for now: one calm co
 
 ## Run it locally (the "web pages" lane, docs/architecture.md)
 
+Postgres on 5490 (`.dev/pg`, database `present_pages`) and the Silicon Accounts test stack (9740/9741,
+`e2e/stack/test-stack.json`) must run. Then, from the repository root:
+
 ```sh
-# Postgres 5490 (.dev/pg), the Silicon Accounts test stack (9740/9741, e2e/stack/test-stack.json),
-# then the service on 4331 and the converter on 4332 (their READMEs), then:
+# The converter on 4332 (its own process; tsx reads the sources at start, so restart it after changes)
+(cd renderer && CONVERTER_PORT=4332 CONVERTER_SECRET=<any secret> ./node_modules/.bin/tsx src/server.ts)
+
+# The service on 4331. Run a copy of the binary: macOS kills a process whose executable is rewritten, and the
+# shared target/ is rebuilt by everyone.
+CARGO_TARGET_DIR=$PWD/target CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 cargo build -p present-service
+mkdir -p .dev/pages/bin && cp target/debug/present-service .dev/pages/bin/present-service.new \
+  && mv .dev/pages/bin/present-service.new .dev/pages/bin/present-service
+PRESENT_DATABASE_URL=postgres://present@127.0.0.1:5490/present_pages PRESENT_BIND=127.0.0.1:4331 \
+PRESENT_PUBLIC_URL=http://127.0.0.1:4331 PRESENT_WEB_URL=http://127.0.0.1:4330 PRESENT_DATA_DIR=$PWD/.dev/pages \
+ACCOUNTS_URL=http://localhost:9740 ACCOUNTS_API_URL=http://127.0.0.1:9741 PRESENT_APP_SECRET=<present's secret> \
+PRESENT_IRIS_URL=http://127.0.0.1:9745 PRESENT_CONVERTER_URL=http://127.0.0.1:4332 CONVERTER_SECRET=<same secret> \
+  .dev/pages/bin/present-service
+
+# The web on 4330
+cd web
 cp .env.example .env.local   # APP_SECRET from e2e/stack/test-stack.json; APP_API_URL=http://127.0.0.1:4331;
                              # PUBLIC_URL=http://127.0.0.1:4330; SESSION_SECRET=$(openssl rand -base64 48)
 PORT=4330 pnpm dev
-E2E_PORT=4330 pnpm test:e2e  # the kit's specs and e2e/pages*.spec.ts against the real stack
+E2E_PORT=4330 pnpm test:e2e  # the kit's specs, e2e/pages*.spec.ts and the editor's specs against the real stack
+E2E_PORT=4330 pnpm screens   # PNGs of every page at 1440 and 390 into screens/ (and screens/top/ for the first screen)
 ```
 
 Each lane runs its own browser tests beside the others: `E2E_PORT` picks the lane (4330 pages, 4340 editor), and the
 results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `next dev` build directory
 (`.next-e2e-<port>`) are kept per port. The setup reuses the last run's two Carbons for 12 hours
-(`E2E_FRESH_ACCOUNTS=1` signs new ones in).
+(`E2E_FRESH_ACCOUNTS=1` signs new ones in), so repeated runs stay off the shared stack's email-code budget.
 
 ## Pages
 
@@ -65,6 +83,11 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
 
 ## The web kit
 
+Present departs from the kit in three ways: light only (the theme is pinned to light; no switch, no dark tokens), a
+top bar with the wordmark and one pill instead of the sidebar, and the demo removed (its pages, stub service and
+specs). What follows is the kit's own guide, kept for the parts Present shares (sign-in, the session, the proxy, the
+environment); its "Run it" now points at Present's own lane above.
+
 The template every Silicon app's web frontend is built from. Copy it into an app's `web/`, edit one file
 (`lib/app.config.ts`), and the app has:
 
@@ -96,36 +119,25 @@ pins are the developer site's (`silicon-accounts/developer/package.json`). Read 
 
 ## Run it
 
-You need the local Silicon Accounts stack (the hosted sign-in on `http://localhost:9590`, its API on
-`http://127.0.0.1:9589`, the mock email sender on `http://127.0.0.1:9592`) with the `webkit` app registered for the
-redirect URIs `http://127.0.0.1:4260/auth/callback` and `http://localhost:4260/auth/callback`.
-
-```sh
-pnpm install
-cp .env.example .env.local          # fill in APP_SECRET (the webkit app's secret) and SESSION_SECRET
-pnpm stub                           # the demo service on 127.0.0.1:4261 (needs APP_SECRET in its environment for sharing)
-pnpm dev                            # http://127.0.0.1:4260 (PORT=… to change)
-```
-
-Open `http://127.0.0.1:4260` (the address in `PUBLIC_URL`; the sign-in sends `localhost` there first), choose Sign in,
-and use any email: the code arrives in the stack's mock sender.
+See "Run it locally" at the top of this file: Present's web on 4330 against its own service (4331) and converter
+(4332), signing Carbons in on the local Silicon Accounts test stack (9740/9741).
 
 | Command | What |
 | --- | --- |
-| `pnpm dev` | `next dev` on `$PORT` (4260) |
+| `pnpm dev` | `next dev` on `$PORT` (4320; the pages lane uses `PORT=4330`) |
 | `pnpm build`, `pnpm start` | the production build and server (`NEXT_OUTPUT=standalone pnpm build` for a self-contained server) |
 | `pnpm typecheck` | `next typegen` + `tsc --noEmit` |
 | `pnpm lint` | ESLint (Next's core-web-vitals and TypeScript rules), zero warnings |
 | `pnpm test` | unit tests (`node:test` through tsx), no network |
-| `pnpm test:e2e` | browser tests (Chromium) against the Accounts stack: public pages, sign-in through the hosted pages, every demo page, sharing between two Carbons, the API proxy, real refreshes (page load, session keeper, five calls at once), accessibility (axe-core, WCAG 2.2 AA), sign-out in every tab |
-| `pnpm screens` | PNGs of every page, light and dark, desktop (1440 × 900) and phone (390 × 844), into `screens/` |
-| `pnpm stub` | the demo service |
+| `pnpm test:e2e` | browser tests (Chromium) against the Accounts stack and the real service: public pages, sign-in through the hosted pages, the API proxy, real refreshes, accessibility (axe-core, WCAG 2.2 AA) on every page, sign-out in every tab, and Present's own journeys (e2e/pages*.spec.ts, e2e/editor*.spec.ts) |
+| `pnpm screens` | PNGs of every page, light only, desktop (1440 × 900) and phone (390 × 844), into `screens/` |
 
-The browser tests start the stub and `next dev` (in `.next-e2e`) unless they already run, and need the webkit secret:
-`APP_SECRET` in the environment or `.env.local`, or `TEST_STACK_JSON=<path to a test-stack.json>`. `pnpm exec playwright
+The browser tests start `next dev` (in `.next-e2e-<port>`) unless it already runs; the service and the converter must
+already run. They need the present app's secret: `APP_SECRET` in the environment or `.env.local`, else it is read from
+`../e2e/stack/test-stack.json` (or `TEST_STACK_JSON=<path>`). `pnpm exec playwright
 install chromium` once if Playwright has no Chromium yet. `e2e/public.spec.ts`, `session.spec.ts`, `refresh.spec.ts`
-and `a11y.spec.ts` read `lib/app.config.ts` and stay when an app adopts the kit; `demo.spec.ts` and `screens.spec.ts`
-go with the demo. The refresh tests reseal the session cookie with an earlier expiry (they know `SESSION_SECRET`), as if
+and `a11y.spec.ts` read `lib/app.config.ts` and stay when an app adopts the kit; Present's own journeys are
+`e2e/pages*.spec.ts` (this part of the web) and `e2e/editor*.spec.ts` (the editor). The refresh tests reseal the session cookie with an earlier expiry (they know `SESSION_SECRET`), as if
 half an hour had passed.
 
 The shared stack allows 30 email codes per network in 10 minutes, for every app's tests together. A run spends two:
