@@ -320,6 +320,9 @@ run "edit --ops file" A edit "$DECK" --ops "$WORK/files/ops.json" --summary "Raw
 run "edit --ops - (stdin)" bash -c "printf '%s' '[{\"op\":\"add_element\",\"slide\":\"$S4\",\"element\":{\"kind\":\"text\",\"x\":10,\"y\":10,\"w\":300,\"h\":60,\"text\":\"Temp box\"}}]' | SILICON_HOME='$WORK/home-writer' '$PRESENT' edit '$DECK' --ops - --json"
 TEMP=$(jq -r '.elementsAdded[0].element // empty' <<<"$OUT")
 [[ -n "$TEMP" ]] && run "delete element" A delete "$DECK" 4 "$TEMP" --json || bad "delete element" "no element id came back from edit --ops"
+run "add a text with a repeated word" A add text "$DECK" 4 "dup and dup" --x 140 --y 600 --w 600 --h 80 --json && E_DUP=$(j .element)
+denied "replace of a repeated passage says text_ambiguous" text_ambiguous A replace "$DECK" 4 "$E_DUP" --find dup --replace dip
+run "replace --all" A replace "$DECK" 4 "$E_DUP" --find dup --replace dip --all --json && is "two replacements" "$(j .replacements)" "2"
 run "read after edits" A read "$DECK" --json
 is "title text replaced" "$(jq -r '.slides[0].elements[0].text.paragraphs[0].runs[0].text' <<<"$OUT")" "Zebra Quarterly Report"
 is "set text kept the heading" "$(jq -r '.slides[0].elements[0].text.paragraphs[0].heading' <<<"$OUT")" "1"
@@ -478,6 +481,8 @@ run "restore one slide" A restore "$DECK" "$PULLED_AT" --slide 1 --json
 run "read after slide restore" A read "$DECK" --json
 is "slide 1 title is back to the pulled version" "$(jq -r '.slides[0].elements[0].text.paragraphs[0].runs[0].text' <<<"$OUT")" "Zebra Quarterly Report"
 is "the rest kept (6 slides)" "$(jq '.slides | length' <<<"$OUT")" "6"
+run "restore one element" A restore "$DECK" "$PULLED_AT" --slide 1 --element "$E_TEXT" --json
+run "read after element restore" A read "$DECK" --json && is "footnote back at its pulled x" "$(jq -r --arg e "$E_TEXT" '.slides[0].elements[] | select(.id==$e) | .x' <<<"$OUT")" "140"
 BEFORE_B=$(A read "$DECK" --json | jq -r .version)
 run "si:cli-editor changes slide 2" B replace "$DECK" 2 --find "Plan B" --replace "Plan C" --json
 run "undo everything si:cli-editor did since" A undo-account "$DECK" si:cli-editor --since "$BEFORE_B" --json
