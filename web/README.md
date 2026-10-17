@@ -13,6 +13,10 @@ Postgres on 5490 (`.dev/pg`, database `present_pages`) and the Silicon Accounts 
 # The converter on 4332 (its own process; tsx reads the sources at start, so restart it after changes)
 (cd renderer && CONVERTER_PORT=4332 CONVERTER_SECRET=<any secret> ./node_modules/.bin/tsx src/server.ts)
 
+# The Ting stand-in on 4333 (records every ting; the editor's comment tests read it)
+TING_PORT=4333 ACCOUNTS_API_URL=http://127.0.0.1:9741 TING_APP_ID=ting TING_APP_SECRET=<ting's secret> \
+  node tools/ting-standin/server.mjs
+
 # The service on 4331. Run a copy of the binary: macOS kills a process whose executable is rewritten, and the
 # shared target/ is rebuilt by everyone.
 CARGO_TARGET_DIR=$PWD/target CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 cargo build -p present-service
@@ -22,14 +26,14 @@ PRESENT_DATABASE_URL=postgres://present@127.0.0.1:5490/present_pages PRESENT_BIN
 PRESENT_PUBLIC_URL=http://127.0.0.1:4331 PRESENT_WEB_URL=http://127.0.0.1:4330 PRESENT_DATA_DIR=$PWD/.dev/pages \
 ACCOUNTS_URL=http://localhost:9740 ACCOUNTS_API_URL=http://127.0.0.1:9741 PRESENT_APP_SECRET=<present's secret> \
 PRESENT_IRIS_URL=http://127.0.0.1:9745 PRESENT_CONVERTER_URL=http://127.0.0.1:4332 CONVERTER_SECRET=<same secret> \
-  .dev/pages/bin/present-service
+PRESENT_TING_URL=http://127.0.0.1:4333 .dev/pages/bin/present-service
 
 # The web on 4330
 cd web
 cp .env.example .env.local   # APP_SECRET from e2e/stack/test-stack.json; APP_API_URL=http://127.0.0.1:4331;
                              # PUBLIC_URL=http://127.0.0.1:4330; SESSION_SECRET=$(openssl rand -base64 48)
 PORT=4330 pnpm dev
-E2E_PORT=4330 pnpm test:e2e  # the kit's specs, e2e/pages*.spec.ts and the editor's specs against the real stack
+E2E_PORT=4330 E2E_TING_URL=http://127.0.0.1:4333 pnpm test:e2e   # the kit's, the pages' and the editor's specs
 E2E_PORT=4330 pnpm screens   # PNGs of every page at 1440 and 390 into screens/ (and screens/top/ for the first screen)
 ```
 
