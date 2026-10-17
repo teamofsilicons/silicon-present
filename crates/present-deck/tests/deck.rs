@@ -453,3 +453,20 @@ fn undo_author_keeps_later_work_positioned_after_theirs() {
     assert_eq!(ids, vec!["s_his001", "s_his003"]);
     assert_eq!(plain_text(&element(&out, "s_his001", "e_ow0001")["text"]), "Owner's first slide\n");
 }
+
+#[test]
+fn plain_text_set_over_an_element_keeps_its_look() {
+    let doc = json_to_doc(&json!({ "slides": [ { "id": "s_1", "elements": [
+        { "id": "e_1", "kind": "text", "text": { "paragraphs": [ { "heading": 1, "align": "center", "runs": [ { "text": "Old", "bold": true, "size": 72 } ] } ] } },
+        { "id": "e_2", "kind": "text", "text": { "paragraphs": [ { "heading": 1, "runs": [] } ] } }
+    ] } ] })).unwrap();
+    apply_ops(&doc, &ops(json!([
+        { "op": "update_element", "slide": "s_1", "element": "e_1", "set": { "text": "New title\nSecond line" } },
+        { "op": "update_element", "slide": "s_1", "element": "e_2", "set": { "text": "Into an empty heading" } }
+    ]))).unwrap();
+    let d = doc_to_json(&doc);
+    assert_eq!(element(&d, "s_1", "e_1")["text"], json!({ "paragraphs": [
+        { "heading": 1, "align": "center", "runs": [ { "text": "New title", "bold": true, "size": 72 } ] },
+        { "heading": 1, "align": "center", "runs": [ { "text": "Second line", "bold": true, "size": 72 } ] } ] }));
+    assert_eq!(element(&d, "s_1", "e_2")["text"], json!({ "paragraphs": [ { "heading": 1, "runs": [ { "text": "Into an empty heading" } ] } ] }));
+}

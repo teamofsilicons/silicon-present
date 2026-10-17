@@ -480,7 +480,12 @@ pub(crate) fn update_element_fields(txn: &mut TransactionMut, el: &MapRef, set: 
             key if y_fields(&kind).contains(&key) => match key {
                 "text" => {
                     let t = child_text(txn, el, "text");
-                    set_rich(txn, &t, &normalize_rich(v));
+                    // A plain string keeps the element's look; rich text JSON sets exactly what it says.
+                    let target = match v {
+                        Value::String(plain) => crate::richtext::restyle_plain(plain, &crate::richtext::read_rich(txn, &t)),
+                        other => normalize_rich(other),
+                    };
+                    set_rich(txn, &t, &target);
                 }
                 "cells" => set_cells(txn, el, v),
                 _ => {

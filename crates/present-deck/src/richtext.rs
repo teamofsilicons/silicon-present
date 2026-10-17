@@ -53,6 +53,32 @@ pub fn rich_from_plain(text: &str) -> Value {
     json!({ "paragraphs": paragraphs })
 }
 
+/// Plain text written over existing rich text keeps its look: every line gets the first paragraph's attributes
+/// (heading, list, align, …) and the first run's (bold, size, colour, font, …), like `present set … text=…`.
+pub(crate) fn restyle_plain(text: &str, current: &Value) -> Value {
+    let first = current.get("paragraphs").and_then(|p| p.get(0));
+    let mut para = first.and_then(Value::as_object).cloned().unwrap_or_default();
+    para.remove("runs");
+    let mut run = first.and_then(|p| p.get("runs")).and_then(|r| r.get(0)).and_then(Value::as_object).cloned().unwrap_or_default();
+    run.remove("text");
+    let paragraphs: Vec<Value> = text
+        .split('\n')
+        .map(|line| {
+            let mut p = para.clone();
+            let runs = if line.is_empty() {
+                vec![]
+            } else {
+                let mut r = run.clone();
+                r.insert("text".into(), Value::String(line.to_string()));
+                vec![Value::Object(r)]
+            };
+            p.insert("runs".into(), Value::Array(runs));
+            Value::Object(p)
+        })
+        .collect();
+    normalize_rich(&json!({ "paragraphs": paragraphs }))
+}
+
 /// Canonical rich text from whatever a caller sent: a plain string, `{paragraphs}`, or anything else (empty).
 /// Only known attributes are kept; a `"\n"` inside a run splits the paragraph there (like `packages/deck`).
 pub(crate) fn normalize_rich(value: &Value) -> Value {

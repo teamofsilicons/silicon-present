@@ -192,7 +192,9 @@ cleanly with everything that happened since.
 ```
 
 `replace_text` fails with `text_not_found` (and the closest match in the hint) or `text_ambiguous` (the count) unless
-`all` is set. Replacing text through a minimal diff (not delete-all + insert) keeps others' concurrent typing and the
+`all` is set. In `add_*` and `update_element`, `text` (and a table cell) may be a plain string; in `update_element` a
+plain string keeps the element's look (every line takes the first paragraph's attributes and the first run's), while
+rich text JSON sets exactly what it says. Text a `replace_text` inserts takes the formatting of what it replaces. Replacing text through a minimal diff (not delete-all + insert) keeps others' concurrent typing and the
 formatting of untouched runs.
 
 ## The service
