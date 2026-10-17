@@ -189,9 +189,17 @@ impl Stack {
     }
 
     pub async fn start_with(ting: bool, converter: bool) -> Stack {
+        Self::start_full(ting, converter, None).await
+    }
+
+    /// `real_converter`: use this converter instead of the fake one.
+    pub async fn start_full(ting: bool, converter: bool, real_converter: Option<Arc<dyn Converter>>) -> Stack {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let db_name = format!("present_t_{}_{}_{}", std::process::id(), n, rand::random::<u32>());
         let admin = sqlx::PgPool::connect(ADMIN_URL).await.expect("the dev cluster on 5490 must be running (scripts/dev-db.sh start)");
+        if n == 0 {
+            sweep_stale_databases(&admin).await;
+        }
         sqlx::query(sqlx::AssertSqlSafe(format!("create database {db_name}"))).execute(&admin).await.unwrap();
         admin.close().await;
         let database_url = format!("postgres://present@127.0.0.1:5490/{db_name}");
@@ -222,7 +230,11 @@ impl Stack {
             verifier: Arc::new(present_service::auth::AccountsTokenVerifier::new(client, "present", ISSUER)),
             directory: directory.clone(),
             ting: if ting { Some(ting_fake.clone() as Arc<dyn TingSender>) } else { None },
-            converter: if converter { Some(converter_fake.clone() as Arc<dyn Converter>) } else { None },
+            converter: match (real_converter, converter) {
+                (Some(c), _) => Some(c),
+                (None, true) => Some(converter_fake.clone() as Arc<dyn Converter>),
+                (None, false) => None,
+            },
         };
         let state = AppState::new(cfg, pool.clone(), deps);
         present_service::spawn_workers(&state);
@@ -341,11 +353,41 @@ impl Stack {
     pub async fn stop(self) {
         self.server.abort();
         self.pool.close().await;
-        let _ = std::fs::remove_dir_all(&self.data_dir);
-        if let Ok(admin) = sqlx::PgPool::connect(ADMIN_URL).await {
-            let _ = sqlx::query(sqlx::AssertSqlSafe(format!("drop database if exists {} with (force)", self.db_name))).execute(&admin).await;
-            admin.close().await;
+        // Drop (below) removes the database and the data dir.
+    }
+}
+
+fn drop_database(name: String) {
+    // Runs on its own thread and runtime, so it works from Drop and after a panic.
+    let _ = std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            if let Ok(admin) = sqlx::PgPool::connect(ADMIN_URL).await {
+                let _ = sqlx::query(sqlx::AssertSqlSafe(format!("drop database if exists {name} with (force)"))).execute(&admin).await;
+                admin.close().await;
+            }
+        });
+    })
+    .join();
+}
+
+/// Drops databases left by test processes that are gone (e.g. killed mid-run).
+async fn sweep_stale_databases(admin: &sqlx::PgPool) {
+    let names: Vec<String> = sqlx::query_scalar("select datname from pg_database where datname like 'present_t_%'").fetch_all(admin).await.unwrap_or_default();
+    for name in names {
+        let pid = name.split('_').nth(2).and_then(|p| p.parse::<u32>().ok());
+        let alive = pid.is_some_and(|p| std::process::Command::new("kill").arg("-0").arg(p.to_string()).status().map(|s| s.success()).unwrap_or(false));
+        if !alive {
+            let _ = sqlx::query(sqlx::AssertSqlSafe(format!("drop database if exists {name} with (force)"))).execute(admin).await;
         }
+    }
+}
+
+impl Drop for Stack {
+    fn drop(&mut self) {
+        self.server.abort();
+        let _ = std::fs::remove_dir_all(&self.data_dir);
+        drop_database(self.db_name.clone());
     }
 }
 

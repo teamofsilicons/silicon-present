@@ -251,9 +251,10 @@ automatic summary from diffing the deck JSON before and after ("si:designer chan
 - `POST /v1/decks/{id}/versions/{N}/name` `{ name }`.
 - `POST /v1/decks/{id}/restore` `{ version, slide?, element? }` — reconciles the live deck to that version (whole, one
   slide, or one element) as a new update with origin `restore`.
-- `POST /v1/decks/{id}/undo-account` `{ account, since }` — rebuilds the deck from `since` with every later update
-  except that account's, and reconciles the live deck to it. Content that only existed because of that account's
-  changes goes with them.
+- `POST /v1/decks/{id}/undo-account` `{ account, since }` — replays the log from `since` with that account's
+  transactions tagged, undoes exactly those with a Yjs undo manager, and reconciles the live deck to the result.
+  (Leaving their updates out of a replay is not enough: every Yjs update carries the whole delete set, so later
+  updates by others would still carry their deletions.) Content that only existed inside what they added goes with it.
 - `POST /v1/decks` `{ from: { deck, version } }` — a new deck from any version.
 
 Nothing is ever deleted by going back; restoring is itself a new version.
@@ -296,8 +297,9 @@ notify the person who caused the event.
   folder's owner and keeps `creator`.
 - `GET /v1/{decks|folders}/{id}/access`, `POST .../access { to: "c:ada"|"si:writer"|"a@b.c", role }`,
   `PATCH|DELETE .../access/{member}` (member = account uuid or `email:<address>`), `PUT .../public { mode }`.
-  An email with no account is kept as a pending invite and handed to Silicon Accounts to send the invite; it becomes a
-  real member when an account with that verified email signs in.
+  An email with no known account is kept as a pending invite and Present sends the invite email itself (Accounts
+  can't; see `docs/accounts-and-ting.md`); it becomes a real member when an account whose Accounts email is that
+  address signs in to Present.
 - `POST /v1/{decks|folders}/{id}/transfer { to }`, `GET /v1/transfers`, `POST /v1/transfers/{id}/accept|decline|cancel`.
 
 ### Files
@@ -309,7 +311,9 @@ notify the person who caused the event.
 - `GET /v1/decks/{id}/slides/{slide}/render?format=png|jpg&width=1920&version=&at=<ms>` → one slide as an image, how a
   Carbon would see it (HTML elements run for `at` ms first, default 1500).
 - `POST /v1/decks/{id}/assets` (raw body, `Content-Type`, `X-Filename`) → `{ id, url, contentType, size }`;
-  `GET /v1/assets/{id}` (anyone who can view the deck; `?sig=` for the converter).
+  `GET /v1/assets/{id}` (anyone who can view the deck; `?deck=&exp=&sig=` for the converter). The converter gets
+  `assetBase` = `{PRESENT_PUBLIC_URL}/v1/signed/{deck}/{exp}/{sig}/assets/` (valid one hour) and fetches
+  `assetBase + id`; the service collapses `//`, so `assetBase + "/" + id` works too.
 
 ### Presenting
 
@@ -323,6 +327,59 @@ notify the person who caused the event.
 - `GET /v1/search?q=` — every deck the caller can view whose title, slide text, notes or table text matches.
 - `GET /v1/accounts/resolve?q=c:ada` — for invites and mentions.
 - `GET /v1/me`.
+
+### Answers (shapes the service returns)
+
+JSON keys are camelCase. Lists are wrapped: `{ "decks": [...] }`, `{ "folders": [...] }`, `{ "threads": [...] }`,
+`{ "versions": [...], "events": [...] }`, `{ "results": [...] }`, `{ "presentations": [...] }`,
+`{ "incoming": [...], "outgoing": [...] }`. Any `POST`/`PUT`/`PATCH`/`DELETE` may carry `Idempotency-Key`: a retry
+with the same key (same caller, method and path) gets the first answer back with `Idempotent-Replayed: true`.
+
+- **Account**: `{ uuid, id: "c:ada", kind: "carbon"|"silicon", displayName, pfp }` (`GET /v1/me` returns one;
+  `GET /v1/accounts/resolve?q=` returns `{ query, account }`, for an email `{ query, email, account | null }`).
+- **Deck**: `{ id, title, owner, creator, folder, publicMode, role: "owner"|"editor"|"commenter"|"viewer", version,
+  trashedAt, createdAt, updatedAt, link }`. `GET /v1/decks?scope=mine|shared|trash&folder=<id>|root` (no folder =
+  all of the scope; `folder=<id>` lists that folder for anyone who can view it). `POST /v1/decks` also takes
+  `{ deck: DeckJSON }` to start from deck JSON (e.g. `present push` of a new folder).
+- **Folder**: `{ id, name, owner, creator, parent, publicMode, role, trashedAt, createdAt, updatedAt, link }`;
+  `GET /v1/folders?scope=mine|shared|trash&parent=<id>|root`. A folder's public mode applies to everything inside.
+- **Content**: `GET …/content` → deck JSON (`format=text` → the text view, with open comments unless
+  `comments=false`). Versions other than the latest need edit rights.
+- **Edits**: `{ version, changed, summary, touched, slidesAdded, elementsAdded: [{ slide, element }], replacements }`.
+  **Updates**: `{ version, changed, touched }` (`changed: false` = it was already applied; nothing logged).
+- **Live**: `GET …/live?sv=&session=` — with `session`, that presence is removed when the stream closes. `update`
+  events also carry `session` (the sender's), so a client can skip its own echo. `409 update_needs_history` means the
+  update builds on changes the service lacks: reconnect and resend.
+- **Version**: `{ version (last seq), from (first seq), author, startedAt, endedAt, origins, change, summary
+  ("si:designer changed slide 4"), name, namedBy }`. Explicit summaries (ops `summary`, restores, undo, imports) win
+  over automatic ones. A named version ends its group. **Event**: `{ id, kind, actor, data, createdAt }`, also at
+  `GET /v1/decks/{id}/events`.
+- **Compare**: `{ from, to, summary, diff: { deckFields, master?, slidesAdded, slidesRemoved, slidesMoved,
+  slidesChanged: [{ id, number, fields, elementsAdded, elementsRemoved, elementsChanged: [{ id, kind, fields }],
+  elementsReordered }] }, authors: { slideId: [Account] } }`. **Restore / undo**: `{ version, changed, summary,
+  touched }` (+ `updatesUndone`).
+- **Thread**: `{ id, deck, anchor, snapshot, current: { slideNumber, exists }, state, createdBy, createdAt, updatedAt,
+  resolvedBy, resolvedAt, comments: [Comment] }`; creating one also returns `mentionedWithoutAccess: [Account]` and
+  `unknownMentions: ["c:x"]`. A reply returns `{ thread, comment, mentionedWithoutAccess, unknownMentions }`.
+  **Comment**: `{ id, thread, author, body (null once deleted), mentions: [Account], createdAt, editedAt, deleted,
+  deletedAt, reactions: [{ emoji, count, accounts }] }`. Only the author edits a comment; the author or the deck's
+  owner deletes it (earlier bodies are kept in `comment_revisions`).
+- **Access**: `GET …/access` → `{ owner, publicMode, role, members: [{ member, account, email, pending, role,
+  invitedBy, createdAt, via: { kind: "folder", id, name } | null }] }`; `via` marks access inherited from a folder.
+  Only the owner flips the public switch; anyone can remove themselves.
+- **Transfer**: `{ id, resource: { kind, id, name }, from, to, state, createdAt, decidedAt }`. On accept the deck or
+  folder (with everything inside) moves to the recipient's top level and the previous owner keeps editor access.
+- **Asset**: `{ id, ref: "asset:<id>", url, filename, contentType, size }`.
+- **Presentation**: `{ id, deck, presenter, slide, slideNumber, step, startedAt, updatedAt, endedAt, followUrl }`;
+  `GET /v1/decks/{id}/presentations` lists the running ones. The deck's owner may also stop one.
+- **Search result**: `{ deck: Deck, matches: [{ where: "title"|"slide"|"notes"|"table", slide?, slideNumber?,
+  element?, text }] }`.
+- **Ting `data`**: `{ deck: { id, title, link }, slide: { id, number } | null, on: { anchor, label, quote }, thread:
+  { id, state, link }, comment: { id, body, author, createdAt, link }, actor }`; `present.deck.shared`: `{ resource:
+  { kind, id, name, link }, deck | null, role, by }`. Keys: `present.<type>:<comment id>:<recipient>` (resolves:
+  `:<thread>:<resolved at ms>`, shares: `:<kind>:<id>:<access row>`).
+- `GET /health` → `{ ok, service, version, database, converter, ting }`. `present-service --help` lists every
+  environment variable.
 
 ## Converter sidecar (`renderer/`)
 
