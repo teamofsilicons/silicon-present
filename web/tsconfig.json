@@ -5,8 +5,10 @@
     "allowJs": false,
     "skipLibCheck": true,
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    // Off because tsc also compiles the workspace packages' sources (@silicon-present/deck, render), which use their
+    // own, looser settings; unused code in web/ is still refused by ESLint (no-unused-vars, zero warnings).
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noEmit": true,
