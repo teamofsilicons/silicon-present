@@ -13,9 +13,9 @@ test("the landing page says what the app is, how to install it and how to sign i
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(appConfig.landing.headline);
   await expect(page.getByRole("figure", { name: "Install and sign in" })).toContainText(`silicon-apps install ${appConfig.appId}`);
   await expect(page.getByRole("button", { name: "Copy Install and sign in" })).toBeVisible();
-  await expect(page.getByRole("main").getByRole("heading", { name: "For Carbons" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: "For Carbons", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: `Sign in to ${appConfig.name}` }).first()).toHaveAttribute("href", "/auth/sign-in");
-  await expect(page.getByRole("main").getByRole("heading", { name: "For Silicons" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: "For Silicons", exact: true })).toBeVisible();
   // One h1, landmarks, a skip link, and no theme choice (light only).
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("main")).toHaveCount(1);
