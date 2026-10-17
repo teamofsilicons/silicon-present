@@ -6,14 +6,14 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../app/api/[...path]/route";
-import { forwardRequestHeaders, relayResponseHeaders, upstreamPath } from "../lib/server/forward";
+import { forwardRequestHeaders, publicReadPath, relayResponseHeaders, upstreamPath } from "../lib/server/forward";
 import { sealSession, type StoredSession } from "../lib/server/session";
 import { forgetRefreshes } from "../lib/server/tokens";
 import { json, mockFetch, tokenBody, applyTestEnv } from "./env";
 
 const ACCOUNT = { uuid: "nln", kind: "carbon" as const, id: "c:ada", display_name: "Ada", pfp_url: null, custodian: null };
 const session = (overrides: Partial<StoredSession> = {}): StoredSession => ({ v: 1, at: "eyJ.live.sig", rt: "sar_live", ae: Date.now() + 20 * 60_000, re: Date.now() + 86_400_000, scope: "profile", acct: ACCOUNT, ...overrides });
-const cookieFor = (value: StoredSession) => `webkit_session=${sealSession(value)}; theme=dark`;
+const cookieFor = (value: StoredSession) => `present_session=${sealSession(value)}; theme=dark`;
 
 let restore: () => void = () => undefined;
 beforeEach(() => {
@@ -25,7 +25,7 @@ afterEach(() => restore());
 test("forwarded: what describes the request; never cookies, the browser's Authorization, Origin or unknown headers", () => {
   const incoming = new Headers({
     accept: "application/json", "accept-language": "en", "content-type": "application/json", "content-length": "12", "if-none-match": '"v1"', "idempotency-key": "k1",
-    "x-request-id": "r1", cookie: "webkit_session=v1.secret", authorization: "Bearer forged", origin: "http://127.0.0.1:4260", host: "127.0.0.1:4260", "x-custom": "no", "sec-fetch-site": "same-origin",
+    "x-request-id": "r1", cookie: "present_session=v1.secret", authorization: "Bearer forged", origin: "http://127.0.0.1:4260", host: "127.0.0.1:4260", "x-custom": "no", "sec-fetch-site": "same-origin",
   });
   const out = forwardRequestHeaders(incoming, "eyJ.token.sig", { "X-Forwarded-For": "203.0.113.9", "User-Agent": "Browser/1" }, []);
   assert.deepEqual(Object.fromEntries(out), {
@@ -101,7 +101,7 @@ test("an access token in its last 30 seconds is refreshed first, and the new ses
   assert.equal(response.status, 200);
   assert.deepEqual(mock.calls.map(call => call.url), ["http://127.0.0.1:9589/v1/oauth/token", "http://127.0.0.1:4261/v1/me"]);
   assert.equal(new Headers(mock.calls[1]!.init.headers).get("authorization"), "Bearer eyJ.access-2.sig");
-  assert.match(response.headers.get("set-cookie") ?? "", /^webkit_session=v1\./);
+  assert.match(response.headers.get("set-cookie") ?? "", /^present_session=v1\./);
 });
 
 test("a 401 from the service ends the session here too; no session is a 401 without a call", async () => {
@@ -110,7 +110,7 @@ test("a 401 from the service ends the session here too; no session is a 401 with
   const response = await GET(new NextRequest("http://127.0.0.1:4260/api/v1/items", { headers: { cookie: cookieFor(session()) } }));
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error.code, "token_revoked");
-  assert.match(response.headers.get("set-cookie") ?? "", /webkit_session=;.*Max-Age=0/i);
+  assert.match(response.headers.get("set-cookie") ?? "", /present_session=;.*Max-Age=0/i);
   restore();
 
   mock = mockFetch(() => new Response("nope", { status: 401 }));
@@ -135,4 +135,37 @@ test("a service that cannot be reached is a 502 in the kit's error shape", async
   const body = await response.json();
   assert.equal(body.error.code, "service_unreachable");
   assert.match(body.error.message, /could not reach its service for GET \/v1\/items: connect ECONNREFUSED/);
+});
+
+test("Present: the reads of a public deck are the only ones that go through without a session", () => {
+  for (const path of ["v1/decks/dk7Hq2mP9xRt", "v1/decks/dk7Hq2mP9xRt/content", "v1/decks/dk7Hq2mP9xRt/live", "v1/decks/dk7Hq2mP9xRt/threads", "v1/decks/dk7Hq2mP9xRt/export", "v1/decks/dk7Hq2mP9xRt/slides/s_abc123/render", "v1/assets/as1", "v1/presentations/pr1", "v1/presentations/pr1/live"]) {
+    assert.ok(publicReadPath("GET", path), path);
+    assert.ok(publicReadPath("HEAD", path), `HEAD ${path}`);
+    assert.ok(!publicReadPath("POST", path), `POST ${path}`);
+  }
+  for (const path of ["v1/decks", "v1/decks/dk1/access", "v1/decks/dk1/versions", "v1/decks/dk1/updates", "v1/me", "v1/transfers", "v1/search", "v1/folders/fd1", "v1/decks/dk1/content/x"]) assert.ok(!publicReadPath("GET", path), path);
+});
+
+test("Present: a public read with no session reaches the service without a token, and its answer comes back as it is", async () => {
+  let mock = mockFetch(() => json(200, { id: "dk1", title: "Public", public: "view" }));
+  restore = mock.restore;
+  const response = await GET(new NextRequest("http://127.0.0.1:4260/api/v1/decks/dk1/content?format=json"));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).title, "Public");
+  assert.equal(mock.calls[0]!.url, "http://127.0.0.1:4261/v1/decks/dk1/content?format=json");
+  assert.equal(new Headers(mock.calls[0]!.init.headers).get("authorization"), null, "no token is invented");
+  restore();
+
+  mock = mockFetch(() => json(401, { error: { code: "unauthenticated", message: "This deck is not public.", hint: "Sign in." } }));
+  restore = mock.restore;
+  const private_ = await GET(new NextRequest("http://127.0.0.1:4260/api/v1/decks/dk2"));
+  assert.equal(private_.status, 401);
+  assert.equal((await private_.json()).error.code, "unauthenticated", "the service's own words, so the page can offer to sign in");
+  restore();
+
+  mock = mockFetch(() => json(200, {}));
+  restore = mock.restore;
+  const write = await POST(new NextRequest("http://127.0.0.1:4260/api/v1/decks/dk1/threads", { method: "POST", headers: { origin: "http://127.0.0.1:4260", "content-type": "application/json" }, body: "{}" }));
+  assert.equal(write.status, 401, "writes still need a session");
+  assert.equal(mock.calls.length, 0);
 });

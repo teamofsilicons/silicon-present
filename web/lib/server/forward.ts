@@ -40,8 +40,11 @@ export const RELAY_RESPONSE_HEADERS = [
 
 const lower = (names: readonly string[] | undefined) => (names ?? []).map(name => name.toLowerCase());
 
-/** The headers for the call to the app's service: the allowlist, the client's address and agent, and the bearer token. */
-export function forwardRequestHeaders(incoming: Headers, token: string, client: Record<string, string>, extra: readonly string[] = appConfig.api?.forwardHeaders ?? []): Headers {
+/**
+ * The headers for the call to the app's service: the allowlist, the client's address and agent, and the bearer token
+ * (none for an anonymous read of a public deck, see publicReadPath).
+ */
+export function forwardRequestHeaders(incoming: Headers, token: string | null, client: Record<string, string>, extra: readonly string[] = appConfig.api?.forwardHeaders ?? []): Headers {
   const out = new Headers();
   for (const name of [...FORWARD_REQUEST_HEADERS, ...lower(extra)]) {
     if (name === "authorization" || name === "cookie" || name === "host") continue;
@@ -49,7 +52,7 @@ export function forwardRequestHeaders(incoming: Headers, token: string, client: 
     if (value !== null) out.set(name, value);
   }
   for (const [name, value] of Object.entries(client)) out.set(name, value);
-  out.set("authorization", `Bearer ${token}`);
+  if (token) out.set("authorization", `Bearer ${token}`);
   return out;
 }
 
@@ -81,4 +84,26 @@ export function upstreamPath(rest: string): string | null {
     if (/%2f|%5c|\\/i.test(segment)) return null;
   }
   return rest;
+}
+
+/**
+ * Reads that work without signing in when the deck is public (UNDERSTANDING.md: "Viewing a public deck never needs
+ * signing in"; docs/architecture.md: a public deck, its content, live updates, comments, assets, renders, exports and a
+ * presentation of it). For a browser with no session the proxy forwards these without a token instead of answering
+ * 401; the service decides (a private deck answers 401 or 404, and the page then offers to sign in). Everything else
+ * still needs a session. Paths are what follows `/api/` (no leading slash), still percent-encoded.
+ */
+const PUBLIC_READS: readonly RegExp[] = [
+  /^v1\/decks\/[^/]+$/,
+  /^v1\/decks\/[^/]+\/(content|live|threads|export)$/,
+  /^v1\/decks\/[^/]+\/slides\/[^/]+\/render$/,
+  /^v1\/assets\/[^/]+$/,
+  /^v1\/presentations\/[^/]+$/,
+  /^v1\/presentations\/[^/]+\/live$/,
+];
+
+export function publicReadPath(method: string, path: string): boolean {
+  const verb = method.toUpperCase();
+  if (verb !== "GET" && verb !== "HEAD") return false;
+  return PUBLIC_READS.some(pattern => pattern.test(path));
 }

@@ -9,10 +9,13 @@
  * The answer comes back streamed with its status and an allowlist of headers, marked private and no-store. A 401 from
  * the service means the sign-in is no longer accepted: the session cookie is cleared and the browser hears 401, so the
  * page sends the Carbon to sign in again. State-changing requests must come from this site's pages (Origin check).
+ *
+ * Present: a browser with no session may still read a public deck (lib/server/forward.ts publicReadPath). Those reads
+ * are forwarded without a token, and the service's answer comes back as it is.
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { EnvError, serverEnv } from "@/lib/server/env";
-import { forwardRequestHeaders, relayResponseHeaders, upstreamPath } from "@/lib/server/forward";
+import { forwardRequestHeaders, publicReadPath, relayResponseHeaders, upstreamPath } from "@/lib/server/forward";
 import { freshSession } from "@/lib/server/fresh";
 import { json, misconfigured } from "@/lib/server/responses";
 import { clearSession, clientHeaders, errorBody, readSession, sameOriginProblem, writeSession } from "@/lib/server/session";
@@ -39,6 +42,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   if (problem) return json(403, errorBody("cross_site_request", problem, "Use this site's own pages."));
 
   const state = await freshSession(readSession(request), "api", clientHeaders(request));
+  if (state.kind === "signed_out" && publicReadPath(method, path)) return forwardAnonymous(request, env.appApiUrl, method, path, state.clear);
   if (state.kind === "signed_out") return json(401, errorBody("signed_out", state.message, "Sign in again."), state.clear ? clearSession : undefined);
   if (state.kind === "unavailable") return json(state.status, errorBody(state.code, state.message, "Wait a moment and try again."));
   const { session, rotated } = state;
@@ -80,6 +84,22 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   const bodyless = method === "HEAD" || upstream.status === 204 || upstream.status === 205 || upstream.status === 304;
   const response = new NextResponse(bodyless ? null : upstream.body, { status: upstream.status, headers: relayResponseHeaders(upstream.headers) });
   if (rotated) writeSession(response, session);
+  return response;
+}
+
+/** A public read with no session: no token, no session to end on a 401 (the page decides whether to offer sign-in). */
+async function forwardAnonymous(request: NextRequest, apiUrl: string, method: string, path: string, clear: boolean): Promise<NextResponse> {
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]);
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${apiUrl}/${path}${request.nextUrl.search}`, { method, headers: forwardRequestHeaders(request.headers, null, clientHeaders(request)), redirect: "manual", cache: "no-store", signal });
+  } catch (error) {
+    const reason = error instanceof Error ? (error.cause instanceof Error ? error.cause.message : error.message) : String(error);
+    return json(502, errorBody("service_unreachable", `This site could not reach its service for ${method} /${path}: ${reason}.`, "Wait a moment and try again."));
+  }
+  const bodyless = method === "HEAD" || upstream.status === 204 || upstream.status === 304;
+  const response = new NextResponse(bodyless ? null : upstream.body, { status: upstream.status, headers: relayResponseHeaders(upstream.headers) });
+  if (clear) clearSession(response);
   return response;
 }
 

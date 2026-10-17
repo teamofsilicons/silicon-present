@@ -1,4 +1,69 @@
-# Silicon web kit
+# Silicon Present on the web
+
+`present.teamofsilicons.com`: decks and folders, the slide editor, comments, sharing, history and present mode, for
+Carbons in the browser (Silicons use the `present` command line). Built from the shared Silicon web kit (the rest of
+this file is the kit's guide). Light mode only and minimal, for now: one calm column, a wordmark and one pill.
+
+## Run it locally (the "web pages" lane, docs/architecture.md)
+
+```sh
+# Postgres 5490 (.dev/pg), the Silicon Accounts test stack (9740/9741, e2e/stack/test-stack.json),
+# then the service on 4331 and the converter on 4332 (their READMEs), then:
+cp .env.example .env.local   # APP_SECRET from e2e/stack/test-stack.json; APP_API_URL=http://127.0.0.1:4331;
+                             # PUBLIC_URL=http://127.0.0.1:4330; SESSION_SECRET=$(openssl rand -base64 48)
+PORT=4330 pnpm dev
+E2E_PORT=4330 pnpm test:e2e  # the kit's specs and e2e/pages*.spec.ts against the real stack
+```
+
+Each lane runs its own browser tests beside the others: `E2E_PORT` picks the lane (4330 pages, 4340 editor), and the
+results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `next dev` build directory
+(`.next-e2e-<port>`) are kept per port. The setup reuses the last run's two Carbons for 12 hours
+(`E2E_FRESH_ACCOUNTS=1` signs new ones in).
+
+## Pages
+
+| Address | What |
+| --- | --- |
+| `/` | the landing page (signed out); signed in it goes to `/decks` |
+| `/decks` | My decks; `?scope=shared` Shared with me; `?folder=<id>` one folder, with breadcrumbs. New deck, new folder, open a file (import with progress), search, and per row rename, share, move, transfer, move to trash |
+| `/trash` | restore, or delete for good (asks to type the name) |
+| `/transfers` | accept or decline what was offered to you, cancel what you offered |
+| `/decks/[id]` | the editor (and its view and comment mode); owned by the editor (`app/(editor)`) |
+| `/decks/[id]/history` | versions, events between them, open read-only, compare, restore whole/slide/element, undo one account, name, new deck from a version |
+| `/decks/[id]/present` | present mode (public decks open signed out) |
+| `/decks/[id]/presenter` | presenter view: notes, current and next slide, timer, follow link; in step with present mode over a BroadcastChannel |
+| `/p/[presentation]` | follow a presentation live (SSE through the proxy; public decks signed out) |
+| `/sandbox/html` | the page every HTML element of a slide runs in (see below) |
+
+## For the editor: what to import
+
+- **The service, typed**: `import { getDeck, getContent, ... } from "@/lib/present"` (one file per area in
+  `lib/present/`: `decks`, `sharing`, `transfers`, `versions`, `presentations`, `files`, `me`; shapes in `types.ts`,
+  made tolerant by `normalize.ts`). Server Components: `lib/present/server.ts` and `lib/present/load-public.ts`.
+- **Share dialog**: `import { ShareButton, ShareDialog } from "@/components/share"`.
+  `<ShareButton kind="deck" id={id} name={title} selfId={me?.id} role={deck.role} />` or the controlled
+  `<ShareDialog ... open={open} onOpenChange={setOpen} onChanged={access => ...} />`. It reads and writes the service
+  itself (no query client needed) and needs the kit's toast stack (`Providers`).
+- **Export menu**: `import { ExportMenu } from "@/components/export"`. `<ExportMenu deck={id} />`, or with `version` /
+  `slide`. Plain download links through the proxy (works for public visitors too).
+- **Public decks signed out**: `lib/session-optional.ts`.
+  - `proxy.ts` lets `/decks/[id]`, `/decks/[id]/present` and `/p/[id]` render without a session (`isPublicPage`).
+  - The API proxy forwards the public reads with no token when there is no session (`lib/server/forward.ts`
+    `publicReadPath`: the deck, `content`, `live`, `threads`, `export`, slide renders, assets, presentations). Every
+    write (comments, updates, presence) still needs a session: send the visitor to `signInHref(here)`.
+  - In a Server Component: `const session = await getOptionalSession()` (never redirects) and
+    `const { data, error, signedIn } = await optionalApiFetch(path)` (the token when signed in, none otherwise; errors
+    as data). A private deck seen signed out answers 401/403/404: `redirect(signInHref("/decks/" + id))`.
+  - A layout for those pages must not call `requireSession()`; mount
+    `<Providers session={sessionView(session)}>` (see `app/(present)/layout.tsx`).
+- **Slides on a page**: `components/slides/slide-view.tsx` (`SlideStyles` once per page, `SlideView` per slide, scaled
+  to its box) wraps `@silicon-present/render`.
+- **HTML elements must run through `/sandbox/html`**: a `srcdoc` iframe inherits this site's CSP (scripts by nonce
+  only), so an element's JS would never run in place. After putting `renderSlideHtml(...)` markup in the page, call
+  `liveHtmlElements(container)` from `lib/slides/sandbox.ts` (it returns a cleanup). The frames stay
+  `sandbox="allow-scripts"` with an opaque origin. Images, video, audio and Google fonts load from anywhere (CSP).
+
+## The web kit
 
 The template every Silicon app's web frontend is built from. Copy it into an app's `web/`, edit one file
 (`lib/app.config.ts`), and the app has:

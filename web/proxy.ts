@@ -18,18 +18,23 @@ import { freshSession } from "./lib/server/fresh";
 import { clearSession, clientHeaders, readSession, sealSession, sessionCookieName, writeSession } from "./lib/server/session";
 
 const isDev = process.env.NODE_ENV === "development";
-const IRIS = "https://iris.teamofsilicons.com";
 
-function contentSecurityPolicy(nonce: string, env: ServerEnv): string {
-  const images = [...new Set([env.accountsUrl, IRIS, ...env.extraImgOrigins])].join(" ");
+/**
+ * Slides show pictures, video, audio and fonts from anywhere a deck points (an image by URL, a Google font), so those
+ * load from any origin; scripts stay nonce-only and the browser still talks to this site only (connect-src). HTML
+ * elements never run in this page: they run in /sandbox/html frames (app/sandbox/html/route.ts), sandboxed to an
+ * opaque origin with their own policy.
+ */
+function contentSecurityPolicy(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
-    "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${images}`,
-    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src * data: blob:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self'",
-    "media-src 'self' blob:",
+    "media-src * data: blob:",
+    "frame-src 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
@@ -37,8 +42,18 @@ function contentSecurityPolicy(nonce: string, env: ServerEnv): string {
   ].join("; ");
 }
 
-/** Workspace addresses: the nav's sections and everything under them. */
+/**
+ * Pages a public deck opens on without signing in (lib/session-optional.ts): the deck itself (`/decks/{id}`, the
+ * editor's view mode), present mode, and following a presentation. The page asks the service; a private deck then
+ * offers to sign in.
+ */
+export function isPublicPage(pathname: string): boolean {
+  return /^\/decks\/[^/]+\/?$/.test(pathname) || /^\/decks\/[^/]+\/present\/?$/.test(pathname) || /^\/p\/[^/]+\/?$/.test(pathname);
+}
+
+/** Workspace addresses: the nav's sections and everything under them, except the public pages above. */
 function inWorkspace(pathname: string): boolean {
+  if (isPublicPage(pathname)) return false;
   return appConfig.nav.some(item => pathname === item.href || pathname.startsWith(`${item.href}/`)) || pathname === appConfig.home;
 }
 
@@ -66,7 +81,7 @@ export async function proxy(request: NextRequest) {
     response = NextResponse.redirect(new URL(`/auth/sign-in?return_to=${encodeURIComponent(here)}`, request.url), 307);
   } else {
     const nonce = btoa(crypto.randomUUID());
-    const csp = contentSecurityPolicy(nonce, env);
+    const csp = contentSecurityPolicy(nonce);
     // The render sees the refreshed (or cleared) session as if the browser had sent it.
     if (state.kind === "fresh" && state.rotated) request.cookies.set(sessionCookieName(), sealSession(state.session));
     if (state.kind === "signed_out" && state.clear) request.cookies.delete(sessionCookieName());
@@ -93,7 +108,7 @@ export const config = {
     {
       // Route handlers (the BFF under /api and /auth, the agent files, the icons and the social image) and static files
       // set their own headers.
-      source: "/((?!api/|auth/|_next/static|_next/image|fonts/|favicon\\.ico|icon|apple-icon|og\\.png|robots\\.txt|sitemap\\.xml|llms\\.txt|manifest\\.webmanifest).*)",
+      source: "/((?!api/|auth/|sandbox/|_next/static|_next/image|fonts/|favicon\\.ico|icon|apple-icon|og\\.png|robots\\.txt|sitemap\\.xml|llms\\.txt|manifest\\.webmanifest).*)",
     },
   ],
 };
