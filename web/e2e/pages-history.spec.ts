@@ -96,13 +96,6 @@ test("undo one Carbon's changes since a version, from the history", async () => 
 });
 
 test("after undoing the friend, the owner's own text and later slide are still there", async () => {
-  /*
-   * Known service bug (a114058): undo-account replays the owner's later update without the friend's earlier one, and
-   * that update stays pending in Yjs (it was positioned after the friend's slide), so the owner's slide s_his003 is
-   * dropped; and the text the friend changed ends empty instead of back at "Owner's first slide". Expected per
-   * UNDERSTANDING.md "Versions": only the friend's changes go. Remove test.fail() once the service is fixed.
-   */
-  test.fail();
   const words = texts((await call<Content>(owner.context, "GET", `/v1/decks/${deck}/content?format=json`)).body).join(" | ");
   expect(words).toContain("Owner's first slide");
   expect(words).toContain("Owner's last slide");
