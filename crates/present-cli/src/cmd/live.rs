@@ -298,24 +298,24 @@ pub async fn watch(ctx: &Ctx, deck_ref: &str, here: Option<&str>, raw: bool, pin
     let id = ctx.deck_id(&c, deck_ref).await?;
     let until = deadline(secs);
     // Showing yourself in the deck: a heartbeat every 15 s while watching (presence lasts 30 s).
-    let heartbeat = match here {
-        Some(sel) => {
+    let session = here.map(|_| format!("cli-{}-{}", std::process::id(), silicon_present_client::accounts::now()));
+    let heartbeat = match (here, &session) {
+        (Some(sel), Some(session)) => {
             let content = c.content(&id, None).await?;
             let sid = ctx.slide_id(&content, sel)?;
-            let session = format!("cli-{}-{}", std::process::id(), silicon_present_client::accounts::now());
-            let presence = Presence { session, slide: Some(sid), selection: vec![], cursor: None };
+            let presence = Presence { session: session.clone(), slide: Some(sid), selection: vec![], cursor: None };
             c.presence(&id, &presence).await?;
             Some(spawn_heartbeat(c.clone(), id.clone(), presence))
         }
-        None => None,
+        _ => None,
     };
     let mut seen = 0u64;
-    let mut stream = c.live(&id, None).await?;
+    let mut stream = c.live(&id, None, session.as_deref()).await?;
     let result: R<()> = async {
         loop {
             let Some(ev) = next_or_timeout(&mut stream, until).await? else { return Ok(()) };
             let Some(ev) = ev else {
-                stream = c.live(&id, None).await?;
+                stream = c.live(&id, None, session.as_deref()).await?;
                 continue;
             };
             if ev.event == "ping" && !pings {

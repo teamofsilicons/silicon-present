@@ -230,26 +230,24 @@ pub async fn transfers(ctx: &Ctx, action: Option<TransferAction>, id: Option<&st
     let c = ctx.authed().await?;
     match (action, id) {
         (None, _) => {
-            let list = c.transfers().await?;
-            ctx.out(&json!({ "transfers": list }), || {
-                if list.is_empty() {
-                    return "No transfers.".into();
+            let t = c.transfers(false).await?;
+            let line = |dir: &str, t: &silicon_present_client::Transfer| {
+                format!(
+                    "{}  {dir} {} {} \"{}\"  {} → {}  {}",
+                    t.id,
+                    t.kind(),
+                    t.resource_id(),
+                    t.name(),
+                    t.from.as_ref().map(|a| a.label().to_owned()).unwrap_or_default(),
+                    t.to.as_ref().map(|a| a.label().to_owned()).unwrap_or_default(),
+                    t.state
+                )
+            };
+            ctx.out(&to_value(&t), || {
+                if t.incoming.is_empty() && t.outgoing.is_empty() {
+                    return "No pending transfers.".into();
                 }
-                list.iter()
-                    .map(|t| {
-                        format!(
-                            "{}  {} {} \"{}\"  {} → {}  {}",
-                            t.id,
-                            t.kind,
-                            t.resource,
-                            t.title,
-                            t.from.as_ref().map(|a| a.label().to_owned()).unwrap_or_default(),
-                            t.to.as_ref().map(|a| a.label().to_owned()).unwrap_or_default(),
-                            t.state
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                t.incoming.iter().map(|x| line("to you ", x)).chain(t.outgoing.iter().map(|x| line("by you ", x))).collect::<Vec<_>>().join("\n")
             });
         }
         (Some(_), None) => {

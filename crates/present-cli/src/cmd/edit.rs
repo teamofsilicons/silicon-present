@@ -685,7 +685,7 @@ pub async fn replace(ctx: &Ctx, deck: &str, slide: &str, element: Option<&str>, 
         all,
     };
     apply(ctx, &c, &id, vec![op], None, |v| {
-        let n = v.get("replaced").and_then(Value::as_u64);
+        let n = v.get("replacements").and_then(Value::as_u64);
         match n {
             Some(n) => format!("Replaced {n} occurrence{} on {sid}.", if n == 1 { "" } else { "s" }),
             None => format!("Replaced on {sid}."),

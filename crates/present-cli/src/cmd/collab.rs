@@ -220,7 +220,12 @@ pub async fn access(ctx: &Ctx, t: &str, folder: bool) -> R<()> {
         }
         for m in &a.members {
             let who = m.account.as_ref().map(|a| a.label().to_owned()).or_else(|| m.email.clone()).unwrap_or_default();
-            let via = m.extra.get("via").map(|v| format!("  (via {})", v.as_str().map_or_else(|| v.to_string(), str::to_owned))).unwrap_or_default();
+            let via = m
+                .extra
+                .get("via")
+                .filter(|v| !v.is_null())
+                .map(|v| format!("  (via folder {})", v.get("name").and_then(Value::as_str).or_else(|| v.as_str()).unwrap_or_default()))
+                .unwrap_or_default();
             out.push(format!("{:<10} {who}{}{via}", m.role, if m.account.is_none() { "  (invited)" } else { "" }));
         }
         if let Some(p) = &a.public {
@@ -280,13 +285,18 @@ pub async fn versions(ctx: &Ctx, deck_ref: &str) -> R<()> {
         println!("No versions yet.");
     }
     for v in &list {
-        let who = v.author.as_ref().map(|a| a.label().to_owned()).unwrap_or_default();
         let when = v.ended_at.clone().or_else(|| v.started_at.clone()).unwrap_or_default();
         let name = v.name.as_deref().map(|n| format!("  \"{n}\"")).unwrap_or_default();
-        println!("v{:<5} {when}  {who:<16} {}{name}", v.version, v.summary);
-        for e in &v.events {
-            let s = e.get("summary").or_else(|| e.get("kind")).and_then(Value::as_str).map_or_else(|| e.to_string(), str::to_owned);
-            println!("        · {s}");
+        println!("v{:<5} {when}  {}{name}", v.version, v.summary);
+    }
+    if let Some(events) = raw.get("events").and_then(Value::as_array).filter(|e| !e.is_empty()) {
+        println!("\nEvents:");
+        for e in events {
+            let who = e.pointer("/actor/id").and_then(Value::as_str).unwrap_or("someone");
+            let kind = e.get("kind").and_then(Value::as_str).unwrap_or_default();
+            let at = e.get("createdAt").and_then(Value::as_str).unwrap_or_default();
+            let data = e.get("data").filter(|d| d.as_object().is_some_and(|o| !o.is_empty())).map(|d| format!(" {d}")).unwrap_or_default();
+            println!("  {at}  {who} {kind}{data}");
         }
     }
     Ok(())
@@ -308,33 +318,47 @@ pub async fn compare(ctx: &Ctx, deck_ref: &str, from: u64, to: u64) -> R<()> {
         ctx.print_json(&v);
         return Ok(());
     }
-    if let Some(text) = v.get("text").and_then(Value::as_str) {
-        println!("{text}");
-        return Ok(());
-    }
-    if let Some(s) = v.get("summary").and_then(Value::as_str) {
-        println!("{s}");
-    }
-    for key in ["slides", "changes"] {
-        if let Some(arr) = v.get(key).and_then(Value::as_array) {
-            for s in arr {
-                let change = s.get("change").or_else(|| s.get("kind")).and_then(Value::as_str).unwrap_or_default();
-                let slide = s.get("slide").or_else(|| s.get("id")).map(|x| x.as_str().map_or_else(|| x.to_string(), str::to_owned)).unwrap_or_default();
-                let summary = s.get("summary").and_then(Value::as_str).unwrap_or_default();
-                println!("{change:<8} {slide} {summary}");
-                if let Some(els) = s.get("elements").and_then(Value::as_array) {
-                    for e in els {
-                        let ch = e.get("change").or_else(|| e.get("kind")).and_then(Value::as_str).unwrap_or_default();
-                        let el = e.get("element").or_else(|| e.get("id")).and_then(Value::as_str).unwrap_or_default();
-                        let fields = e.get("fields").map(ToString::to_string).unwrap_or_default();
-                        println!("    {ch:<8} {el} {fields}");
-                    }
-                }
-            }
+    println!("{} → {}: {}", v["from"], v["to"], v.get("summary").and_then(Value::as_str).unwrap_or("no changes"));
+    let d = v.get("diff").cloned().unwrap_or_default();
+    let refs = |key: &str| -> Vec<String> {
+        d.get(key)
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(|s| format!("{} ({})", s["number"], s["id"].as_str().unwrap_or_default())).collect())
+            .unwrap_or_default()
+    };
+    for (key, label) in [("slidesAdded", "added"), ("slidesRemoved", "removed"), ("slidesMoved", "moved")] {
+        let r = refs(key);
+        if !r.is_empty() {
+            println!("  slides {label}: {}", r.join(", "));
         }
     }
-    if v.get("slides").is_none() && v.get("changes").is_none() && v.get("summary").is_none() {
-        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+    if let Some(f) = d.get("deckFields").and_then(Value::as_array).filter(|f| !f.is_empty()) {
+        println!("  deck: {}", f.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "));
+    }
+    let authors = v.get("authors").cloned().unwrap_or_default();
+    let mut changed: Vec<Value> = d.get("slidesChanged").and_then(Value::as_array).cloned().unwrap_or_default();
+    if let Some(m) = d.get("master").filter(|m| !m.is_null()) {
+        changed.insert(0, m.clone());
+    }
+    for s in &changed {
+        let sid = s["id"].as_str().unwrap_or_default();
+        let by: Vec<&str> = authors.get(sid).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.get("id").and_then(Value::as_str)).collect()).unwrap_or_default();
+        let fields: Vec<&str> = s.get("fields").and_then(Value::as_array).map(|f| f.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+        println!(
+            "  slide {} ({sid}){}{}",
+            s["number"],
+            if fields.is_empty() { String::new() } else { format!(" {}", fields.join(", ")) },
+            if by.is_empty() { String::new() } else { format!("  by {}", by.join(", ")) }
+        );
+        for (key, label) in [("elementsAdded", "+"), ("elementsRemoved", "-"), ("elementsChanged", "~")] {
+            for e in s.get(key).and_then(Value::as_array).into_iter().flatten() {
+                let f: Vec<&str> = e.get("fields").and_then(Value::as_array).map(|f| f.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+                println!("    {label} {} {}{}", e["kind"].as_str().unwrap_or_default(), e["id"].as_str().unwrap_or_default(), if f.is_empty() { String::new() } else { format!(" ({})", f.join(", ")) });
+            }
+        }
+        if s.get("elementsReordered").and_then(Value::as_bool).unwrap_or(false) {
+            println!("    elements reordered");
+        }
     }
     Ok(())
 }

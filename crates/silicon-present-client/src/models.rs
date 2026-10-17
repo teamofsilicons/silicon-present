@@ -246,15 +246,9 @@ pub struct Access {
 pub struct Transfer {
     /// 12-character id.
     pub id: String,
-    /// `deck` or `folder`.
-    #[serde(default, alias = "resource_kind", alias = "resourceKind")]
-    pub kind: String,
-    /// The deck or folder id.
-    #[serde(default, alias = "resource_id", alias = "resourceId")]
-    pub resource: String,
-    /// Its title or name.
-    #[serde(default, alias = "name")]
-    pub title: String,
+    /// What moves: `{ "kind": "deck"|"folder", "id", "name" }`.
+    #[serde(default)]
+    pub resource: Value,
     /// Who is giving it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<Account>,
@@ -267,6 +261,39 @@ pub struct Transfer {
     /// Everything else.
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+impl Transfer {
+    fn resource_field(&self, key: &str) -> String {
+        match &self.resource {
+            Value::Object(o) => o.get(key).and_then(Value::as_str).unwrap_or_default().to_owned(),
+            Value::String(s) if key == "id" => s.clone(),
+            _ => String::new(),
+        }
+    }
+    /// `deck` or `folder`.
+    pub fn kind(&self) -> String {
+        self.resource_field("kind")
+    }
+    /// The deck or folder id.
+    pub fn resource_id(&self) -> String {
+        self.resource_field("id")
+    }
+    /// Its title or name.
+    pub fn name(&self) -> String {
+        self.resource_field("name")
+    }
+}
+
+/// Transfers offered to you and by you.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Transfers {
+    /// Offered to you.
+    #[serde(default)]
+    pub incoming: Vec<Transfer>,
+    /// Offered by you.
+    #[serde(default)]
+    pub outgoing: Vec<Transfer>,
 }
 
 /// One version: a run of changes by the same Carbon or Silicon.
@@ -294,9 +321,9 @@ pub struct Version {
     /// The name someone gave it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Non-content events next to it (renames, sharing, ...).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub events: Vec<Value>,
+    /// What changed, without the author ("changed slide 4").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub change: String,
     /// Everything else.
     #[serde(flatten)]
     pub extra: Extra,
@@ -513,9 +540,18 @@ pub struct EditOutcome {
     /// Slides the edit touched.
     #[serde(default)]
     pub touched: Vec<String>,
-    /// Ids of slides and elements the edit created, in op order, when the service says.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub created: Vec<Value>,
+    /// The history line for this change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Slides the edit added.
+    #[serde(default, alias = "slides_added", skip_serializing_if = "Vec::is_empty")]
+    pub slides_added: Vec<Value>,
+    /// Elements the edit added: `{ slide, element }`.
+    #[serde(default, alias = "elements_added", skip_serializing_if = "Vec::is_empty")]
+    pub elements_added: Vec<Value>,
+    /// How many passages `replace_text` ops replaced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacements: Option<Value>,
     /// Everything else.
     #[serde(flatten)]
     pub extra: Extra,

@@ -3,7 +3,7 @@
 
 use crate::models::{
     Access, Account, Anchor, Asset, Comment, Deck, Download, EditOutcome, Folder, Member,
-    Presentation, PublicMode, ResourceKind, Role, Thread, Transfer, Version, list_from, one_from,
+    Presentation, PublicMode, ResourceKind, Role, Thread, Transfer, Transfers, Version, list_from, one_from,
 };
 use crate::ops::EditRequest;
 use crate::sse::EventStream;
@@ -369,9 +369,7 @@ impl Client {
         if let Some(v) = version {
             q.push(("version", v.to_string()));
         }
-        if comments {
-            q.push(("comments", "true".to_owned()));
-        }
+        q.push(("comments", comments.to_string()));
         let req = self.request(Method::GET, url.clone()).query(&q).header("accept", "text/plain");
         let (body, headers) = self.bytes(req, &url).await?;
         let ct = headers
@@ -411,7 +409,8 @@ impl Client {
 
     /// `GET /v1/decks/{id}/live?sv=`: the live stream of changes, presence and comments.
     /// `state_vector` is the Yjs state vector you already have (none = everything).
-    pub async fn live(&self, id: &str, state_vector: Option<&[u8]>) -> Result<EventStream> {
+    /// `session` ties a presence heartbeat to the stream: it is removed when the stream ends.
+    pub async fn live(&self, id: &str, state_vector: Option<&[u8]>, session: Option<&str>) -> Result<EventStream> {
         let url = self.url(&["decks", id, "live"]);
         let mut req = self
             .request(Method::GET, url.clone())
@@ -419,6 +418,9 @@ impl Client {
             .timeout(Duration::from_secs(24 * 3600));
         if let Some(sv) = state_vector {
             req = req.query(&[("sv", base64::engine::general_purpose::STANDARD.encode(sv))]);
+        }
+        if let Some(s) = session {
+            req = req.query(&[("session", s)]);
         }
         let resp = self.send(req, &url).await?;
         Ok(EventStream::new(resp, url.to_string()))
@@ -532,10 +534,16 @@ impl Client {
         self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "transfer").await
     }
 
-    /// `GET /v1/transfers`: offered to you and by you.
-    pub async fn transfers(&self) -> Result<Vec<Transfer>> {
+    /// `GET /v1/transfers?state=pending|all`: offered to you and by you.
+    pub async fn transfers(&self, all: bool) -> Result<Transfers> {
         let url = self.url(&["transfers"]);
-        self.typed_list(self.request(Method::GET, url.clone()), &url, &["transfers"]).await
+        let req = self.request(Method::GET, url.clone()).query(&[("state", if all { "all" } else { "pending" })]);
+        let v = self.value(req, &url).await?;
+        let v = match v {
+            Value::Array(_) => json!({ "incoming": v }),
+            v => v,
+        };
+        decode(v, &url)
     }
 
     /// `POST /v1/transfers/{id}/{accept|decline|cancel}`.

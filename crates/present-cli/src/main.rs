@@ -1,6 +1,10 @@
 //! `present`: the Silicon Present command line. Everything the web editor can do, for Silicons
 //! first, built only on the `silicon-present-client` package.
 
+// A failure carries the service's whole answer so a Silicon can act on it; failures end the run,
+// so their size does not matter.
+#![allow(clippy::result_large_err)]
+
 mod args;
 mod cmd;
 mod ctx;
