@@ -181,3 +181,32 @@ test("snapping with guides, keyboard editing, grouping, locking, copy and paste 
   expect(errors).toEqual([]);
   await context.close();
 });
+
+test("the master: what is put there shows under every slide that shows it", async ({ browser }) => {
+  const { context, page, errors } = await signedIn(browser, "carbon");
+  const deck = await createDeck(context, "Master");
+  await openDeck(page, deck);
+  await page.getByTestId("new-slide").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Blank" }).click();
+  await page.getByTestId("edit-master").click();
+  await expect(page.getByRole("button", { name: "Editing the master · Done" })).toBeVisible();
+  await page.getByTestId("insert-shape").click();
+  await page.locator('[data-shape="rect"]').click();
+  for (const [label, value] of [["X", "40"], ["Y", "1000"], ["W", "1840"], ["H", "40"]] as const) {
+    await page.getByLabel(label, { exact: true }).fill(value);
+    await page.getByLabel(label, { exact: true }).press("Enter");
+  }
+  await page.getByRole("button", { name: "Editing the master · Done" }).click();
+  // The footer bar is drawn (not selectable) on the slide, and hiding the master on a slide takes it away.
+  await expect(page.locator('[data-kind="shape"]')).toHaveCount(1);
+  await page.getByRole("checkbox", { name: "Show the master" }).uncheck();
+  await expect(page.locator('[data-kind="shape"]')).toHaveCount(0);
+  await settled(page);
+  await eventually(async () => {
+    const json = await deckJson(context, deck);
+    expect((json.master.elements as Array<{ kind: string; y: number }>).some(e => e.kind === "shape" && e.y === 1000)).toBe(true);
+    expect(json.slides.filter(s => (s as unknown as { hideMaster: boolean }).hideMaster).length).toBe(1);
+  });
+  expect(errors).toEqual([]);
+  await context.close();
+});

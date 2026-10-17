@@ -468,7 +468,7 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
             />
           ) : null}
         </div>
-        <CommentLayer slide={slide} elements={elements} scale={scale} />
+        <CommentLayer slide={slide} elements={elements} scale={scale} phone={phone} />
       </div>
     </div>
   );

@@ -135,10 +135,19 @@ export function TopBar({ phone = false }: { phone?: boolean }) {
             </button>
           </Tooltip>
         ) : null}
-        {!canEdit && (canComment || signInToComment || phone) ? (
-          <button type="button" className={styles.topButton} aria-pressed={commentsOpen} data-active={commentsOpen || undefined} onClick={() => editor.ui.set({ panel: "comments", panelOpen: !commentsOpen })} data-testid="toggle-comments" data-sq="surface">
+        {phone || (!canEdit && (canComment || signInToComment)) ? (
+          <button
+            type="button"
+            className={phone ? styles.topIcon : styles.topButton}
+            aria-pressed={commentsOpen}
+            aria-label={phone ? "Comments" : undefined}
+            data-active={commentsOpen || undefined}
+            onClick={() => editor.ui.set({ panel: "comments", panelOpen: !commentsOpen })}
+            data-testid="toggle-comments"
+            data-sq="surface"
+          >
             <MessageSquare size={16} aria-hidden="true" />
-            <span>Comments</span>
+            {phone ? null : <span>Comments</span>}
           </button>
         ) : null}
         {canEdit && !phone ? (
@@ -152,11 +161,12 @@ export function TopBar({ phone = false }: { phone?: boolean }) {
         {(meta.role === "owner" || meta.role === "editor") && !phone ? <ShareButton kind="deck" id={editor.deckId} name={meta.title} selfId={editor.me?.id} role={meta.role} size="sm" onChanged={access => editor.meta.set({ publicMode: access.public })} /> : null}
         {!signedIn ? (
           <button type="button" className={styles.topButton} onClick={() => beginSignIn()} data-sq="surface">
-            Sign in
+            {phone ? "Sign in" : meta.publicMode === "edit" ? "Sign in to edit" : meta.publicMode === "comment" ? "Sign in to comment" : "Sign in"}
           </button>
         ) : null}
-        <ButtonLink href={`/decks/${encodeURIComponent(editor.deckId)}/present${slideId ? `?slide=${encodeURIComponent(slideId)}` : ""}`} size="sm" data-testid="present">
-          <Play size={14} aria-hidden="true" /> Present
+        <ButtonLink href={`/decks/${encodeURIComponent(editor.deckId)}/present${slideId ? `?slide=${encodeURIComponent(slideId)}` : ""}`} size="sm" data-testid="present" aria-label={phone ? "Present" : undefined}>
+          <Play size={14} aria-hidden="true" />
+          {phone ? null : " Present"}
         </ButtonLink>
       </div>
     </header>

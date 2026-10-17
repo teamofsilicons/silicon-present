@@ -9,7 +9,7 @@
  * positions, so the comment keeps pointing at that passage while others edit around it).
  */
 import { useEffect, useRef } from "react";
-import { BODY_SIZE, TABLE_SIZE, shapeGeometry } from "@silicon-present/render";
+import { BODY_SIZE, HEADING_SIZES, TABLE_SIZE, shapeGeometry } from "@silicon-present/render";
 import { luminance, type Element, type Theme } from "@silicon-present/deck";
 import type * as Y from "yjs";
 import type Quill from "quill/core";
@@ -219,6 +219,9 @@ export function TextEditor({ element, field, theme, readOnly, onPickText, onClos
         textAlign: frame.align,
         fontWeight: frame.bold ? 600 : undefined,
         ["--heading-font" as string]: `"${theme.fonts.heading}", system-ui, sans-serif`,
+        ["--h1" as string]: `${HEADING_SIZES[1]}px`,
+        ["--h2" as string]: `${HEADING_SIZES[2]}px`,
+        ["--h3" as string]: `${HEADING_SIZES[3]}px`,
       }}
     >
       <div ref={host} className={styles.host} />

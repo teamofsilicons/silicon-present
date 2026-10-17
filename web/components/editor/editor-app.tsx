@@ -78,7 +78,7 @@ function EditorLayout() {
 
   useEffect(() => {
     // A phone gets the read-and-comment view: never in the middle of an edit there.
-    if (phone) editor.ui.set({ selection: [], editing: null, panelOpen: false });
+    if (phone) editor.ui.set({ selection: [], editing: null, panelOpen: true, panel: "comments" });
   }, [phone, editor]);
 
   if (phone) {

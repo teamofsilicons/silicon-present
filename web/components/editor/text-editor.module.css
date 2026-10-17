@@ -77,9 +77,10 @@
   letter-spacing: -0.01em;
 }
 
-.host :global(.ql-editor h1) { font-size: 96px; font-weight: 700; }
-.host :global(.ql-editor h2) { font-size: 64px; font-weight: 600; }
-.host :global(.ql-editor h3) { font-size: 48px; font-weight: 600; }
+/* Sizes come from @silicon-present/render (HEADING_SIZES), set on the frame by text-editor.tsx. */
+.host :global(.ql-editor h1) { font-size: var(--h1); font-weight: 700; }
+.host :global(.ql-editor h2) { font-size: var(--h2); font-weight: 600; }
+.host :global(.ql-editor h3) { font-size: var(--h3); font-weight: 600; }
 
 .host :global(.ql-editor code) {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -96,35 +97,49 @@
 
 .host :global(.ql-editor strong) { font-weight: 700; }
 
-/* Lists: <ol><li data-list="bullet|ordered"><span class="ql-ui"></span>…</li></ol> */
+/* Lists, as render draws them (packages/render/src/text.ts): 1.1em per level, the marker in the first 0.99em,
+   bullets • ◦ ▪ – by level, numbers 1. a. i. by level, 0.3em between items.
+   Quill's DOM: <ol><li data-list="bullet|ordered" class="ql-indent-N"><span class="ql-ui"></span>…</li></ol> */
 .host :global(.ql-editor li) {
   list-style: none;
   position: relative;
   padding-left: 1.1em;
-  counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8;
 }
+
+.host :global(.ql-editor li + li) { margin-top: 0.3em; }
 
 .host :global(.ql-editor li > .ql-ui) {
   position: absolute;
   left: 0;
-  width: 1em;
+  width: 0.99em;
   white-space: nowrap;
   text-align: left;
 }
 
-.host :global(.ql-editor li[data-list="bullet"] > .ql-ui::before) { content: "•"; }
+.host :global(.ql-editor ol) { counter-reset: list-0 list-1 list-2 list-3 list-4; }
 .host :global(.ql-editor li[data-list="ordered"]) { counter-increment: list-0; }
-.host :global(.ql-editor li[data-list="ordered"] > .ql-ui::before) { content: counter(list-0) "."; }
-.host :global(.ql-editor ol) { counter-reset: list-0; }
+.host :global(.ql-editor li.ql-indent-1[data-list="ordered"]) { counter-increment: list-1; }
+.host :global(.ql-editor li.ql-indent-2[data-list="ordered"]) { counter-increment: list-2; }
+.host :global(.ql-editor li.ql-indent-3[data-list="ordered"]) { counter-increment: list-3; }
+.host :global(.ql-editor li.ql-indent-4[data-list="ordered"]) { counter-increment: list-4; }
+.host :global(.ql-editor li:not(.ql-indent-1):not(.ql-indent-2):not(.ql-indent-3):not(.ql-indent-4)) { counter-reset: list-1 list-2 list-3 list-4; }
+.host :global(.ql-editor li.ql-indent-1) { counter-reset: list-2 list-3 list-4; }
+.host :global(.ql-editor li.ql-indent-2) { counter-reset: list-3 list-4; }
+.host :global(.ql-editor li.ql-indent-3) { counter-reset: list-4; }
 
-.host :global(.ql-editor .ql-indent-1) { padding-left: 1.1em; }
-.host :global(.ql-editor .ql-indent-2) { padding-left: 2.2em; }
-.host :global(.ql-editor .ql-indent-3) { padding-left: 3.3em; }
-.host :global(.ql-editor .ql-indent-4) { padding-left: 4.4em; }
-.host :global(.ql-editor .ql-indent-5) { padding-left: 5.5em; }
-.host :global(.ql-editor .ql-indent-6) { padding-left: 6.6em; }
-.host :global(.ql-editor .ql-indent-7) { padding-left: 7.7em; }
-.host :global(.ql-editor .ql-indent-8) { padding-left: 8.8em; }
+.host :global(.ql-editor li[data-list="bullet"] > .ql-ui::before) { content: "•"; }
+.host :global(.ql-editor li[data-list="bullet"].ql-indent-1 > .ql-ui::before) { content: "◦"; }
+.host :global(.ql-editor li[data-list="bullet"].ql-indent-2 > .ql-ui::before) { content: "▪"; }
+.host :global(.ql-editor li[data-list="bullet"].ql-indent-3 > .ql-ui::before) { content: "–"; }
+.host :global(.ql-editor li[data-list="ordered"] > .ql-ui::before) { content: counter(list-0) "."; }
+.host :global(.ql-editor li[data-list="ordered"].ql-indent-1 > .ql-ui::before) { content: counter(list-1, lower-alpha) "."; }
+.host :global(.ql-editor li[data-list="ordered"].ql-indent-2 > .ql-ui::before) { content: counter(list-2, lower-roman) "."; }
+.host :global(.ql-editor li[data-list="ordered"].ql-indent-3 > .ql-ui::before) { content: counter(list-3) "."; }
+
+.host :global(.ql-editor p.ql-indent-1) { padding-left: 1.1em; }
+.host :global(.ql-editor p.ql-indent-2) { padding-left: 2.2em; }
+.host :global(.ql-editor p.ql-indent-3) { padding-left: 3.3em; }
+.host :global(.ql-editor p.ql-indent-4) { padding-left: 4.4em; }
 .host :global(.ql-editor li.ql-indent-1) { padding-left: 2.2em; }
 .host :global(.ql-editor li.ql-indent-2) { padding-left: 3.3em; }
 .host :global(.ql-editor li.ql-indent-3) { padding-left: 4.4em; }
@@ -133,8 +148,6 @@
 .host :global(.ql-editor li.ql-indent-2 > .ql-ui) { left: 2.2em; }
 .host :global(.ql-editor li.ql-indent-3 > .ql-ui) { left: 3.3em; }
 .host :global(.ql-editor li.ql-indent-4 > .ql-ui) { left: 4.4em; }
-.host :global(.ql-editor li[data-list="bullet"].ql-indent-1 > .ql-ui::before) { content: "◦"; }
-.host :global(.ql-editor li[data-list="bullet"].ql-indent-2 > .ql-ui::before) { content: "▪"; }
 
 /* The placeholder look for an empty box */
 .host :global(.ql-editor.ql-blank::before) {

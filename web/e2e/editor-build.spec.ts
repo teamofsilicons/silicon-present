@@ -50,7 +50,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
 
   // A second slide from the layout picker.
   await page.getByTestId("new-slide").click();
-  await page.getByRole("button", { name: "Blank" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Blank" }).click();
   await expect(page.getByTestId("slide-thumb")).toHaveCount(2);
 
   // Text, with bold.

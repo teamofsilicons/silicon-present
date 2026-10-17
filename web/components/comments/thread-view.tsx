@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/arc/popove
 import { formatRelative, formatDateTime, kindNoun } from "@/lib/format";
 import { notifyError } from "@/lib/notify";
 import type { LiveAccount } from "@/lib/live/types";
-import { deckMembers, deleteComment, editComment, MENTION_RE, react, replyTo, setResolved } from "@/lib/editor/comments";
+import { anchorText, deckMembers, deleteComment, editComment, MENTION_RE, react, replyTo, setResolved } from "@/lib/editor/comments";
 import { nameOf } from "@/lib/editor/normalize-api";
 import type { CommentItem, Thread } from "@/lib/editor/types";
 import type { Editor } from "@/lib/editor/editor";
@@ -71,13 +71,15 @@ function Person({ account }: { account: LiveAccount | null }) {
   return (
     <span className={styles.person}>
       <Avatar name={account?.display_name || account?.id.replace(/^(c|si):/, "") || "?"} src={account?.pfp_url ?? undefined} size="sm" />
-      <span className={styles.personName}>{name}</span>
-      {account ? (
-        <span className={styles.muted}>
-          {account.display_name ? `${account.id} · ` : ""}
-          {kindNoun(account.kind)}
-        </span>
-      ) : null}
+      <span className={styles.personText}>
+        <span className={styles.personName}>{name}</span>
+        {account ? (
+          <span className={styles.personId}>
+            {account.display_name && account.display_name !== account.id ? `${account.id} · ` : ""}
+            {kindNoun(account.kind)}
+          </span>
+        ) : null}
+      </span>
     </span>
   );
 }
@@ -268,8 +270,8 @@ export function ThreadView({ thread, editor, canComment, compact, onClose }: { t
   return (
     <div className={styles.thread} data-compact={compact || undefined} data-state={thread.state}>
       <div className={styles.threadHead}>
-        <span className={styles.anchorLabel} title={thread.anchor.snapshot?.label}>
-          {thread.anchor.snapshot?.label ?? "Comment"}
+        <span className={styles.anchorLabel} title={anchorText(thread.anchor)}>
+          {anchorText(thread.anchor)}
           {thread.exists ? "" : " · no longer in the deck"}
         </span>
         {canComment ? (

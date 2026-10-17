@@ -48,11 +48,15 @@ export function placeAnchor(anchor: Anchor, elements: Element[]): Omit<Placed, "
   }
 }
 
-export function CommentLayer({ slide, elements, scale }: { slide: Slide; elements: Element[]; scale: number }) {
+export function CommentLayer({ slide, elements, scale, phone = false }: { slide: Slide; elements: Element[]; scale: number; phone?: boolean }) {
   const editor = useEditor();
   const { list } = useStore(editor.threads, state => state);
-  const { composer, activeThread, showResolved } = useUi(s => ({ composer: s.composer, activeThread: s.activeThread, showResolved: s.showResolved }));
-  const { canComment } = useAbilities();
+  const { composer, activeThread, showResolved, commentMode, panel, panelOpen } = useUi(s => ({ composer: s.composer, activeThread: s.activeThread, showResolved: s.showResolved, commentMode: s.commentMode, panel: s.panel, panelOpen: s.panelOpen }));
+  const { canComment, canEdit } = useAbilities();
+  // Pins stay small and quiet while an editor edits; they come forward in comment mode and for reviewers.
+  const quiet = canEdit && !commentMode;
+  // The open thread shows in the comments list when that is on screen; otherwise next to its pin (phones: the list).
+  const listShows = panelOpen && (panel === "comments" || !canEdit);
   const placed: Placed[] = [];
   for (const thread of list) {
     if (thread.anchor.kind === "deck" || thread.anchor.slide !== slide.id) continue;
@@ -77,12 +81,15 @@ export function CommentLayer({ slide, elements, scale }: { slide: Slide; element
           data-testid="comment-pin"
           data-state={thread.state}
           data-active={thread.id === activeThread || undefined}
+          data-quiet={quiet || undefined}
+          data-phone={phone || undefined}
           style={at(pin.x, pin.y)}
           aria-label={`Comment ${index + 1}: ${thread.comments[0]?.body ?? ""}`}
           onPointerDown={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation();
-            editor.ui.set({ activeThread: thread.id === activeThread ? null : thread.id, composer: null });
+            const next = thread.id === activeThread ? null : thread.id;
+            editor.ui.set(phone ? { activeThread: next, composer: null, panelOpen: true, panel: "comments" } : { activeThread: next, composer: null });
           }}
         >
           {thread.comments.length}
@@ -93,7 +100,7 @@ export function CommentLayer({ slide, elements, scale }: { slide: Slide; element
           <CommentComposer editor={editor} anchor={floating.anchor} onDone={() => editor.ui.set({ composer: null })} />
         </div>
       ) : null}
-      {active && !floating ? (
+      {active && !floating && !listShows && !phone ? (
         <div className={`${styles.floating} ${styles.popThread}`} data-no-canvas="" data-sq="surface" style={clampedAt(active.pin.x * scale + 20, active.pin.y * scale - 30)} onPointerDown={event => event.stopPropagation()}>
           <ThreadView thread={active.thread} editor={editor} canComment={canComment} compact onClose={() => editor.ui.set({ activeThread: null })} />
         </div>

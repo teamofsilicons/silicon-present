@@ -164,5 +164,11 @@ export function anchorElement(anchor: Anchor): string | null {
   return "element" in anchor && anchor.element ? anchor.element : null;
 }
 
+/** What a thread is on, as a label that starts a sentence. */
+export function anchorText(anchor: { snapshot?: { label?: string } }): string {
+  const label = anchor.snapshot?.label?.trim() || "Comment";
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 /** Mentions in a body: @c:handle and @si:handle. */
 export const MENTION_RE = /@((?:c|si):[a-z0-9][a-z0-9._-]*)/gi;

@@ -179,6 +179,7 @@
   outline: none;
 }
 
+.topIcon[data-active],
 .topButton[data-active] {
   --sq-fill: var(--accent-subtle);
   --sq-stroke: var(--accent);
@@ -1740,6 +1741,17 @@
 
 .shell[data-phone] .title {
   font-size: var(--text-base);
+}
+
+.shell[data-phone] .topLeft {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shell[data-phone] .titleBox,
+.shell[data-phone] .titleBox > :first-child {
+  min-width: 0;
+  max-width: 100%;
 }
 
 @media (max-width: 1100px) {

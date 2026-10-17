@@ -9,7 +9,7 @@ import { useMemo, useRef, type KeyboardEvent } from "react";
 import { MessageSquarePlus } from "lucide-react";
 import { Switch } from "@/components/arc/switch/switch";
 import { formatRelative } from "@/lib/format";
-import { anchorSlide } from "@/lib/editor/comments";
+import { anchorSlide, anchorText } from "@/lib/editor/comments";
 import { nameOf } from "@/lib/editor/normalize-api";
 import type { Thread } from "@/lib/editor/types";
 import { useAbilities, useDeck, useEditor, useUi } from "@/components/editor/editor-context";
@@ -130,7 +130,7 @@ export function ThreadsPanel() {
                 <li key={thread.id} data-thread={thread.id}>
                   <button type="button" className={styles.threadItem} data-state={thread.state} onClick={() => open(thread)}>
                     <span className={styles.anchorLabel}>
-                      {thread.anchor.snapshot?.label ?? "Comment"}
+                      {anchorText(thread.anchor)}
                       {thread.exists ? "" : " · no longer in the deck"}
                     </span>
                     <span className={styles.preview}>
