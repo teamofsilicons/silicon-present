@@ -12,9 +12,9 @@ export function NotesPane() {
   const master = useUi(s => s.master);
   const { canEdit } = useAbilities();
   const slideId = slide && !slide.isMaster ? slide.id : null;
-  const synced = editor.status.get().synced;
-  // The Y.Text exists once the slide does; reading it never creates anything for someone who can't edit.
-  const text = useMemo(() => (slideId && synced ? (editor.textField(slideId, null, "notes") ?? null) : null), [editor, slideId, synced]);
+  // The Y.Text exists once the slide does (from this browser's copy or the service); reading it never creates
+  // anything. Looked up again whenever the slide is read again, so a slide that arrives later binds too.
+  const text = useMemo(() => (slideId && slide ? (editor.textField(slideId, null, "notes") ?? null) : null), [editor, slideId, slide]);
   const { value, onChange, ref } = usePlainText(text, canEdit);
   if (master || !slideId) return null;
   if (!canEdit && !value) return null;
