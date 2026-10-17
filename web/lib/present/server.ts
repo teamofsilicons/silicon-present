@@ -5,9 +5,8 @@
 import "server-only";
 import type { ApiErrorInit } from "../errors";
 import { tryApiFetch } from "../server/rsc";
-import { listPaths, topOfShared, type Listing } from "./decks";
+import { listPaths, topOfShared, transfersFrom, type Listing } from "./paths";
 import { listOf, toDeck, toFolder, toVersions } from "./normalize";
-import { transfersFrom } from "./transfers";
 import type { Deck, Folder, FolderPath, Scope, Transfer, Version } from "./types";
 
 export type Loaded<T> = { data: T; error: null } | { data: null; error: ApiErrorInit };

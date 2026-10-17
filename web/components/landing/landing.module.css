@@ -23,3 +23,6 @@
 
 .closing { margin: clamp(64px, 9vw, 104px) 0 0; color: var(--text-muted); font-size: var(--text-sm); line-height: 1.6; }
 .closing a { color: var(--text-secondary); }
+
+/* Commands wrap instead of scrolling sideways (a phone shows the whole line). */
+.page pre { white-space: pre-wrap; overflow-wrap: anywhere; }

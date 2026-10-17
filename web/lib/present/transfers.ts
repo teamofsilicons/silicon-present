@@ -1,19 +1,14 @@
 /** Transfers: giving a deck or folder to another Carbon or Silicon, who accepts or declines; the giver can cancel. */
 import { api, seg } from "../client/api";
-import { listOf, toTransfer } from "./normalize";
+import { toTransfer } from "./normalize";
+import { transfersFrom } from "./paths";
 import type { ResourceKind, Transfer } from "./types";
+
+export { transfersFrom } from "./paths";
 
 /** Every transfer the caller gives or receives, pending and answered (the service sends `{ incoming, outgoing }`). */
 export async function listTransfers(signal?: AbortSignal): Promise<Transfer[]> {
   return transfersFrom(await api.get<unknown>("/v1/transfers", { query: { state: "all" }, signal }));
-}
-
-export function transfersFrom(answer: unknown): Transfer[] {
-  if (answer && typeof answer === "object" && !Array.isArray(answer) && ("incoming" in answer || "outgoing" in answer)) {
-    const body = answer as { incoming?: unknown; outgoing?: unknown };
-    return [...listOf(body.incoming ?? []), ...listOf(body.outgoing ?? [])].map(toTransfer);
-  }
-  return listOf(answer, "transfers").map(toTransfer);
 }
 
 export async function startTransfer(kind: ResourceKind, id: string, to: string): Promise<Transfer> {

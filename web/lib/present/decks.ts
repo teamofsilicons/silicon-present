@@ -5,34 +5,14 @@
  */
 import { api, seg } from "../client/api";
 import { listOf, toDeck, toFolder, toSearchHit } from "./normalize";
+import { listPaths, topOfShared, type Listing } from "./paths";
 import type { Deck, Folder, FolderPath, ResourceKind, Scope, SearchHit } from "./types";
+
+export { listPaths, topOfShared, type Listing } from "./paths";
 
 const collection = (kind: ResourceKind) => (kind === "deck" ? "decks" : "folders");
 
 /** The paths a listing reads, shared by the server page and the client view. */
-/**
- * The paths a listing reads, shared by the server page and the client view. At the top of My decks the service is asked
- * for `folder=root` / `parent=root` (without it, scope=mine lists every deck and folder the caller owns).
- */
-export const listPaths = {
-  decks: (scope: Scope, folder?: string | null) => ({ path: "/v1/decks", query: { scope, folder: folder ?? (scope === "mine" ? "root" : undefined) } }),
-  folders: (scope: Scope, parent?: string | null) => ({ path: "/v1/folders", query: { scope, parent: parent ?? (scope === "mine" ? "root" : undefined) } }),
-};
-
-/**
- * At the top of Shared with me the service lists every deck shared with the caller, also those inside shared folders;
- * those show inside their folder instead (decks deeper down in a shared folder's subfolders still show at the top).
- */
-export function topOfShared(listing: Listing): Listing {
-  const shared = new Set(listing.folders.map(folder => folder.id));
-  return { folders: listing.folders, decks: listing.decks.filter(deck => !deck.folder || !shared.has(deck.folder)) };
-}
-
-export interface Listing {
-  decks: Deck[];
-  folders: Folder[];
-}
-
 /**
  * What is in one place: the top of mine, shared with me or the trash, or one folder. The decks listing may carry the
  * folders too (`{ decks, folders }`); otherwise they come from the folders listing.

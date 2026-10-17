@@ -4,6 +4,7 @@
  */
 export * from "./types";
 export * from "./normalize";
+export * from "./paths";
 export * from "./decks";
 export * from "./sharing";
 export * from "./transfers";
