@@ -3,6 +3,8 @@
  * formatting), snapping to other elements with visible guides, copy and paste into another deck, keyboard nudging,
  * duplicating and deleting, grouping, locking, and the shortcuts dialog.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { call, createDeck, edit, eventually, signedIn } from "./pages-support";
 import { deckJson, openDeck, plain, settled } from "./editor-support";
@@ -206,6 +208,88 @@ test("the master: what is put there shows under every slide that shows it", asyn
     const json = await deckJson(context, deck);
     expect((json.master.elements as Array<{ kind: string; y: number }>).some(e => e.kind === "shape" && e.y === 1000)).toBe(true);
     expect(json.slides.filter(s => (s as unknown as { hideMaster: boolean }).hideMaster).length).toBe(1);
+  });
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("resizing keeps the ratio with shift, rotating snaps, zooming, and images dropped or pasted onto the slide", async ({ browser }) => {
+  const { context, page, errors } = await signedIn(browser, "carbon");
+  const deck = await createDeck(context, "Handles");
+  const slide = (await call<{ slides: Array<{ id: string }> }>(context, "GET", `/v1/decks/${deck}/content?format=json`)).body.slides[0]!.id;
+  await edit(context, deck, [{ op: "add_element", slide, element: { id: "e_resize", kind: "shape", shape: "rect", x: 400, y: 300, w: 400, h: 200 } }]);
+  await openDeck(page, deck);
+  const c = await pagePoint(page, 600, 400);
+  await page.mouse.click(c.x, c.y);
+
+  // The south-east handle with shift: twice as wide, still 2:1.
+  const se = (await page.locator('[data-handle="se"]').boundingBox())!;
+  const target = await pagePoint(page, 1200, 900);
+  await page.keyboard.down("Shift");
+  await page.mouse.move(se.x + se.width / 2, se.y + se.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await eventually(async () => {
+    const el = (await elements(page)).find(e => e.id === "e_resize")!;
+    expect(el.x).toBe(400);
+    expect(el.y).toBe(300);
+    expect(Math.round(el.w / el.h)).toBe(2);
+    expect(el.w).toBeGreaterThan(600);
+  });
+
+  // The rotate handle with shift lands on a multiple of 15°.
+  const rot = (await page.locator('[data-handle="rotate"]').boundingBox())!;
+  const el = (await elements(page)).find(e => e.id === "e_resize")!;
+  const right = await pagePoint(page, el.x + el.w + 300, el.y + el.h / 2 - 100);
+  await page.keyboard.down("Shift");
+  await page.mouse.move(rot.x + rot.width / 2, rot.y + rot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(right.x, right.y, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await eventually(async () => {
+    const r = await page.evaluate(() => ((window as unknown as { __presentEditor: { deck(): { slides: Array<{ elements: Array<{ id: string; rotation: number }> }> } } }).__presentEditor.deck().slides[0]!.elements.find(e => e.id === "e_resize")!.rotation));
+    expect(r).toBeGreaterThan(0);
+    expect(r % 15).toBe(0);
+  });
+
+  // Zoom in and back to fit.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press(`${MOD}+=`);
+  await expect(page.getByRole("button", { name: /^Zoom \d+ percent/ })).not.toHaveText("Fit");
+  await page.keyboard.press(`${MOD}+0`);
+  await expect(page.getByRole("button", { name: /^Zoom \d+ percent/ })).toHaveText("Fit");
+
+  // An image dropped on the slide, and one pasted.
+  const png = readFileSync(resolve(__dirname, "../../renderer/test/fixtures/picture.png")).toString("base64");
+  const drop = await pagePoint(page, 1500, 250);
+  await page.evaluate(
+    ({ png, x, y }) => {
+      const bytes = Uint8Array.from(atob(png), ch => ch.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([bytes], "dropped.png", { type: "image/png" }));
+      const target = document.elementFromPoint(x, y)!;
+      for (const type of ["dragover", "drop"]) target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data }));
+    },
+    { png, x: drop.x, y: drop.y },
+  );
+  await expect(page.locator('[data-kind="image"]')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await page.evaluate(png => {
+    const bytes = Uint8Array.from(atob(png), ch => ch.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], "pasted.png", { type: "image/png" }));
+    document.body.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+  }, png);
+  await expect(page.locator('[data-kind="image"]')).toHaveCount(2);
+  await settled(page);
+  await eventually(async () => {
+    const json = await deckJson(context, deck);
+    const images = json.slides[0]!.elements.filter(e => e.kind === "image");
+    expect(images.map(i => i.alt).sort()).toEqual(["dropped", "pasted"]);
+    for (const image of images) expect(String(image.src)).toMatch(/^asset:/);
   });
   expect(errors).toEqual([]);
   await context.close();
