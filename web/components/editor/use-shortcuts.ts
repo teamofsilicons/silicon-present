@@ -19,6 +19,11 @@ function typingIn(target: EventTarget | null): boolean {
 export function useShortcuts(editor: Editor) {
   const router = useRouter();
   useEffect(() => {
+    // Copy, cut and paste normally arrive as clipboard events. Where the browser doesn't turn the keys into those
+    // events (some headless and embedded browsers), the keys do it themselves a moment later, unless the event came.
+    let pendingCut: ReturnType<typeof setTimeout> | null = null;
+    let pendingPaste: ReturnType<typeof setTimeout> | null = null;
+
     const onKeyDown = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key;
@@ -83,8 +88,29 @@ export function useShortcuts(editor: Editor) {
         editor.stepSlide(key === "ArrowDown" || key === "ArrowRight" ? 1 : -1);
         return;
       }
+      if (mod && !event.altKey && key.toLowerCase() === "c" && ui.selection.length) {
+        editor.copy();
+        return;
+      }
       if (!canEdit) return;
 
+      if (mod && !event.altKey && key.toLowerCase() === "x" && ui.selection.length) {
+        editor.copy();
+        if (pendingCut) clearTimeout(pendingCut);
+        pendingCut = setTimeout(() => {
+          pendingCut = null;
+          editor.deleteSelection();
+        }, 60);
+        return;
+      }
+      if (mod && !event.altKey && key.toLowerCase() === "v") {
+        if (pendingPaste) clearTimeout(pendingPaste);
+        pendingPaste = setTimeout(() => {
+          pendingPaste = null;
+          void editor.paste(null);
+        }, 60);
+        return;
+      }
       if (mod && key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) editor.redo();
@@ -182,11 +208,15 @@ export function useShortcuts(editor: Editor) {
     };
     const onCut = (event: ClipboardEvent) => {
       if (typingIn(event.target) || !editor.canEdit || !editor.ui.get().selection.length) return;
+      if (pendingCut) clearTimeout(pendingCut);
+      pendingCut = null;
       onCopy(event);
       editor.deleteSelection();
     };
     const onPaste = (event: ClipboardEvent) => {
       if (typingIn(event.target) || !editor.canEdit) return;
+      if (pendingPaste) clearTimeout(pendingPaste);
+      pendingPaste = null;
       const data = event.clipboardData;
       if (!data) return;
       const files = Array.from(data.files ?? []).filter(file => /^(image|video|audio)\//.test(file.type));
@@ -207,6 +237,8 @@ export function useShortcuts(editor: Editor) {
     document.addEventListener("cut", onCut);
     document.addEventListener("paste", onPaste);
     return () => {
+      if (pendingCut) clearTimeout(pendingCut);
+      if (pendingPaste) clearTimeout(pendingPaste);
       window.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("copy", onCopy);
       document.removeEventListener("cut", onCut);
