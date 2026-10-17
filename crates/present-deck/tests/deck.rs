@@ -431,3 +431,25 @@ fn undo_author_reverts_only_their_changes_even_when_others_edited_after() {
     assert_eq!(slide(&out, "s_bbbbb1")["notes"], "Kept notes");
     assert_eq!(element(&out, "s_bbbbb1", "e_text01")["text"]["paragraphs"][0]["runs"][0]["text"], "Howdy ");
 }
+
+#[test]
+fn undo_author_keeps_later_work_positioned_after_theirs() {
+    // The web's history spec: a friend adds a slide and changes the owner's text, then the owner adds a slide right
+    // after the friend's. Undoing the friend must keep the owner's slide and bring the owner's text back.
+    let doc = json_to_doc(&json!({ "slides": [ { "id": "s_his001", "elements": [ { "id": "e_ow0001", "kind": "text", "text": "Owner's first slide" } ] } ] })).unwrap();
+    let base = encode_doc(&doc);
+    let mut later: Vec<(bool, Vec<u8>)> = Vec::new();
+    let mut step = |theirs: bool, o: Value| {
+        let (u, _) = apply_ops_update(&doc, &ops(o)).unwrap();
+        apply(&doc, &u);
+        later.push((theirs, u));
+    };
+    step(true, json!([{ "op": "add_slide", "after": "s_his001", "slide": { "id": "s_his002", "elements": [ { "kind": "text", "text": "Friend's slide" } ] } },
+                      { "op": "update_element", "slide": "s_his001", "element": "e_ow0001", "set": { "text": "Friend changed this" } }]));
+    step(false, json!([{ "op": "add_slide", "after": "s_his002", "slide": { "id": "s_his003", "elements": [ { "kind": "text", "text": "Owner's last slide" } ] } }]));
+    let refs: Vec<(bool, &[u8])> = later.iter().map(|(t, u)| (*t, u.as_slice())).collect();
+    let out = undo_author(&[base.as_slice()], &refs).unwrap();
+    let ids: Vec<&str> = out["slides"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, vec!["s_his001", "s_his003"]);
+    assert_eq!(plain_text(&element(&out, "s_his001", "e_ow0001")["text"]), "Owner's first slide\n");
+}
