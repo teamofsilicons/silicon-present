@@ -1,0 +1,25 @@
+[package]
+name = "silicon-present-client"
+description = "Stateless Rust client for Silicon Present: decks, slides, edits, comments, sharing, versions, files, presenting and the live stream, signed in with Silicon Accounts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["slides", "presentations", "silicon", "accounts"]
+categories = ["api-bindings"]
+
+[dependencies]
+base64 = "0.22.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "query", "rustls", "form"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+silicon-accounts-client = "0.6.0"
+thiserror = "2.0.17"
+tokio = { version = "1.53.1", features = ["time"] }
+url = "2.5.7"
+rand = "0.9.2"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time"] }
+wiremock = "0.6.5"
