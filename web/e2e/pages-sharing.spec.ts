@@ -148,7 +148,8 @@ test("removing the friend takes their access away", async () => {
 
 test("sharing a folder shares what is in it", async () => {
   const folder = await createFolder(owner.context, `Team folder ${run}`);
-  await createDeck(owner.context, `Inside the folder ${run}`, folder);
+  const inside = await createDeck(owner.context, `Inside the folder ${run}`, folder);
+  await deckWithSlides(owner.context, inside, [{ id: "s_fol001", title: "In the folder" }]);
   await call(owner.context, "POST", `/v1/folders/${folder}/access`, { to: friend.id, role: "commenter" });
   await friend.page.goto("/decks?scope=shared");
   await friend.page.getByRole("link", { name: `Team folder ${run}`, exact: true }).click();
@@ -156,6 +157,14 @@ test("sharing a folder shares what is in it", async () => {
   // The folder's deck is inside the folder, not also at the top.
   await friend.page.goto("/decks?scope=shared");
   await expect(friend.page.getByRole("link", { name: `Inside the folder ${run}` })).toHaveCount(0);
+  // A commenter (through the folder) can comment on the deck and cannot change it.
+  const thread = await call(friend.context, "POST", `/v1/decks/${inside}/threads`, { anchor: { kind: "slide", slide: "s_fol001" }, body: "Looks good" });
+  expect([200, 201]).toContain(thread.status);
+  const change = await call(friend.context, "POST", `/v1/decks/${inside}/edits`, { ops: [{ op: "update_slide", slide: "s_fol001", set: { notes: "no" } }] }, [403]);
+  expect(change.status).toBe(403);
+  // And who has access shows the friend as coming through the folder.
+  const access = await call<{ members: Array<{ via?: { name?: string } | null; account?: { id?: string } }> }>(owner.context, "GET", `/v1/decks/${inside}/access`);
+  expect(access.body.members.some(member => member.account?.id === friend.id && member.via?.name === `Team folder ${run}`)).toBe(true);
 });
 
 test("transfers: offered, declined, offered again and accepted; another cancelled", async () => {

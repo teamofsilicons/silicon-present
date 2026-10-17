@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, ChevronRight, ExternalLink, Folder as FolderIcon, FolderInput, FolderPlus, Pencil, Plus, Presentation, Trash2, Upload, UserPlus } from "lucide-react";
+import { ArrowRightLeft, ChevronRight, ExternalLink, Folder as FolderIcon, FolderInput, FolderPlus, History as HistoryIcon, MonitorPlay, Pencil, Plus, Presentation, Trash2, Upload, UserPlus } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { Progress } from "@/components/arc/progress/progress";
 import { SearchField } from "@/components/arc/search-field/search-field";
@@ -150,6 +150,10 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
     const role = roleOf(entry, me);
     const open = entry.kind === "deck" ? `/decks/${encodeURIComponent(entry.item.id)}` : placeHref(scope, entry.item.id);
     const list: ActionMenuItem[] = [{ label: "Open", icon: <ExternalLink size={16} strokeWidth={1.75} />, onSelect: () => router.push(open) }];
+    if (entry.kind === "deck") {
+      list.push({ label: "Present", icon: <MonitorPlay size={16} strokeWidth={1.75} />, onSelect: () => router.push(`/decks/${encodeURIComponent(entry.item.id)}/present`) });
+      if (can.edit(role)) list.push({ label: "History", icon: <HistoryIcon size={16} strokeWidth={1.75} />, onSelect: () => router.push(`/decks/${encodeURIComponent(entry.item.id)}/history`) });
+    }
     if (can.edit(role)) list.push({ label: "Rename", icon: <Pencil size={16} strokeWidth={1.75} />, onSelect: () => setDialog({ type: "rename", target: entry }) });
     list.push({ label: can.share(role) ? "Share" : "Who has access", icon: <UserPlus size={16} strokeWidth={1.75} />, onSelect: () => setDialog({ type: "share", target: entry }) });
     if (can.own(role)) {
