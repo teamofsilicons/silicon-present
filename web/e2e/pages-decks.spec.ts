@@ -40,7 +40,7 @@ test("a new folder, a deck inside it, and breadcrumbs back up", async () => {
   const deckDialog = page.getByRole("dialog", { name: "New deck" });
   await deckDialog.getByLabel("Title").fill(`Roadmap ${run}`);
   await deckDialog.getByRole("button", { name: "Create deck" }).click();
-  await expect(page).toHaveURL(/\/decks\/[A-Za-z0-9]+$/);
+  await expect(page).toHaveURL(/\/decks\/[A-Za-z0-9]+(\?.*)?$/);
 
   await page.goBack();
   await expect(page.getByRole("link", { name: `Roadmap ${run}` })).toBeVisible();
@@ -58,14 +58,14 @@ test("rename and move from a row's menu", async () => {
   await page.goto("/decks");
   await page.getByRole("link", { name: `Plans ${run}`, exact: true }).click();
   await page.getByRole("button", { name: `More actions for Roadmap ${run}` }).click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const rename = page.getByRole("dialog", { name: "Rename deck" });
   await rename.getByLabel("Title").fill(`Roadmap 2027 ${run}`);
   await rename.getByRole("button", { name: "Rename" }).click();
   await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}` })).toBeVisible();
 
   await page.getByRole("button", { name: `More actions for Roadmap 2027 ${run}` }).click();
-  await page.getByRole("menuitem", { name: "Move" }).click();
+  await page.getByRole("menuitem", { name: "Move", exact: true }).click();
   const move = page.getByRole("dialog", { name: `Move “Roadmap 2027 ${run}”` });
   await move.getByRole("button", { name: "Move to My decks" }).click();
   await expect(move).toBeHidden();
@@ -75,7 +75,7 @@ test("rename and move from a row's menu", async () => {
 
   // Rename the folder too.
   await page.getByRole("button", { name: `More actions for Plans ${run}` }).click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const renameFolder = page.getByRole("dialog", { name: "Rename folder" });
   await renameFolder.getByLabel("Name").fill(`Plans and ideas ${run}`);
   await renameFolder.getByRole("button", { name: "Rename" }).click();

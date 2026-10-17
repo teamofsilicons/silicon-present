@@ -100,7 +100,7 @@ test("opening a .pptx makes a new deck, with progress on the way", async () => {
   await page.getByRole("button", { name: "Open a file" }).click();
   await (await chooser).setFiles(file);
   await expect(page.getByRole("status").filter({ hasText: /Uploading|Building a deck/ }).first()).toBeVisible();
-  await page.waitForURL(/\/decks\/[A-Za-z0-9]+$/, { timeout: 200_000 });
+  await page.waitForURL(/\/decks\/[A-Za-z0-9]+(\?.*)?$/, { timeout: 200_000 });
   const id = new URL(page.url()).pathname.split("/").pop()!;
   const content = await me.context.request.get(`${BASE}/api/v1/decks/${id}/content?format=json`);
   expect(content.status()).toBe(200);

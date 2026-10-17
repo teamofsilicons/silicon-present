@@ -28,6 +28,7 @@ import { ApiError } from "@/lib/errors";
 import { notify, notifyError } from "@/lib/notify";
 import { compare, deckFromVersion, getContent, listVersions, nameVersion, restore, undoAccount } from "@/lib/present/versions";
 import type { Account, Comparison, Deck, HistoryEvent, Version } from "@/lib/present/types";
+import { ALWAYS_FRESH } from "@/lib/present/fresh";
 import styles from "./history.module.css";
 
 type Panel = { type: "version"; version: number } | { type: "compare"; from: number; to: number } | null;
@@ -58,7 +59,7 @@ function eventWords(event: HistoryEvent): string {
 export function HistoryView({ deck, initial, canEdit }: { deck: Deck; initial: Version[]; canEdit: boolean }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const versions = useQuery({ queryKey: ["versions", deck.id], queryFn: ({ signal }) => listVersions(deck.id, signal), initialData: initial });
+  const versions = useQuery({ queryKey: ["versions", deck.id], queryFn: ({ signal }) => listVersions(deck.id, signal), initialData: initial, ...ALWAYS_FRESH });
   const list = versions.data;
   const latest = list[0]?.version ?? deck.version ?? 0;
   const [panel, setPanel] = useState<Panel>(list[0] ? { type: "version", version: list[0].version } : null);

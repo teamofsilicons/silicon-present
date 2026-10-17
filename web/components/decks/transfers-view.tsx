@@ -14,6 +14,7 @@ import { LocalTime } from "@/components/foundation/time/local-time";
 import { notify, notifyError } from "@/lib/notify";
 import { answerTransfer, listTransfers } from "@/lib/present/transfers";
 import type { Transfer } from "@/lib/present/types";
+import { ALWAYS_FRESH } from "@/lib/present/fresh";
 import styles from "./decks.module.css";
 
 const STATE_WORDS: Record<Transfer["state"], string> = { pending: "Waiting", accepted: "Accepted", declined: "Declined", cancelled: "Cancelled" };
@@ -21,7 +22,7 @@ const STATE_WORDS: Record<Transfer["state"], string> = { pending: "Waiting", acc
 export function TransfersView({ initial, me }: { initial: Transfer[]; me: { uuid: string; id: string } }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const transfers = useQuery({ queryKey: ["transfers"], queryFn: ({ signal }) => listTransfers(signal), initialData: initial });
+  const transfers = useQuery({ queryKey: ["transfers"], queryFn: ({ signal }) => listTransfers(signal), initialData: initial, ...ALWAYS_FRESH });
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
 

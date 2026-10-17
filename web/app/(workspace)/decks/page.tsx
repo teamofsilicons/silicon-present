@@ -6,7 +6,7 @@
 import type { Metadata } from "next";
 import { DecksView } from "@/components/decks/decks-view";
 import { ErrorAlert } from "@/components/foundation/feedback/error-alert";
-import { Page } from "@/components/foundation/layout/layout";
+import { Page, PageHeader } from "@/components/foundation/layout/layout";
 import { loadFolderPath, loadPlace } from "@/lib/present/server";
 import type { Scope } from "@/lib/present/types";
 import { requireSession } from "@/lib/server/rsc";
@@ -21,7 +21,10 @@ export default async function DecksPage({ searchParams }: PageProps<"/decks">) {
   return (
     <Page width="reading">
       {listing.error ? (
-        <ErrorAlert error={listing.error} title="Your decks could not be loaded" />
+        <>
+          <PageHeader title={scope === "shared" ? "Shared with me" : "Decks"} />
+          <ErrorAlert error={listing.error} title="Your decks could not be loaded" />
+        </>
       ) : (
         <DecksView key={`${scope}:${folder ?? ""}`} scope={scope} folder={folder} path={path && !path.error ? path.data : null} initial={listing.data} me={{ uuid: session.account.uuid, id: session.account.id }} />
       )}

@@ -23,6 +23,7 @@ import { ApiError } from "@/lib/errors";
 import { notify, notifyError } from "@/lib/notify";
 import { createDeck, createFolder, listPlace, moveItem, renameItem, search, trashItem, type Listing } from "@/lib/present/decks";
 import { importFile, type ImportProgress } from "@/lib/present/files";
+import { ALWAYS_FRESH } from "@/lib/present/fresh";
 import { startTransfer } from "@/lib/present/transfers";
 import { can, IMPORT_ACCEPT, type Deck, type Folder, type FolderPath, type ResourceKind, type Scope, type SearchHit } from "@/lib/present/types";
 import { MoveDialog, NameDialog, TransferDialog } from "./dialogs";
@@ -67,7 +68,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
   const router = useRouter();
   const queryClient = useQueryClient();
   const queryKey = ["place", scope, folder ?? ""] as const;
-  const listing = useQuery({ queryKey, queryFn: ({ signal }) => listPlace(scope, folder, signal), initialData: initial });
+  const listing = useQuery({ queryKey, queryFn: ({ signal }) => listPlace(scope, folder, signal), initialData: initial, ...ALWAYS_FRESH });
   const [dialog, setDialog] = useState<Dialog>(null);
   const [q, setQ] = useState("");
   const [importing, setImporting] = useState<{ name: string; progress: ImportProgress } | null>(null);

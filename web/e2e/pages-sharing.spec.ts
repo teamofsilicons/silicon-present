@@ -93,7 +93,7 @@ test("make the friend an editor: they can rename and invite; an email invite wai
 
   await friend.page.goto("/decks?scope=shared");
   await friend.page.getByRole("button", { name: `More actions for ${title}` }).click();
-  await friend.page.getByRole("menuitem", { name: "Rename" }).click();
+  await friend.page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const rename = friend.page.getByRole("dialog", { name: "Rename deck" });
   await rename.getByLabel("Title").fill(`${title} (edited)`);
   await rename.getByRole("button", { name: "Rename" }).click();

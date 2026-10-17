@@ -17,6 +17,7 @@ import { ApiError } from "@/lib/errors";
 import { notify, notifyError } from "@/lib/notify";
 import { deleteForever, listPlace, restoreItem, type Listing } from "@/lib/present/decks";
 import type { ResourceKind } from "@/lib/present/types";
+import { ALWAYS_FRESH } from "@/lib/present/fresh";
 import styles from "./decks.module.css";
 
 type Entry = { kind: ResourceKind; id: string; name: string; trashedAt: string | null; owner: { uuid: string; id: string } | null };
@@ -24,7 +25,7 @@ type Entry = { kind: ResourceKind; id: string; name: string; trashedAt: string |
 export function TrashView({ initial, me }: { initial: Listing; me: { uuid: string; id: string } }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const listing = useQuery({ queryKey: ["place", "trash", ""], queryFn: ({ signal }) => listPlace("trash", null, signal), initialData: initial });
+  const listing = useQuery({ queryKey: ["place", "trash", ""], queryFn: ({ signal }) => listPlace("trash", null, signal), initialData: initial, ...ALWAYS_FRESH });
   const [confirming, setConfirming] = useState<Entry | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
