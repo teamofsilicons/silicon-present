@@ -1,0 +1,71 @@
+/*
+ * The decks pages: one quiet column, one list style (an icon, a name, one line of what it is, a "More actions" button),
+ * hairlines between rows, no cards. The trash and transfers pages use the same list.
+ */
+.view { display: grid; min-width: 0; gap: var(--space-6); }
+
+.header { display: grid; gap: var(--space-3); }
+.titleRow { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }
+.title { min-width: 0; margin: 0; color: var(--foreground); font-family: var(--font-display); font-size: clamp(2rem, 4.2vw, 2.75rem); font-weight: 600; letter-spacing: -.025em; line-height: 1.05; overflow-wrap: anywhere; text-wrap: balance; }
+.lede { max-width: 62ch; margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+/* Breadcrumbs: words and a chevron, never wrapping a separator onto its own line. */
+.crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 0; padding: 0; list-style: none; }
+.crumbs li { display: inline-flex; min-width: 0; align-items: center; gap: 4px; padding-right: 4px; color: var(--text-muted); font-size: var(--text-sm); white-space: nowrap; }
+.crumbs li > svg { flex: none; color: var(--text-muted); }
+.crumbs a, .crumbButton { overflow: hidden; max-width: 22ch; color: var(--text-secondary); text-decoration: none; text-overflow: ellipsis; }
+.crumbs a:hover, .crumbs a:focus-visible, .crumbButton:hover, .crumbButton:focus-visible { color: var(--foreground); text-decoration: underline; text-underline-offset: .2em; outline: none; }
+.crumbs [aria-current="page"] { overflow: hidden; max-width: 28ch; color: var(--foreground); font-weight: 500; text-overflow: ellipsis; }
+.crumbButton { border: 0; padding: 0; background: none; font: inherit; cursor: pointer; }
+.crumbButton[aria-current] { color: var(--foreground); font-weight: 500; }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.search { min-width: min(100%, 320px); flex: 1 1 260px; max-width: 420px; margin-left: auto; }
+.search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The list. */
+.list { display: grid; margin: 0; padding: 0; list-style: none; }
+.row { display: flex; min-height: 64px; align-items: center; gap: var(--space-3); border-top: 1px solid var(--border-subtle); padding: 10px 0; }
+.row:last-child { border-bottom: 1px solid var(--border-subtle); }
+.icon { flex: none; color: var(--text-muted); }
+.row[data-kind="folder"] .icon { color: var(--text-secondary); }
+.main { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.name { overflow: hidden; width: fit-content; max-width: 100%; color: var(--foreground); font-size: var(--text-base); font-weight: 500; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.name:hover, .name:focus-visible { text-decoration: underline; text-underline-offset: .2em; outline: none; }
+.meta { overflow: hidden; color: var(--text-muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.rowActions { display: inline-flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+
+.empty { display: grid; justify-items: start; gap: var(--space-2); border-top: 1px solid var(--border-subtle); padding: var(--space-8) 0; }
+.emptyTitle { margin: 0; color: var(--foreground); font-size: var(--text-base); font-weight: 500; }
+.emptyText { max-width: 56ch; margin: 0 0 var(--space-2); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.55; }
+
+.importing { display: grid; gap: var(--space-2); border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+.importName { overflow: hidden; color: var(--text-secondary); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
+
+/* Dialogs. */
+.form { display: grid; gap: var(--space-5); }
+.formActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+.formError { margin: var(--space-2) 0 0; color: var(--danger); font-size: var(--text-sm); }
+.muted { margin: var(--space-3) 0 0; color: var(--text-muted); font-size: var(--text-sm); }
+.pickList { display: grid; gap: 2px; margin: var(--space-3) 0 0; padding: 0; list-style: none; max-height: 320px; overflow-y: auto; }
+.pick { --sq-r: 12px; --sq-fill: transparent; display: flex; width: 100%; min-height: 44px; align-items: center; gap: var(--space-3); border: 0; padding: 0 var(--space-3); background: var(--sq-fill); color: var(--foreground); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.pick:hover, .pick:focus-visible { --sq-fill: var(--surface-muted); outline: none; }
+.pick > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickChevron { color: var(--text-muted); }
+
+/* A field that asks to type something exactly (deleting for good). */
+.confirmText { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.55; }
+.confirmText strong { color: var(--foreground); font-weight: 500; overflow-wrap: anywhere; }
+
+@media (max-width: 559px) {
+  .actions { width: 100%; }
+  .actions > button:last-of-type { margin-left: auto; }
+  .search { max-width: none; margin-left: 0; }
+  .row { align-items: flex-start; }
+  .rowActions { width: 100%; justify-content: flex-start; }
+  .row:has(.rowActions) { flex-wrap: wrap; }
+}
+
+.sectionTitle { margin: 0; color: var(--foreground); font-size: var(--text-lg); font-weight: 500; letter-spacing: -.01em; }
+.quiet { margin: 0; border-top: 1px solid var(--border-subtle); padding: var(--space-4) 0 0; color: var(--text-muted); font-size: var(--text-sm); }
