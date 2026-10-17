@@ -405,3 +405,29 @@ fn updates_from_series_rebuild_a_document() {
     assert!(decode_doc(b"garbage").is_err());
     let _ = StateVector::default();
 }
+
+#[test]
+fn undo_author_reverts_only_their_changes_even_when_others_edited_after() {
+    let doc = json_to_doc(&everything()).unwrap();
+    let base = encode_doc(&doc);
+    let mut later: Vec<(bool, Vec<u8>)> = Vec::new();
+    let mut step = |theirs: bool, o: Value| {
+        let (u, _) = apply_ops_update(&doc, &ops(o)).unwrap();
+        apply(&doc, &u);
+        later.push((theirs, u));
+    };
+    // They rewrite the shape's text and add a slide; someone else edits the notes and the title afterwards.
+    step(true, json!([{ "op": "update_element", "slide": "s_bbbbb1", "element": "e_shape1", "set": { "text": "Rewritten by them", "x": 1 } },
+                      { "op": "add_slide", "slide": { "id": "s_theirs" } }]));
+    step(false, json!([{ "op": "update_slide", "slide": "s_bbbbb1", "set": { "notes": "Kept notes" } }]));
+    step(true, json!([{ "op": "delete_element", "slide": "s_bbbbb2", "element": "e_audio1" }]));
+    step(false, json!([{ "op": "replace_text", "slide": "s_bbbbb1", "element": "e_text01", "find": "Hello", "replace": "Howdy" }]));
+    let refs: Vec<(bool, &[u8])> = later.iter().map(|(t, u)| (*t, u.as_slice())).collect();
+    let out = undo_author(&[base.as_slice()], &refs).unwrap();
+    assert_eq!(plain_text(&element(&out, "s_bbbbb1", "e_shape1")["text"]), "In a shape\n");
+    assert_eq!(element(&out, "s_bbbbb1", "e_shape1")["x"], 100);
+    assert!(out["slides"].as_array().unwrap().iter().all(|s| s["id"] != "s_theirs"));
+    assert!(slide(&out, "s_bbbbb2")["elements"].as_array().unwrap().iter().any(|e| e["id"] == "e_audio1"));
+    assert_eq!(slide(&out, "s_bbbbb1")["notes"], "Kept notes");
+    assert_eq!(element(&out, "s_bbbbb1", "e_text01")["text"]["paragraphs"][0]["runs"][0]["text"], "Howdy ");
+}

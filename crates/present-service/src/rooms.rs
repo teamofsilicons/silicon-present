@@ -203,7 +203,9 @@ pub async fn commit_with<T>(
     }
     let d = present_deck::diff(&s.json, &after);
     let touched = d.touched();
-    let summary = info.summary.clone().filter(|x| !x.trim().is_empty()).unwrap_or_else(|| present_deck::summarize(&d));
+    // Only explicit summaries (ops, restore, undo, import) are stored; automatic ones are recomputed per version.
+    let explicit = info.summary.clone().filter(|x| !x.trim().is_empty());
+    let summary = explicit.clone().unwrap_or_else(|| present_deck::summarize(&d));
     let seq = s.seq + 1;
     let snapshot = (seq % SNAPSHOT_EVERY == 0).then(|| present_deck::encode_doc(&s.doc));
     let write = async {
@@ -214,7 +216,7 @@ pub async fn commit_with<T>(
             .bind(&update)
             .bind(info.author)
             .bind(info.origin)
-            .bind(&summary)
+            .bind(&explicit)
             .bind(&touched)
             .execute(&mut *tx)
             .await?;

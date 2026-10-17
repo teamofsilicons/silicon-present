@@ -17,6 +17,7 @@ mod ops;
 mod reconcile;
 mod richtext;
 mod textview;
+mod undo;
 
 pub use anyconv::{any_to_json, json_to_any};
 pub use convert::{
@@ -31,6 +32,7 @@ pub use ops::{apply_ops, apply_ops_update, parse_ops, Op, OpsOutcome};
 pub use reconcile::{reconcile, reconcile_update, Scope};
 pub use richtext::{plain_text, rich_from_plain, rich_to_markdownish};
 pub use textview::to_text;
+pub use undo::undo_author;
 
 /// Clones a document by encoding its state into a fresh one (with a new client id).
 pub fn clone_doc(doc: &yrs::Doc) -> yrs::Doc {

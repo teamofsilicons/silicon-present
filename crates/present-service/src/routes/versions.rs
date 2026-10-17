@@ -330,25 +330,22 @@ pub async fn undo_account(State(st): State<AppState>, caller: Caller, Path(id): 
     let (who, who_json) = accounts::resolve(&st, &body.account).await?.ok_or_else(|| {
         ApiError::not_found("account_not_found", format!("There is no Carbon or Silicon `{}`.", body.account), "Name them by c:id, si:id or uuid.")
     })?;
-    // Rebuild the deck from `since` with every later update except theirs. Updates that built on theirs can't
-    // integrate without them and go too: content that only existed because of their changes goes with them.
-    let doc = store::doc_at(&st, &id, body.since).await?;
+    // Replay from `since` with their transactions tagged and undo exactly those (see present_deck::undo_author):
+    // a plain replay without their updates would still carry their deletions inside everyone else's updates.
+    let base: Vec<(Vec<u8>,)> = sqlx::query_as("select data from deck_updates where deck = $1 and seq <= $2 order by seq")
+        .bind(&id)
+        .bind(body.since)
+        .fetch_all(&st.pool)
+        .await?;
     let rows: Vec<(Uuid, Vec<u8>)> = sqlx::query_as("select author, data from deck_updates where deck = $1 and seq > $2 order by seq")
         .bind(&id)
         .bind(body.since)
         .fetch_all(&st.pool)
         .await?;
-    let mut skipped = 0;
-    for (author, data) in rows {
-        if author == who {
-            skipped += 1;
-            continue;
-        }
-        if let Ok(u) = Update::decode_v1(&data) {
-            let _ = doc.transact_mut().apply_update(u);
-        }
-    }
-    let target = present_deck::doc_to_json(&doc);
+    let skipped = rows.iter().filter(|r| r.0 == who).count();
+    let base_refs: Vec<&[u8]> = base.iter().map(|b| b.0.as_slice()).collect();
+    let later: Vec<(bool, &[u8])> = rows.iter().map(|(a, d)| (*a == who, d.as_slice())).collect();
+    let target = present_deck::undo_author(&base_refs, &later)?;
     let handle = who_json["id"].as_str().unwrap_or("someone").to_string();
     let summary = format!("undid {handle}'s changes since version {}", body.since);
     let info = CommitInfo { author: caller.uuid, origin: "undo", summary: Some(summary.clone()), session: None };
