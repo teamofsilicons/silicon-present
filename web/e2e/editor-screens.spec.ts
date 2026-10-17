@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { call, createDeck, edit, signedIn, type Signed } from "./pages-support";
 import { BASE, runAccounts } from "./support";
-import { openDeck, setPublic, share } from "./editor-support";
+import { openDeck, setPublic, share, silicon } from "./editor-support";
 
 test.describe.configure({ mode: "serial" });
 
@@ -116,6 +116,23 @@ test("the editor at 1440", async () => {
   await shoot(page, "editor-theme-1440");
   await page.getByTestId("tab-animate").click();
   await shoot(page, "editor-animate-1440");
+});
+
+test("others in the deck: a Carbon's cursor and a Silicon's change", async () => {
+  const si = await silicon();
+  await share(ada.context, deck, si.id, "editor");
+  await ada.page.setViewportSize({ width: 1440, height: 900 });
+  await openDeck(ada.page, deck, "?slide=s_scrn02");
+  await openDeck(bo.page, deck, "?slide=s_scrn02");
+  const box = (await bo.page.getByTestId("slide-canvas").boundingBox())!;
+  await bo.page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.3, { steps: 4 });
+  await expect(ada.page.getByTestId("remote-cursor")).toBeVisible();
+  await si.call("POST", `/v1/decks/${deck}/edits`, {
+    summary: "Made the takeaway stand out",
+    ops: [{ op: "update_element", slide: "s_scrn02", element: "e_s2shap", set: { style: { fill: "#12a594" } } }, { op: "update_element", slide: "s_scrn02", element: "e_s2titl", set: { text: rt("Revenue grew in every region, led by the North", { heading: 2 }) } }],
+  });
+  await expect(ada.page.getByTestId("change-highlight").first()).toBeVisible();
+  await ada.page.screenshot({ path: `${OUT}/editor-others-1440.png` });
 });
 
 test("a commenter and a signed-out visitor at 1440 and 390", async ({ browser }) => {

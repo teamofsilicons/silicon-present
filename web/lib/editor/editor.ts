@@ -166,6 +166,8 @@ export class Editor {
       captureTimeout: 450,
     });
     this.provider = new LiveProvider({ deckId: this.deckId, doc: this.doc, canEdit: this.canEdit, sendPresence: Boolean(this.me), owner: this.me?.uuid ?? null });
+    // Opened on a slide (?slide=): others see us there from the first heartbeat.
+    if (options.slide) this.provider.setPresence({ slide: options.slide });
     this.cleanup.push(
       this.provider.on("status", status => this.status.set({ status })),
       this.provider.on("synced", () => {
