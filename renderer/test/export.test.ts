@@ -210,6 +210,10 @@ test("pptx round trip: text, positions, tables, charts, notes, master, groups su
   assert.deepEqual(back.slides.map((s) => s.transition), orig.slides.map((s) => s.transition));
   assert.deepEqual(back.slides.map((s) => s.hideMaster), orig.slides.map((s) => s.hideMaster));
   assert.deepEqual(back.master.elements.map((e) => e.id), orig.master.elements.map((e) => e.id), "the master comes back as the master");
+  assert.equal(back.theme.name, orig.theme.name);
+  assert.deepEqual(back.theme.colors, orig.theme.colors);
+  assert.deepEqual(back.theme.fonts, orig.theme.fonts);
+  assert.deepEqual(back.slides.map((s) => s.id), orig.slides.map((s) => s.id), "slide ids ride along as slide names");
   const got = byId(back);
   for (const s of orig.slides) {
     for (const e of s.elements) {
@@ -255,6 +259,8 @@ test("pptx round trip: text, positions, tables, charts, notes, master, groups su
         assert.deepEqual(bc.series.map((x) => [x.name, x.values]), e.chart.series.map((x) => [x.name, x.values]));
       }
       if (e.kind === "video" || e.kind === "audio") assert.equal(b!.kind, e.kind);
+      assert.equal(b!.locked, e.locked, `${e.id} locked`);
+      if (e.link && e.kind !== "html") assert.equal(b!.link, e.link, `${e.id} link`);
     }
   }
   // grouped elements are grouped again (with a fresh group id)

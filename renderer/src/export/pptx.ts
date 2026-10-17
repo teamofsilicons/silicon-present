@@ -477,16 +477,65 @@ function wrapGroups(xml: string, s: Slide): string {
   return xml.slice(0, open + "<p:spTree>".length) + out + xml.slice(close);
 }
 
-/** Write groups, transitions and hidden flags into the generated slide XML (pptxgenjs has none of them). */
-async function postProcess(buf: Buffer, slides: Slide[]): Promise<Buffer> {
+function escXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** The deck's theme colours and name in the pptx theme (pptxgenjs only sets the fonts). */
+function themeXml(xml: string, theme: Theme): string {
+  const c = theme.colors;
+  const palette = seriesPalette(theme);
+  const slots: Record<string, string> = {
+    dk1: c.text,
+    lt1: c.background,
+    dk2: c.muted,
+    lt2: mix(c.text, c.background, 0.92),
+    accent1: c.accent,
+    accent2: c.accent2,
+    accent3: c.accent3,
+    accent4: palette[4]!,
+    accent5: palette[5]!,
+    accent6: palette[6]!,
+    hlink: c.accent,
+    folHlink: c.accent2,
+  };
+  let out = xml.replace(/(<a:theme\b[^>]*\bname=")[^"]*"/, `$1${escXml(theme.name)}"`);
+  for (const [slot, col] of Object.entries(slots)) {
+    const h = hex(col);
+    if (h) out = out.replace(new RegExp(`<a:${slot}>[\\s\\S]*?</a:${slot}>`), `<a:${slot}><a:srgbClr val="${h}"/></a:${slot}>`);
+  }
+  return out;
+}
+
+/** Locked elements keep PowerPoint from moving, resizing or rotating them too. */
+function lockXml(xml: string, s: Slide): string {
+  const locked = new Set(s.elements.filter((e) => e.locked).map((e) => e.id));
+  if (!locked.size) return xml;
+  const locks = 'noMove="1" noResize="1" noRot="1"';
+  return xml.replace(/<p:(sp|pic|graphicFrame|cxnSp)>[\s\S]*?<\/p:\1>/g, (block) => {
+    const name = /<p:cNvPr[^>]*name="([^"]*)"/.exec(block)?.[1] ?? "";
+    if (!locked.has(name)) return block;
+    return block
+      .replace(/<p:cNvSpPr\/>/, `<p:cNvSpPr><a:spLocks ${locks}/></p:cNvSpPr>`)
+      .replace(/<p:cNvSpPr([^>]*)>(?!<a:spLocks)/, `<p:cNvSpPr$1><a:spLocks ${locks}/>`)
+      .replace(/<a:picLocks([^/]*)\/>/, `<a:picLocks$1 ${locks}/>`)
+      .replace(/<p:cNvGraphicFramePr\/>/, `<p:cNvGraphicFramePr><a:graphicFrameLocks ${locks}/></p:cNvGraphicFramePr>`);
+  });
+}
+
+/** Write groups, transitions, hidden flags, locks and theme colours into the generated XML (pptxgenjs has none). */
+async function postProcess(buf: Buffer, slides: Slide[], theme: Theme): Promise<Buffer> {
   const zip = await JSZip.loadAsync(buf);
+  for (const name of Object.keys(zip.files).filter((f) => /^ppt\/theme\/theme\d+\.xml$/.test(f))) {
+    zip.file(name, themeXml(await zip.file(name)!.async("string"), theme));
+  }
   for (const [i, s] of slides.entries()) {
     const path = `ppt/slides/slide${i + 1}.xml`;
     const f = zip.file(path);
     if (!f) continue;
-    let xml = wrapGroups(await f.async("string"), s);
+    let xml = lockXml(wrapGroups(await f.async("string"), s), s);
     // the slide's id rides along as the slide name, so slide links and ids survive a round trip
-    xml = xml.replace(/<p:cSld>/, `<p:cSld name="${s.id}">`);
+    xml = xml.replace(/<p:cSld(\s+name="[^"]*")?>/, `<p:cSld name="${s.id}">`);
     if (s.skipped && !/<p:sld[^>]*\sshow="0"/.test(xml)) xml = xml.replace(/<p:sld(\s|>)/, '<p:sld show="0"$1');
     // pptxgenjs marks audio as <a:videoFile>; PowerPoint wants <a:audioFile> for audio relationships
     const rels = await zip.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`)?.async("string");
@@ -512,7 +561,8 @@ export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; ass
   pptx.layout = "SILICON";
   pptx.title = deck.title ?? "Slides";
   pptx.company = "";
-  pptx.author = "Silicon Present";
+  pptx.author = "Silicon Present"; // the importer reads the theme's muted colour back from dk2 for these
+  pptx.subject = "";
   pptx.theme = { headFontFace: deck.theme.fonts.heading, bodyFontFace: deck.theme.fonts.body };
   const ctx: Ctx = {
     deck,
@@ -542,5 +592,5 @@ export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; ass
     if (s.notes) slide.addNotes(s.notes);
   }
   const raw = (await pptx.write({ outputType: "nodebuffer", compression: true })) as Buffer;
-  return { data: await postProcess(raw, deck.slides), warnings: ctx.warnings };
+  return { data: await postProcess(raw, deck.slides, deck.theme), warnings: ctx.warnings };
 }

@@ -146,13 +146,17 @@ test("pptx: groups are flattened with a shared group id and real positions; unmo
   assert.deepEqual(grouped.map((e) => [e.x, e.y, e.w, e.h]), [[144, 432, 144, 72], [324, 432, 144, 72]]);
   const pictures = s8.elements.filter((e) => e.kind === "image") as ImageElement[];
   assert.equal(pictures.length, 2, "the custom shape and the unknown object");
-  for (const p of pictures) {
-    const a = r.assets.find((x) => `asset:${x.key}` === p.src)!;
-    assert.equal(a.contentType, "image/png");
-    const png = Buffer.from(a.data, "base64");
-    assert.ok(Math.abs(png.readUInt32BE(16) - p.w) <= 2, "the picture is cut at the element's size");
-  }
-  assert.ok(r.notes.some((n) => /Custom shape/.test(n)));
+  const asset = (p: ImageElement) => r.assets.find((x) => `asset:${x.key}` === p.src)!;
+  // the custom shape is drawn exactly, as SVG with its own path and colour
+  const svg = Buffer.from(asset(pictures[0]!).data, "base64").toString("utf8");
+  assert.equal(asset(pictures[0]!).contentType, "image/svg+xml");
+  assert.match(svg, /<path d="M[^"]+Z"/);
+  assert.match(svg, /fill="#7a4e3b"/);
+  // the unknown object is cut from LibreOffice's render, at the element's size
+  const crop = asset(pictures[1]!);
+  assert.equal(crop.contentType, "image/png");
+  assert.ok(Math.abs(Buffer.from(crop.data, "base64").readUInt32BE(16) - pictures[1]!.w) <= 2);
+  assert.ok(r.notes.some((n) => /Object \(picture/.test(n)));
 });
 
 for (const ext of ["odp", "ppt"]) {
@@ -239,7 +243,7 @@ for (const [file, kind, ct] of [
   });
 }
 
-for (const file of ["font.ttf", "font.woff2"]) {
+for (const file of ["font.ttf", "font.woff", "font.woff2"]) {
   test(`${file}: the font becomes the deck's theme font`, async () => {
     const r = await importThrough(c, file);
     assert.equal(r.status, 200);

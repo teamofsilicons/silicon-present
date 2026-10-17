@@ -38,33 +38,64 @@ function titleFrom(filename: string): string {
   return filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Untitled";
 }
 
-/** Replace each region the parser couldn't model with a picture cut from LibreOffice's PDF render of that slide. */
+/** A copy of the deck with every slide's own shapes removed: renders only backgrounds, layouts and masters. */
+async function withoutSlideContent(pptxPath: string, outPath: string): Promise<string> {
+  const zip = await JSZip.loadAsync(readFileSync(pptxPath));
+  for (const name of Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))) {
+    const xml = await zip.file(name)!.async("string");
+    zip.file(
+      name,
+      xml.replace(/(<p:spTree>\s*<p:nvGrpSpPr>[\s\S]*?<\/p:nvGrpSpPr>\s*<p:grpSpPr(?:\/>|>[\s\S]*?<\/p:grpSpPr>))[\s\S]*?(<\/p:spTree>)/, "$1$2"),
+    );
+  }
+  writeFileSync(outPath, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  return outPath;
+}
+
+/**
+ * Replace each region the parser couldn't model with a picture cut from LibreOffice's PDF render of that slide.
+ * Parts of layouts and masters are cut from a render with the slides' own shapes removed, so nothing on the slide is
+ * baked into them.
+ */
 async function fillRegions(imp: PptxImport, pptxPath: string, dir: string): Promise<string[]> {
   if (!imp.regions.length) return [];
   const notes: string[] = [];
+  const markers = new Map<string, string>(); // region marker -> asset key
   if (!HAVE.soffice() || !HAVE.pdftoppm()) {
     for (const r of imp.regions) notes.push(`Slide ${r.slideIndex + 1}: ${r.why} could not be pictured because LibreOffice or pdftoppm is missing on the converter host.`);
-    return notes;
-  }
-  const pdf = await sofficePdfAllSlides(pptxPath, dir);
-  const dpi = (imp.deck.size.width * 72) / imp.pageWidthPt;
-  let n = 0;
-  for (const r of imp.regions) {
-    const base = join(dir, `region-${++n}`);
-    await run(
-      PDFTOPPM,
-      ["-f", String(r.slideIndex + 1), "-l", String(r.slideIndex + 1), "-r", String(dpi), "-x", String(Math.max(0, Math.floor(r.x))), "-y", String(Math.max(0, Math.floor(r.y))), "-W", String(Math.ceil(r.w)), "-H", String(Math.ceil(r.h)), "-png", "-singlefile", pdf, base],
-      { what: "pdftoppm", timeoutMs: 60_000 },
-    );
-    const data = readFileSync(base + ".png");
-    const key = `a${imp.assets.length + 1}`;
-    imp.assets.push({ key, filename: `slide-${r.slideIndex + 1}-picture-${n}.png`, contentType: "image/png", data });
-    for (const s of imp.deck.slides) {
-      const el = s.elements.find((e) => e.id === r.elementId);
-      if (el && el.kind === "image") el.src = `asset:${key}`;
+  } else {
+    const dpi = (imp.deck.size.width * 72) / imp.pageWidthPt;
+    const pdfs = new Map<boolean, string>();
+    let n = 0;
+    for (const r of imp.regions) {
+      if (!pdfs.has(r.decor)) {
+        const sub = join(dir, r.decor ? "decor" : "full");
+        mkdirSync(sub, { recursive: true });
+        const src = r.decor ? await withoutSlideContent(pptxPath, join(sub, "decor.pptx")) : pptxPath;
+        pdfs.set(r.decor, await sofficePdfAllSlides(src, sub));
+      }
+      const base = join(dir, `region-${++n}`);
+      await run(
+        PDFTOPPM,
+        ["-f", String(r.slideIndex + 1), "-l", String(r.slideIndex + 1), "-r", String(dpi), "-x", String(Math.max(0, Math.floor(r.x))), "-y", String(Math.max(0, Math.floor(r.y))), "-W", String(Math.ceil(r.w)), "-H", String(Math.ceil(r.h)), "-png", "-singlefile", pdfs.get(r.decor)!, base],
+        { what: "pdftoppm", timeoutMs: 60_000 },
+      );
+      const key = `a${imp.assets.length + 1}`;
+      imp.assets.push({ key, filename: `slide-${r.slideIndex + 1}-picture-${n}.png`, contentType: "image/png", data: readFileSync(base + ".png") });
+      markers.set(r.marker, key);
+      notes.push(`Slide ${r.slideIndex + 1}: ${r.why}.`);
     }
-    notes.push(`Slide ${r.slideIndex + 1}: ${r.why}.`);
   }
+  // point every element that used a region at its picture (layout parts are on many slides); drop what has none
+  const fix = (els: DeckJson["slides"][number]["elements"]) =>
+    els.filter((e) => {
+      if (e.kind !== "image" || !e.src.startsWith("region:")) return true;
+      const key = markers.get(e.src);
+      if (key) e.src = `asset:${key}`;
+      return !!key;
+    });
+  imp.deck.master.elements = fix(imp.deck.master.elements);
+  for (const s of imp.deck.slides) s.elements = fix(s.elements);
   return notes;
 }
 

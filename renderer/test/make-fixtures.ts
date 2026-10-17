@@ -183,6 +183,21 @@ async function richPptx(png: Buffer, jpg: Buffer, mp4: Buffer): Promise<Buffer> 
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
+/** Fonts (OFL, from Google Fonts, subset to the sample text): woff2, woff and ttf, by asking as different browsers. */
+async function fonts() {
+  const uas: Array<[string, string]> = [
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "woff2"],
+    ["Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko", "woff"],
+    ["curl/8", "ttf"],
+  ];
+  for (const [ua, ext] of uas) {
+    const css = await (await fetch("https://fonts.googleapis.com/css2?family=Fraunces:wght@600&text=FrauncesThe%20quick%20brown%20fox%20jumps%20over%20the%20lazy%20dog.%200123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", { headers: { "user-agent": ua } })).text();
+    const url = /url\((https:[^)]+)\)/.exec(css)?.[1];
+    if (url) writeFileSync(join(FIX, `font.${ext}`), Buffer.from(await (await fetch(url)).arrayBuffer()));
+    else console.log(`no ${ext} font served`);
+  }
+}
+
 async function keyOnly() {
   const job = jobDir();
   try {
@@ -197,6 +212,7 @@ async function keyOnly() {
 
 async function main() {
   if (process.argv.includes("--key-only")) return keyOnly();
+  if (process.argv.includes("--fonts-only")) return fonts();
   mkdirSync(FIX, { recursive: true });
   const job = jobDir();
   try {
@@ -210,12 +226,7 @@ async function main() {
     execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=15", "-t", "1", "-c:v", "libvpx-vp9", "-b:v", "200k", join(FIX, "clip.webm")]);
     execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "libmp3lame", "-b:a", "48k", join(FIX, "tone.mp3")]);
     writeFileSync(join(FIX, "tone.wav"), wav());
-    // fonts (OFL, from Google Fonts, subset to the sample text): woff2 and ttf
-    for (const [ua, ext] of [["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "woff2"], ["curl/8", "ttf"]] as const) {
-      const css = await (await fetch("https://fonts.googleapis.com/css2?family=Fraunces:wght@600&text=FrauncesThe%20quick%20brown%20fox%20jumps%20over%20the%20lazy%20dog.%200123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", { headers: { "user-agent": ua } })).text();
-      const url = /url\((https:[^)]+)\)/.exec(css)?.[1];
-      if (url) writeFileSync(join(FIX, `font.${ext}`), Buffer.from(await (await fetch(url)).arrayBuffer()));
-    }
+    await fonts();
     writeFileSync(
       join(FIX, "page.html"),
       `<!doctype html><html><head><title>A live page</title><style>body{margin:0;display:grid;place-items:center;height:100vh;background:#111;color:#fff;font:600 64px system-ui}</style></head><body><div id="n">0</div><script>let i=0;setInterval(()=>document.getElementById('n').textContent=++i,100)</script></body></html>`,

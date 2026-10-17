@@ -3,6 +3,9 @@ import { mix, newElementId, newGroupId, newSlideId, normalizeDeck } from "@silic
 import type { Chart, DeckJson, Element, ElementInput, Paragraph, RichText, Run, Slide, Theme } from "@silicon-present/deck";
 import { ConverterError } from "../errors";
 import { extOf, imageSize, sniffType, typeForExt } from "../media";
+import { createHash } from "node:crypto";
+import { shapeGeometry } from "@silicon-present/render";
+import { connectorPath, custGeomSvg, flipPath, svgDoc, svgPad, type LineStyle, type Paint, type PaintColor } from "./geometry";
 import { EMPTY, attr, child, find, findAll, kids, num, parseXml, path, relsPathFor, resolvePart, textOf, type XNode } from "./xml";
 
 // Native .pptx importer. Reads the package (presentation, slides, layouts, masters, theme, charts, notes, media) and
@@ -21,14 +24,17 @@ export interface ImportedAsset {
 }
 
 export interface Region {
+  /** every image element whose src is this marker gets the picture ("region:<n>") */
+  marker: string;
+  /** the slide (0-based) whose render the picture is cut from */
   slideIndex: number;
-  /** id of the placeholder image element to fill with the picture */
-  elementId: string;
   x: number;
   y: number;
   w: number;
   h: number;
   why: string;
+  /** part of a layout or master: cut from a render of the slide with its own content removed */
+  decor: boolean;
 }
 
 export interface PptxImport {
@@ -70,6 +76,9 @@ interface Ctx {
   defaultTextStyle: XNode | undefined;
   /** the shape name each element id came from (to recognise our own exported ids) */
   nameOf: Map<string, string>;
+  /** slide size in px */
+  slideW: number;
+  slideH: number;
 }
 
 const NS_TABLE = "http://schemas.openxmlformats.org/drawingml/2006/table";
@@ -228,6 +237,13 @@ function colorIn(n: XNode | undefined, ctx: Ctx, phClr?: string): Color | null {
     }
   }
   return { hex: rgbToHex(rgb), alpha };
+}
+
+/** "#rrggbb" or "#rrggbbaa" back into a colour with alpha. */
+function hexAlpha(s: string): Color {
+  const m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  if (!m) return { hex: s, alpha: 1 };
+  return { hex: "#" + m[1]!.toLowerCase(), alpha: m[2] ? parseInt(m[2], 16) / 255 : 1 };
 }
 
 function colorStr(c: Color | null): string | undefined {
@@ -578,6 +594,14 @@ interface SlideBuild {
   layout: Part | null;
   master: Part | null;
   group: string | null;
+  /** reading a layout's or master's decorations (not the slide's own shapes) */
+  decor?: boolean;
+}
+
+/** PowerPoint's "can't move" lock is our locked. */
+function isLocked(nv: XNode | undefined): boolean {
+  const locks = find(nv, "a:spLocks") ?? find(nv, "a:picLocks") ?? find(nv, "a:graphicFrameLocks") ?? find(nv, "a:cxnSpLocks");
+  return attr(locks, "noMove") === "1";
 }
 
 function takeId(name: string | undefined, ctx: Ctx): string {
@@ -611,8 +635,65 @@ function addRegion(b: SlideBuild, ctx: Ctx, box: { x: number; y: number; w: numb
   const cy = box.y + box.h / 2;
   const r = { x: cx - bw / 2, y: cy - bh / 2, w: Math.max(1, bw), h: Math.max(1, bh) };
   const id = takeId(name, ctx);
-  b.elements.push({ id, kind: "image", ...r, rotation: 0, src: "", alt: why, fit: "fill", group: b.group });
-  ctx.regions.push({ slideIndex: b.slideIndex, elementId: id, ...r, why });
+  const marker = `region:${ctx.regions.length + 1}`;
+  b.elements.push({ id, kind: "image", ...r, rotation: 0, src: marker, alt: why, fit: "fill", group: b.group });
+  ctx.regions.push({ marker, slideIndex: b.slideIndex, ...r, why, decor: !!b.decor });
+}
+
+/** The shape's line as an SVG line style (with arrowheads), or null. */
+function lineStyleOf(spPr: XNode | undefined, sp: XNode, ctx: Ctx): LineStyle | null {
+  const ln = lineOf(spPr, sp, ctx);
+  if (!ln?.color) return null;
+  const lnNode = child(spPr, "a:ln");
+  const arrow = (n: XNode | undefined) => !!n && (attr(n, "type") ?? "none") !== "none";
+  return { color: hexAlpha(ln.color), width: ln.width ?? 12700 * ctx.k, head: arrow(child(lnNode, "a:headEnd")), tail: arrow(child(lnNode, "a:tailEnd")) };
+}
+
+/** Put an SVG drawing on the slide as a picture covering the shape's box (grown by the SVG's padding). */
+function pushSvg(b: SlideBuild, ctx: Ctx, svg: string, box: { x: number; y: number; w: number; h: number; rotation: number }, pad: number, name: string | undefined, nv: XNode | undefined, from: Part): Record<string, unknown> {
+  const key = generatedAsset(ctx, Buffer.from(svg), "image/svg+xml", `${(name || "shape").replace(/[^A-Za-z0-9_-]+/g, "-")}.svg`);
+  const pic: Record<string, unknown> = { id: takeId(name, ctx), kind: "image", x: box.x - pad, y: box.y - pad, w: box.w + 2 * pad, h: box.h + 2 * pad, rotation: box.rotation, src: `asset:${key}`, alt: name ?? "", fit: "fill", group: b.group, locked: isLocked(nv) };
+  linkFor(nv, from, ctx, (v) => (pic.link = v));
+  b.elements.push(pic as ElementInput);
+  return pic;
+}
+
+/** A generated picture (e.g. custom geometry drawn as SVG), stored once however many elements use it. */
+function generatedAsset(ctx: Ctx, data: Buffer, contentType: string, filename: string): string {
+  const cacheKey = `generated:${contentType}:${createHash("sha256").update(data).digest("hex")}`;
+  const existing = ctx.assetByPart.get(cacheKey);
+  if (existing) return existing;
+  const key = `a${ctx.assets.length + 1}`;
+  ctx.assets.push({ key, filename, contentType, data });
+  ctx.assetByPart.set(cacheKey, key);
+  return key;
+}
+
+/** Fill as a paint for SVG (solid, gradients) — custom geometry keeps its gradients this way. */
+function paintOf(spPr: XNode | undefined, sp: XNode, ctx: Ctx): Paint | null {
+  for (const c of spPr?.children ?? []) {
+    if (c.name === "a:noFill") return { kind: "none" };
+    if (c.name === "a:solidFill") {
+      const col = colorIn(c, ctx);
+      return col ? { kind: "color", color: col } : null;
+    }
+    if (c.name === "a:gradFill") {
+      const stops = kids(child(c, "a:gsLst"), "a:gs")
+        .map((g) => ({ offset: num(g, "pos", 0)! / 100000, color: colorIn(g, ctx) }))
+        .filter((x) => x.color) as Array<{ offset: number; color: PaintColor }>;
+      if (!stops.length) return null;
+      if (child(c, "a:path")) return { kind: "radial", stops };
+      return { kind: "linear", angle: num(child(c, "a:lin"), "ang", 0)! / 60000, stops };
+    }
+    if (c.name === "a:pattFill") {
+      const col = colorIn(child(c, "a:fgClr"), ctx);
+      return col ? { kind: "color", color: col } : null;
+    }
+    if (c.name === "a:blipFill" || c.name === "a:grpFill") return null;
+  }
+  const ref = styleFill(sp, ctx);
+  if (ref && ref.kind === "color") return { kind: "color", color: ref.color };
+  return { kind: "none" };
 }
 
 async function assetFor(ctx: Ctx, partPath: string, opts: { crop?: { l: number; t: number; r: number; b: number } } = {}): Promise<{ key: string; contentType: string; data: Buffer } | null> {
@@ -653,7 +734,7 @@ function linkFor(nv: XNode | undefined, part: Part, ctx: Ctx, set: (v: string) =
 }
 
 async function readSp(sp: XNode, b: SlideBuild, t: Transform, ctx: Ctx, from: Part): Promise<void> {
-  const nv = child(sp, "p:nvSpPr");
+  const nv = child(sp, "p:nvSpPr") ?? child(sp, "p:nvCxnSpPr");
   const name = attr(path(nv, "p:cNvPr"), "name");
   if (attr(path(nv, "p:cNvPr"), "hidden") === "1") return;
   const ph = phOf(nv);
@@ -668,8 +749,45 @@ async function readSp(sp: XNode, b: SlideBuild, t: Transform, ctx: Ctx, from: Pa
   const fill = fillOf(spPr, ctx) ?? styleFill(sp, ctx) ?? (ph ? fillOf(path(layoutPh, "p:spPr"), ctx) ?? fillOf(path(masterPh, "p:spPr"), ctx) : undefined);
   const line = lineOf(spPr, sp, ctx);
   const is3d = !!find(spPr, "a:sp3d") && (!!find(spPr, "a:bevelT") || num(find(spPr, "a:sp3d"), "extrusionH", 0)! > 0);
+  const flip = { h: xf.flipH, v: xf.flipV };
+  if (prst === "__custom" && !is3d) {
+    // custom geometry: drawn exactly as an SVG picture (with its own fill, gradient and line)
+    const paint = paintOf(spPr, sp, ctx);
+    const ls = lineStyleOf(spPr, sp, ctx);
+    const svg = paint ? custGeomSvg(child(spPr, "a:custGeom")!, xf.ext[0], xf.ext[1], box.w, box.h, paint, ls, flip) : null;
+    if (svg) {
+      pushSvg(b, ctx, svg, box, svgPad(ls), name, nv, from);
+      const txt = child(sp, "p:txBody");
+      if (txt && findAll(txt, "a:t").some((t) => textOf(t).trim())) {
+        const anchorC = attr(child(txt, "a:bodyPr"), "anchor") ?? "t";
+        const { rt } = readTxBody(txt, [ctx.defaultTextStyle], ctx, from, colorIn(path(sp, "p:style", "a:fontRef"), ctx) ?? { hex: ctx.theme.colors.dk1 ?? "#000000", alpha: 1 });
+        b.elements.push({ id: takeId(undefined, ctx), kind: "text", ...box, text: rt, group: b.group, style: { verticalAlign: anchorC === "ctr" ? "middle" : anchorC === "b" ? "bottom" : "top" } });
+      }
+      return;
+    }
+  }
+  if (/Connector[2-5]$/.test(prst)) {
+    // elbow and curved connectors: drawn as SVG (an editable line would lose the bend)
+    const ls = lineStyleOf(spPr, sp, ctx);
+    const gd = find(child(spPr, "a:prstGeom"), "a:gd");
+    const adj = gd ? Number((attr(gd, "fmla") ?? "").replace("val ", "")) : NaN;
+    const d = connectorPath(prst, box.w, box.h, Number.isFinite(adj) ? adj : undefined);
+    if (d && ls) {
+      pushSvg(b, ctx, svgDoc([{ d: flipPath(d, box.w, box.h, flip.h, flip.v), fill: false, stroke: true }], box.w, box.h, { kind: "none" }, ls), box, svgPad(ls), name, nv, from);
+      return;
+    }
+  }
   if (prst === "__custom" || is3d || (!PRST[prst] && prst !== "rect")) {
     addRegion(b, ctx, box, prst === "__custom" ? "Custom shape (picture of how it looked)" : is3d ? "3D shape (picture of how it looked)" : `Shape "${prst}" (picture of how it looked)`, name);
+    return;
+  }
+  // a preset shape with a gradient and no text: an SVG picture keeps the gradient (our fills are single colours)
+  const gradPaint = child(spPr, "a:gradFill") ? paintOf(spPr, sp, ctx) : null;
+  const hasText = findAll(child(sp, "p:txBody"), "a:t").some((t) => textOf(t).trim());
+  if (gradPaint && gradPaint.kind !== "none" && !hasText && PRST[prst] && PRST[prst] !== "line") {
+    const ls = lineStyleOf(spPr, sp, ctx);
+    const geo = shapeGeometry(PRST[prst]!, box.w, box.h);
+    pushSvg(b, ctx, svgDoc([{ d: flipPath(geo.d, box.w, box.h, flip.h, flip.v), fill: true, stroke: true }], box.w, box.h, gradPaint, ls), box, svgPad(ls), name, nv, from);
     return;
   }
   // text: style chain general -> specific
@@ -700,7 +818,7 @@ async function readSp(sp: XNode, b: SlideBuild, t: Transform, ctx: Ctx, from: Pa
   if (find(spPr, "a:outerShdw")) style.shadow = true;
   const shape = PRST[prst] ?? "rect";
   const id = takeId(name, ctx);
-  const el: Record<string, unknown> = { id, ...box, style, group: b.group };
+  const el: Record<string, unknown> = { id, ...box, style, group: b.group, locked: isLocked(nv) };
   linkFor(nv, from, ctx, (v) => (el.link = v));
   if (fill?.kind === "image") {
     // a shape filled with a picture becomes a picture of that size
@@ -821,7 +939,7 @@ async function readPic(pic: XNode, b: SlideBuild, t: Transform, ctx: Ctx, from: 
   let fit: "contain" | "fill" = "fill";
   if (natural && box.w > 0 && box.h > 0 && Math.abs(natural.width / natural.height - box.w / box.h) < 0.02 * (box.w / box.h)) fit = "contain";
   const id = takeId(name, ctx);
-  const el: Record<string, unknown> = { id, kind: "image", ...box, src: srcRef, alt: descr, fit, group: b.group };
+  const el: Record<string, unknown> = { id, kind: "image", ...box, src: srcRef, alt: descr, fit, group: b.group, locked: isLocked(nv) };
   const ln = lineOf(spPr, pic, ctx);
   const style: Record<string, unknown> = {};
   if (ln && ln.color) {
@@ -938,6 +1056,7 @@ async function readGraphicFrame(gf: XNode, b: SlideBuild, t: Transform, ctx: Ctx
       cells,
       style,
       group: b.group,
+      locked: isLocked(nv),
     });
     return;
   }
@@ -945,7 +1064,7 @@ async function readGraphicFrame(gf: XNode, b: SlideBuild, t: Transform, ctx: Ctx
     const rel = from.rels.get(attr(child(gd, "c:chart"), "r:id") ?? "");
     const chart = rel ? await readChartPart(ctx, rel.target) : null;
     if (chart) {
-      b.elements.push({ id: takeId(name, ctx), kind: "chart", ...box, chart, group: b.group });
+      b.elements.push({ id: takeId(name, ctx), kind: "chart", ...box, chart, group: b.group, locked: isLocked(nv) });
       return;
     }
   }
@@ -996,6 +1115,14 @@ async function background(parts: Array<Part | null>, ctx: Ctx): Promise<Slide["b
     const bg = path(p?.xml, "p:cSld", "p:bg");
     if (!bg || !p) continue;
     const bgPr = child(bg, "p:bgPr");
+    if (bgPr && child(bgPr, "a:gradFill")) {
+      // a gradient background: an SVG picture of it, so it looks the same
+      const paint = paintOf(bgPr, bg, ctx);
+      if (paint && paint.kind !== "none") {
+        const svg = svgDoc([{ d: `M0,0 H${ctx.slideW} V${ctx.slideH} H0 Z`, fill: true, stroke: false }], ctx.slideW, ctx.slideH, paint, null);
+        return { image: `asset:${generatedAsset(ctx, Buffer.from(svg), "image/svg+xml", "background.svg")}`, fit: "cover" };
+      }
+    }
     if (bgPr) {
       const f = fillOf(bgPr, ctx);
       if (f?.kind === "color") return { color: f.color.hex };
@@ -1128,6 +1255,8 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     pendingSlideLinks: [],
     defaultTextStyle: child(pres.xml, "p:defaultTextStyle"),
     nameOf: new Map(),
+    slideW: width,
+    slideH: height,
   };
   // sections: p14:sectionLst in the presentation's extLst
   const sectionStart = new Map<string, string>();
@@ -1156,18 +1285,16 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     const b: SlideBuild = { elements: [], slideIndex: slides.length, part, layout, master, group: null };
     // each master's decorations (non-placeholder shapes), read once
     if (master && !masterDecorByPath.has(master.path)) {
-      const mb: SlideBuild = { ...b, elements: [] };
+      const mb: SlideBuild = { ...b, elements: [], decor: true };
       await readTree(kids(path(master.xml, "p:cSld", "p:spTree")), mb, IDENTITY, ctx, master, { skipPlaceholders: true });
       // decorations are copied onto many slides, so a part that would need a per-slide picture is left to the slides
-      masterDecorByPath.set(master.path, mb.elements.filter((e) => !ctx.regions.some((r) => r.elementId === e.id)));
-      ctx.regions = ctx.regions.filter((r) => !mb.elements.some((e) => e.id === r.elementId));
+      masterDecorByPath.set(master.path, mb.elements);
     }
     slideMasters.push(master?.path ?? null);
     if (layout && !layoutDecor.has(layout.path)) {
-      const lb: SlideBuild = { ...b, elements: [] };
+      const lb: SlideBuild = { ...b, elements: [], decor: true };
       await readTree(kids(path(layout.xml, "p:cSld", "p:spTree")), lb, IDENTITY, ctx, layout, { skipPlaceholders: true });
-      layoutDecor.set(layout.path, lb.elements.filter((e) => !ctx.regions.some((r) => r.elementId === e.id)));
-      ctx.regions = ctx.regions.filter((r) => !lb.elements.some((e) => e.id === r.elementId));
+      layoutDecor.set(layout.path, lb.elements);
     }
     slideLayouts.push(layout?.path ?? null);
     await readTree(kids(path(part.xml, "p:cSld", "p:spTree")), b, IDENTITY, ctx, part);
@@ -1259,7 +1386,10 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     },
     customFonts: [],
   };
-  const title = textOf(find((await loadPart(zip, "docProps/core.xml"))?.xml, "dc:title")) || undefined;
+  const core = (await loadPart(zip, "docProps/core.xml"))?.xml;
+  const title = textOf(find(core, "dc:title")) || undefined;
+  // our own exports keep the theme's muted colour in dk2; elsewhere dk2 is just another dark colour
+  if (textOf(find(core, "dc:creator")) === "Silicon Present" && theme.colors.dk2) themeOut.colors.muted = theme.colors.dk2;
   const deck = normalizeDeck({ title, size: { width, height }, theme: themeOut, master: { elements: masterElements }, slides: slides as never });
   return { deck, assets: ctx.assets, regions: ctx.regions, pageWidthPt: cx / 12700, pageHeightPt: cy / 12700 };
 }
