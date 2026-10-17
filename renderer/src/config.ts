@@ -34,6 +34,9 @@ export function cleanupWorkDir(): void {
   rmSync(WORK_DIR, { recursive: true, force: true });
 }
 
+// whatever happens, this process's temp folder goes with it
+process.on("exit", cleanupWorkDir);
+
 export const HAVE = {
   soffice: () => existsSync(SOFFICE),
   pdftoppm: () => existsSync(PDFTOPPM),
