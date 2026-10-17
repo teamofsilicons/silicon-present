@@ -1,0 +1,66 @@
+{
+  "id": "dkEverything",
+  "title": "Every element kind",
+  "version": 7,
+  "size": { "width": 1920, "height": 1080 },
+  "theme": {
+    "name": "Night",
+    "fonts": { "heading": "Fraunces", "body": "Inter" },
+    "colors": { "background": "#101010", "text": "#fafafa", "accent": "#ffcc00", "accent2": "#00ccff", "accent3": "#ff00cc", "muted": "#888888" },
+    "customFonts": [ { "family": "Brand", "src": "asset:AssetFont123" } ]
+  },
+  "master": { "elements": [
+    { "id": "e_logo01", "kind": "image", "x": 1760, "y": 40, "w": 120, "h": 60, "rotation": 0, "locked": true, "group": null,
+      "link": null, "animation": null, "style": { "opacity": 0.8 }, "src": "asset:AssetLogo123", "alt": "Logo", "fit": "contain" }
+  ] },
+  "slides": [
+    {
+      "id": "s_bbbbb1", "layout": "title-body", "background": { "image": "asset:AssetBg12345", "fit": "cover" }, "skipped": false,
+      "section": "Intro", "hideMaster": false, "transition": { "type": "push", "duration": 500, "direction": "left" },
+      "notes": "First line\nSecond line ünïcødé 🎉",
+      "elements": [
+        { "id": "e_text01", "kind": "text", "x": 100, "y": 80, "w": 1720, "h": 160, "rotation": 0, "locked": false, "group": "g1",
+          "link": null, "animation": { "effect": "fade", "trigger": "click", "order": 1, "duration": 400, "delay": 0 },
+          "style": { "padding": 12, "verticalAlign": "middle" },
+          "text": { "paragraphs": [
+            { "runs": [ { "text": "Hello " }, { "text": "bold", "bold": true }, { "text": " and " }, { "text": "italic red", "italic": true, "color": "#ff0000" } ] },
+            { "list": "bullet", "indent": 1, "runs": [ { "text": "A point with a " }, { "text": "link", "link": "https://example.com", "underline": true } ] },
+            { "list": "ordered", "runs": [ { "text": "Big", "size": 48, "font": "Brand" }, { "text": " code", "code": true } ] },
+            { "runs": [] },
+            { "align": "right", "lineHeight": 1.5, "runs": [ { "text": "emoji 🎉 and ünïcødé", "highlight": "#ffff00", "strike": true } ] }
+          ] } },
+        { "id": "e_shape1", "kind": "shape", "shape": "round-rect", "x": 100, "y": 300, "w": 400, "h": 300, "rotation": 15.5,
+          "locked": false, "group": "g1", "link": "slide:s_bbbbb2", "animation": null,
+          "style": { "fill": "#2f5bea", "stroke": "#000000", "strokeWidth": 2, "radius": 16, "shadow": true },
+          "text": { "paragraphs": [ { "align": "center", "runs": [ { "text": "In a shape" } ] } ] } },
+        { "id": "e_table1", "kind": "table", "x": 600, "y": 300, "w": 600, "h": 200, "rotation": 0, "locked": false, "group": null,
+          "link": null, "animation": null, "style": {}, "rows": 2, "cols": 2, "colWidths": [300, 300], "rowHeights": [100, 100],
+          "headerRow": true,
+          "cells": [
+            [ { "text": { "paragraphs": [ { "runs": [ { "text": "Quarter", "bold": true } ] } ] }, "fill": "#eeeeee" },
+              { "text": { "paragraphs": [ { "runs": [ { "text": "Revenue", "bold": true } ] } ] }, "fill": "#eeeeee" } ],
+            [ { "text": { "paragraphs": [ { "runs": [ { "text": "Q4" } ] } ] }, "fill": null },
+              { "text": { "paragraphs": [] }, "fill": null } ]
+          ] },
+        { "id": "e_chart1", "kind": "chart", "x": 1250, "y": 300, "w": 570, "h": 400, "rotation": 0, "locked": false, "group": null,
+          "link": null, "animation": null, "style": {},
+          "chart": { "type": "column", "title": "Revenue", "labels": ["Q1", "Q2", "Q3"], "series": [ { "name": "2026", "values": [1.5, 2, 3.25], "color": "#2f5bea" } ], "legend": true } }
+      ]
+    },
+    {
+      "id": "s_bbbbb2", "layout": "blank", "background": null, "skipped": false, "section": null, "hideMaster": false,
+      "transition": null, "notes": "",
+      "elements": [
+        { "id": "e_html01", "kind": "html", "x": 0, "y": 0, "w": 1920, "h": 1080, "rotation": 0, "locked": false, "group": null,
+          "link": null, "animation": null, "style": {},
+          "html": "<div id=\"app\">Live</div>", "css": "#app { color: red; }", "js": "document.getElementById('app').textContent = 'Running';" },
+        { "id": "e_video1", "kind": "video", "x": 100, "y": 100, "w": 640, "h": 360, "rotation": 0, "locked": false, "group": null,
+          "link": null, "animation": null, "style": {}, "src": "asset:AssetVideo12", "alt": "Demo", "autoplay": true, "loop": false,
+          "muted": true, "poster": null },
+        { "id": "e_audio1", "kind": "audio", "x": 800, "y": 100, "w": 300, "h": 60, "rotation": 0, "locked": false, "group": null,
+          "link": null, "animation": null, "style": {}, "src": "https://example.com/a.mp3", "alt": "", "autoplay": false, "loop": true,
+          "muted": false }
+      ]
+    }
+  ]
+}

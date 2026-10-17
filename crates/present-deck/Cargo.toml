@@ -1,0 +1,16 @@
+[package]
+name = "present-deck"
+description = "Silicon Present's deck model: the deck as a Yjs document, JSON in and out, edit ops, reconcile, diff and the text view"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+yrs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+dissimilar.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+base64.workspace = true
