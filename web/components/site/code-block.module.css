@@ -95,13 +95,6 @@
 .property { color: oklch(44% .12 85); }
 .tag { color: oklch(46% .13 230); }
 .punctuation { color: var(--text-secondary); }
-:global(:root[data-theme="dark"]) .string { color: oklch(77% .15 150); }
-:global(:root[data-theme="dark"]) .number { color: oklch(80% .14 75); }
-:global(:root[data-theme="dark"]) .keyword { color: oklch(78% .16 285); }
-:global(:root[data-theme="dark"]) .type { color: oklch(79% .13 230); }
-:global(:root[data-theme="dark"]) .function { color: oklch(80% .13 25); }
-:global(:root[data-theme="dark"]) .property { color: oklch(79% .12 85); }
-:global(:root[data-theme="dark"]) .tag { color: oklch(79% .13 230); }
 
 @media (max-width: 520px) {
   .block { --code-size: .75rem; }

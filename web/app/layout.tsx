@@ -37,17 +37,16 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F7F8FA" },
-    { media: "(prefers-color-scheme: dark)", color: "#02040A" },
-  ],
+  // Light only (the Carbon's call for now): one page colour, no dark variant.
+  themeColor: "#F7F8FA",
+  colorScheme: "light",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const accent = appConfig.accent ? ({ "--app-accent-light": appConfig.accent.light, "--app-accent-dark": appConfig.accent.dark } as CSSProperties) : undefined;
   return (
-    <html lang="en" style={accent} suppressHydrationWarning>
+    <html lang="en" data-theme="light" style={accent} suppressHydrationWarning>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         {/* Page titles are set in DemiBold: the one weight worth fetching before first paint. */}

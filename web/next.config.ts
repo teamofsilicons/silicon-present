@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = join(root, "..");
 
 function distDirFromEnv(): string {
   const wanted = process.env.NEXT_DIST_DIR?.trim() || ".next";
@@ -58,9 +59,11 @@ const nextConfig: NextConfig = {
   agentRules: false,
   // Keep the listener's exact origin for internal rewrites behind a TLS-terminating proxy.
   skipProxyUrlNormalize: true,
-  // The kit lives in an app repository's web/ next to other lockfiles: this directory is its own root.
-  turbopack: { root },
-  outputFileTracingRoot: root,
+  // web/ is one package of the repository's pnpm workspace: the root is the repository, so Turbopack can follow the
+  // workspace packages (@silicon-present/deck and @silicon-present/render ship TypeScript sources, compiled here).
+  turbopack: { root: workspaceRoot },
+  outputFileTracingRoot: workspaceRoot,
+  transpilePackages: ["@silicon-present/deck", "@silicon-present/render"],
   // Profile photos are arbitrary https URLs from Silicon Accounts and Iris: shown as they are, never fetched here.
   images: { unoptimized: true },
   // `next dev` answers its dev assets to localhost only by default; a local stack is also opened on 127.0.0.1.

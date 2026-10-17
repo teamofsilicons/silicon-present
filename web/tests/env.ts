@@ -3,8 +3,8 @@ export const SECRET = "test-session-secret-test-session-secret-0001";
 
 export const TEST_ENV: Record<string, string> = {
   NODE_ENV: "test",
-  APP_ID: "webkit",
-  APP_SECRET: "sa_app_webkit_testtesttesttesttesttest",
+  APP_ID: "present",
+  APP_SECRET: "sa_app_present_testtesttesttesttesttest",
   ACCOUNTS_URL: "http://localhost:9590",
   ACCOUNTS_API_URL: "http://127.0.0.1:9589",
   APP_API_URL: "http://127.0.0.1:4261",
@@ -47,6 +47,6 @@ export function tokenBody(n: number, account: Record<string, unknown> = {}) {
     refresh_token: `sar_refresh_${n}`,
     refresh_token_expires_at: "2029-03-27T21:53:58.705Z",
     scope: "profile email",
-    account: { uuid: "nln", membership_id: "webkit:nln", kind: "carbon", id: "c:ada", display_name: "Ada Lovelace", pfp_url: "http://127.0.0.1:9594/pfp/carbon?id=nln", ...account },
+    account: { uuid: "nln", membership_id: "present:nln", kind: "carbon", id: "c:ada", display_name: "Ada Lovelace", pfp_url: "http://127.0.0.1:9594/pfp/carbon?id=nln", ...account },
   };
 }

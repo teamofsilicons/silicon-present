@@ -37,28 +37,28 @@ test("the session cookie holds a sealed session and nothing readable", () => {
 });
 
 test("cookies are httpOnly, SameSite=Lax, named after the app, and __Host- over https", () => {
-  assert.equal(sessionCookieName(), "webkit_session");
-  assert.equal(signinCookieName(), "webkit_signin");
+  assert.equal(sessionCookieName(), "present_session");
+  assert.equal(signinCookieName(), "present_signin");
   const response = NextResponse.next();
   writeSession(response, session());
   const header = response.headers.get("set-cookie") ?? "";
-  assert.match(header, /^webkit_session=v1\./);
+  assert.match(header, /^present_session=v1\./);
   assert.match(header, /HttpOnly/i);
   assert.match(header, /SameSite=lax/i);
   assert.match(header, /Path=\//);
   assert.doesNotMatch(header, /Secure/i, "plain http in development");
-  const request = new NextRequest("http://127.0.0.1:4260/items", { headers: { cookie: `webkit_session=${header.split(";")[0]!.split("=").slice(1).join("=")}` } });
+  const request = new NextRequest("http://127.0.0.1:4260/items", { headers: { cookie: `present_session=${header.split(";")[0]!.split("=").slice(1).join("=")}` } });
   assert.equal(readSession(request)?.rt, "sar_1");
   const cleared = NextResponse.next();
   clearSession(cleared);
-  assert.match(cleared.headers.get("set-cookie") ?? "", /webkit_session=;.*Max-Age=0/i);
+  assert.match(cleared.headers.get("set-cookie") ?? "", /present_session=;.*Max-Age=0/i);
 
-  applyTestEnv({ PUBLIC_URL: "https://webkit.example" });
+  applyTestEnv({ PUBLIC_URL: "https://present.example" });
   try {
-    assert.equal(sessionCookieName(), "__Host-webkit_session");
+    assert.equal(sessionCookieName(), "__Host-present_session");
     const secure = NextResponse.next();
     writeSession(secure, session());
-    assert.match(secure.headers.get("set-cookie") ?? "", /^__Host-webkit_session=.*; Secure/i);
+    assert.match(secure.headers.get("set-cookie") ?? "", /^__Host-present_session=.*; Secure/i);
   } finally {
     applyTestEnv();
   }
@@ -68,13 +68,13 @@ test("up to three sign-ins wait at once, each for ten minutes", () => {
   const response = NextResponse.next();
   const now = Date.now();
   writePending(response, [1, 2, 3, 4].map(n => ({ s: `state${n}`, v: `verifier${n}`, r: "/items", t: now })));
-  const value = /webkit_signin=([^;]+)/.exec(response.headers.get("set-cookie") ?? "")![1]!;
-  const kept = readPending(new NextRequest("http://127.0.0.1:4260/auth/callback", { headers: { cookie: `webkit_signin=${value}` } }));
+  const value = /present_signin=([^;]+)/.exec(response.headers.get("set-cookie") ?? "")![1]!;
+  const kept = readPending(new NextRequest("http://127.0.0.1:4260/auth/callback", { headers: { cookie: `present_signin=${value}` } }));
   assert.deepEqual(kept.map(entry => entry.s), ["state2", "state3", "state4"]);
   const old = NextResponse.next();
   writePending(old, [{ s: "stale", v: "v", r: "/", t: now - 11 * 60_000 }]);
-  const stale = /webkit_signin=([^;]+)/.exec(old.headers.get("set-cookie") ?? "")![1]!;
-  assert.deepEqual(readPending(new NextRequest("http://127.0.0.1:4260/auth/callback", { headers: { cookie: `webkit_signin=${stale}` } })), []);
+  const stale = /present_signin=([^;]+)/.exec(old.headers.get("set-cookie") ?? "")![1]!;
+  assert.deepEqual(readPending(new NextRequest("http://127.0.0.1:4260/auth/callback", { headers: { cookie: `present_signin=${stale}` } })), []);
 });
 
 test("state-changing requests must come from this site", () => {

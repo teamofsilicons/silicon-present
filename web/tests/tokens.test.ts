@@ -9,7 +9,7 @@ import type { StoredSession } from "../lib/server/session";
 import { exchangeCode, forgetRefreshes, refreshSession, revokeSession } from "../lib/server/tokens";
 import { json, mockFetch, tokenBody, applyTestEnv } from "./env";
 
-const BASIC = `Basic ${Buffer.from("webkit:sa_app_webkit_testtesttesttesttesttest").toString("base64")}`;
+const BASIC = `Basic ${Buffer.from("present:sa_app_present_testtesttesttesttesttest").toString("base64")}`;
 const ACCOUNT = { uuid: "nln", kind: "carbon" as const, id: "c:ada", display_name: "Ada", pfp_url: null, custodian: null };
 const session = (overrides: Partial<StoredSession> = {}): StoredSession => ({ v: 1, at: "eyJ.old.sig", rt: "sar_old", ae: Date.now() + 10_000, re: Date.now() + 86_400_000, scope: "profile", acct: ACCOUNT, ...overrides });
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
