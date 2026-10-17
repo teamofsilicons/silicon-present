@@ -148,6 +148,8 @@ fn anchor_label(t: &Value) -> String {
 
 fn thread_text(t: &Value, pad: &str, show_snapshot: bool) -> String {
     let mut s = String::new();
+    // Continuation lines line up under the first, whatever marker the first line starts with.
+    let cont: String = pad.chars().map(|c| if c.is_whitespace() { c } else { ' ' }).collect();
     let mut label = anchor_label(t);
     if show_snapshot && let Some(l) = t["snapshot"]["label"].as_str() {
         label = format!("{label} (was: {l})");
@@ -164,7 +166,7 @@ fn thread_text(t: &Value, pad: &str, show_snapshot: bool) -> String {
         if i == 0 {
             let _ = write!(s, " {who}: {body}  ({id})");
         } else {
-            let _ = write!(s, "\n{pad}  ↳ {who}: {body}  ({id})");
+            let _ = write!(s, "\n{cont}  ↳ {who}: {body}  ({id})");
         }
     }
     s
@@ -235,17 +237,32 @@ pub fn to_text(deck: &Value, threads: Option<&[Value]>) -> String {
         if elements.is_empty() {
             let _ = writeln!(s, "  (no elements)");
         }
+        let ts = on_slide(id);
+        let on_element = |eid: &str| -> Vec<&Value> {
+            ts.iter().copied().filter(|t| t["anchor"]["element"].as_str() == Some(eid) && t["anchor"]["field"].as_str() != Some("notes")).collect()
+        };
+        // Comments sit right under the element they are on.
         for e in &elements {
             let _ = writeln!(s, "{}", element_text(e, "  "));
+            for t in on_element(e["id"].as_str().unwrap_or("")) {
+                let _ = writeln!(s, "{}", thread_text(t, "      comment ", false));
+            }
         }
         let notes = slide["notes"].as_str().unwrap_or("");
         if !notes.trim().is_empty() {
             let _ = writeln!(s, "  notes:\n{}", indent(notes.trim_end(), "    "));
         }
-        let ts = on_slide(id);
-        if !ts.is_empty() {
+        let rest: Vec<&Value> = ts
+            .iter()
+            .copied()
+            .filter(|t| match t["anchor"]["element"].as_str() {
+                Some(eid) => t["anchor"]["field"].as_str() == Some("notes") || !elements.iter().any(|x| x["id"].as_str() == Some(eid)),
+                None => true,
+            })
+            .collect();
+        if !rest.is_empty() {
             let _ = writeln!(s, "  comments:");
-            for t in ts {
+            for t in rest {
                 let gone = t["anchor"]["element"].as_str().is_some_and(|e| !elements.iter().any(|x| x["id"].as_str() == Some(e)));
                 let _ = writeln!(s, "{}", thread_text(t, "    ", gone));
             }

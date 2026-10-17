@@ -367,7 +367,7 @@ fn text_view_shows_everything_a_silicon_needs() {
         "document.getElementById",
         "notes:",
         "Second line ünïcødé 🎉",
-        "[th1 on e_chart1, open] c:ada: @si:designer make this simpler",
+        "      comment [th1 on e_chart1, open] c:ada: @si:designer make this simpler",
         "↳ si:designer: On it",
         "Comments on the deck:",
         "c:bob: Looks good",
