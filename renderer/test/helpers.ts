@@ -58,3 +58,109 @@ export function exportDeck(): DeckJson {
 }
 
 export { THEMES };
+
+// ---------------------------------------------------------------- the sidecar as a process
+
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { createServer as netServer } from "node:net";
+
+async function freePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const s = netServer();
+    s.listen(0, "127.0.0.1", () => {
+      const port = (s.address() as AddressInfo).port;
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+export interface Converter {
+  url: string;
+  secret: string;
+  proc: ChildProcess;
+  stop(): Promise<void>;
+  post(path: string, body: unknown, opts?: { secret?: string | null }): Promise<Response>;
+}
+
+/** Start the converter (src/server.ts) on a free ephemeral port with a fresh secret, as the service would run it. */
+export async function startConverter(): Promise<Converter> {
+  const port = await freePort();
+  const secret = randomBytes(16).toString("hex");
+  const proc = spawn(process.execPath, ["--import", "tsx", join(here, "..", "src", "server.ts")], {
+    env: { ...process.env, CONVERTER_PORT: String(port), CONVERTER_SECRET: secret },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let log = "";
+  proc.stdout!.on("data", (d) => (log += d));
+  proc.stderr!.on("data", (d) => (log += d));
+  const url = `http://127.0.0.1:${port}`;
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(url + "/health");
+      if (r.ok) break;
+    } catch {
+      /* not up yet */
+    }
+    if (i > 150 || proc.exitCode !== null) throw new Error(`converter did not start: ${log}`);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return {
+    url,
+    secret,
+    proc,
+    async stop() {
+      if (proc.exitCode !== null) return;
+      const done = new Promise((r) => proc.once("exit", r));
+      proc.kill("SIGTERM");
+      await done;
+    },
+    post(path, body, opts = {}) {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      const sec = opts.secret === undefined ? secret : opts.secret;
+      if (sec !== null) headers["x-converter-secret"] = sec;
+      return fetch(url + path, { method: "POST", headers, body: JSON.stringify(body) });
+    },
+  };
+}
+
+export function pngSize(b: Buffer): { width: number; height: number } {
+  return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+}
+
+export function jpgSize(b: Buffer): { width: number; height: number } {
+  let i = 2;
+  while (i < b.length) {
+    const marker = b[i + 1]!;
+    const len = b.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xc3) return { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+    i += 2 + len;
+  }
+  throw new Error("no SOF");
+}
+
+/** Import a fixture file through the running converter. */
+export async function importThrough(c: Converter, filename: string, data: Buffer = fixture(filename)) {
+  const r = await c.post("/import", { filename, data: data.toString("base64") });
+  const body = (await r.json()) as { deck: DeckJson; assets: Array<{ key: string; filename: string; contentType: string; data: string }>; notes: string[]; error?: { code: string } };
+  return { status: r.status, ...body };
+}
+
+export function plain(rt: { paragraphs: Array<{ runs: Array<{ text: string }> }> } | undefined): string {
+  return (rt?.paragraphs ?? []).map((p) => p.runs.map((r) => r.text).join("")).join("\n");
+}
+
+/** All text of a deck (slides in order, elements, table cells), for "is the text still there" checks. */
+export function deckText(d: DeckJson): string {
+  const out: string[] = [];
+  const els = (list: DeckJson["slides"][number]["elements"]) => {
+    for (const e of list) {
+      if (e.kind === "text" || e.kind === "shape") out.push(plain(e.text));
+      if (e.kind === "table") for (const row of e.cells) for (const c of row) out.push(plain(c.text));
+      if (e.kind === "chart") out.push(e.chart.title ?? "", ...e.chart.labels, ...e.chart.series.map((s) => s.name));
+    }
+  };
+  els(d.master.elements);
+  for (const s of d.slides) els(s.elements);
+  return out.join("\n");
+}

@@ -1147,7 +1147,9 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     if (!part) continue;
     const layout = await loadPart(zip, relOfType(part.rels, "slideLayout") ?? "");
     const master = layout ? await loadPart(zip, relOfType(layout.rels, "slideMaster") ?? "") : firstMaster;
-    let id = newSlideId();
+    // decks we exported carry the slide id as the slide's name
+    const named = attr(child(part.xml, "p:cSld"), "name") ?? "";
+    let id = /^s_[0-9a-z]{6}$/.test(named) && !usedSlideIds.has(named) ? named : newSlideId();
     while (usedSlideIds.has(id)) id = newSlideId();
     usedSlideIds.add(id);
     ctx.slideIdByPart.set(part.path, id);
@@ -1231,6 +1233,18 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
   for (const l of ctx.pendingSlideLinks) {
     const id = ctx.slideIdByPart.get(l.part);
     if (id) l.set(id);
+  }
+  // when every bit of an element's text carries the same link, it's the element's link (that's how we export one)
+  for (const s of [...slides, { elements: masterElements as Element[] }]) {
+    for (const e of s.elements) {
+      if ((e.kind !== "text" && e.kind !== "shape") || e.link) continue;
+      const runs = (e.text?.paragraphs ?? []).flatMap((p) => p.runs).filter((r) => r.text.trim());
+      const links = new Set(runs.map((r) => r.link ?? ""));
+      if (runs.length && links.size === 1 && !links.has("")) {
+        e.link = [...links][0]!;
+        for (const p of e.text.paragraphs) for (const r of p.runs) delete r.link;
+      }
+    }
   }
   const themeOut: Theme = {
     name: theme.name,

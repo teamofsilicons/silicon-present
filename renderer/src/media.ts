@@ -174,7 +174,7 @@ function readNameTable(t: Buffer): string | null {
     if (nameId !== 1 && nameId !== 16) continue; // family / typographic family
     const raw = t.subarray(strOff + off, strOff + off + len);
     const name = platform === 1 ? raw.toString("latin1") : Buffer.from(raw).swap16().toString("utf16le");
-    const prio = (nameId === 16 ? 2 : 1) + (platform === 3 ? 1 : 0);
+    const prio = (nameId === 16 ? 10 : 0) + (platform === 3 ? 1 : 0); // typographic family wins when present
     if (!best || prio > best.prio) best = { prio, name };
   }
   return best?.name.trim() || null;

@@ -83,6 +83,12 @@ function runOptions(r: Run, para: { heading?: number }, ctx: Ctx, defaults: { si
   return o;
 }
 
+/** pptxgenjs underlines every hyperlink unless told otherwise; keep the run's own underline setting. */
+function keepUnderline(o: Record<string, unknown>): Record<string, unknown> {
+  if (o.hyperlink && !o.underline) o.underline = { style: "none" };
+  return o;
+}
+
 /** Rich text as pptxgenjs text runs, one paragraph per breakLine. */
 export function textRuns(rt: RichText, ctx: Ctx, defaults: { size: number; color: string; font: string; align?: string }): PptxGenJS.TextProps[] {
   const out: PptxGenJS.TextProps[] = [];
@@ -101,7 +107,7 @@ export function textRuns(rt: RichText, ctx: Ctx, defaults: { size: number; color
     for (const r of p.runs) r.text.split(" ").forEach((t, i) => pieces.push({ text: t, r, soft: i > 0 }));
     if (!pieces.length) pieces.push({ text: "", r: { text: "" }, soft: false });
     pieces.forEach((pc, i) => {
-      const o: Record<string, unknown> = { ...popts, ...runOptions(pc.r, p, ctx, defaults) };
+      const o: Record<string, unknown> = keepUnderline({ ...popts, ...runOptions(pc.r, p, ctx, defaults) });
       if (pc.soft) o.softBreakBefore = true;
       if (i === pieces.length - 1 && !last) o.breakLine = true;
       out.push({ text: pc.text, options: o as PptxGenJS.TextPropsOptions });
@@ -119,7 +125,10 @@ function linkRuns(runs: PptxGenJS.TextProps[], e: Element, ctx: Ctx): PptxGenJS.
   if (!link) return runs;
   for (const r of runs) {
     const o = (r.options ?? {}) as Record<string, unknown>;
-    if (!o.hyperlink && r.text) o.hyperlink = { ...(link as object) };
+    if (!o.hyperlink && r.text) {
+      o.hyperlink = { ...(link as object) };
+      keepUnderline(o);
+    }
     r.options = o as PptxGenJS.TextPropsOptions;
   }
   return runs;
@@ -430,14 +439,54 @@ function transitionXml(t: NonNullable<Slide["transition"]>): string {
   );
 }
 
-/** Write transitions and hidden flags into the generated slide XML (pptxgenjs has no transitions). */
+const EMU_PER_PX = 914400 / PX_PER_IN;
+
+/**
+ * Wrap each group's shapes in a <p:grpSp> (pptxgenjs can't make groups). Only groups whose members sit next to each
+ * other in z-order can be wrapped without changing the stacking; others stay loose (their elements are all there).
+ */
+function wrapGroups(xml: string, s: Slide): string {
+  const groups = new Map<string, Element[]>();
+  for (const e of s.elements) if (e.group) groups.set(e.group, [...(groups.get(e.group) ?? []), e]);
+  if (![...groups.values()].some((g) => g.length > 1)) return xml;
+  const open = xml.indexOf("<p:spTree>");
+  const close = xml.lastIndexOf("</p:spTree>");
+  if (open < 0 || close < 0) return xml;
+  const inner = xml.slice(open + "<p:spTree>".length, close);
+  const blocks = [...inner.matchAll(/<p:(sp|pic|graphicFrame|cxnSp)>[\s\S]*?<\/p:\1>/g)].map((m) => ({ text: m[0], start: m.index!, name: /<p:cNvPr[^>]*name="([^"]*)"/.exec(m[0])?.[1] ?? "" }));
+  let out = inner;
+  let n = 0;
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const ids = new Set(members.map((e) => e.id));
+    const idx = blocks.map((b, i) => (ids.has(b.name) ? i : -1)).filter((i) => i >= 0);
+    if (idx.length !== members.length || idx[idx.length - 1]! - idx[0]! !== idx.length - 1) continue;
+    const x = Math.min(...members.map((e) => e.x));
+    const y = Math.min(...members.map((e) => e.y));
+    const w = Math.max(...members.map((e) => e.x + e.w)) - x;
+    const h = Math.max(...members.map((e) => e.y + e.h)) - y;
+    const E = (v: number) => Math.round(v * EMU_PER_PX);
+    const body = idx.map((i) => blocks[i]!.text).join("");
+    const grp =
+      `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${9000 + ++n}" name="Group ${n}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>` +
+      `<p:grpSpPr><a:xfrm><a:off x="${E(x)}" y="${E(y)}"/><a:ext cx="${E(w)}" cy="${E(h)}"/><a:chOff x="${E(x)}" y="${E(y)}"/><a:chExt cx="${E(w)}" cy="${E(h)}"/></a:xfrm></p:grpSpPr>` +
+      body +
+      `</p:grpSp>`;
+    out = out.replace(body, grp);
+  }
+  return xml.slice(0, open + "<p:spTree>".length) + out + xml.slice(close);
+}
+
+/** Write groups, transitions and hidden flags into the generated slide XML (pptxgenjs has none of them). */
 async function postProcess(buf: Buffer, slides: Slide[]): Promise<Buffer> {
   const zip = await JSZip.loadAsync(buf);
   for (const [i, s] of slides.entries()) {
     const path = `ppt/slides/slide${i + 1}.xml`;
     const f = zip.file(path);
     if (!f) continue;
-    let xml = await f.async("string");
+    let xml = wrapGroups(await f.async("string"), s);
+    // the slide's id rides along as the slide name, so slide links and ids survive a round trip
+    xml = xml.replace(/<p:cSld>/, `<p:cSld name="${s.id}">`);
     if (s.skipped && !/<p:sld[^>]*\sshow="0"/.test(xml)) xml = xml.replace(/<p:sld(\s|>)/, '<p:sld show="0"$1');
     // pptxgenjs marks audio as <a:videoFile>; PowerPoint wants <a:audioFile> for audio relationships
     const rels = await zip.file(`ppt/slides/_rels/slide${i + 1}.xml.rels`)?.async("string");

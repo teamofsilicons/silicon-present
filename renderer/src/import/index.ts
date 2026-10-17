@@ -85,8 +85,7 @@ async function fromPdf(path: string, dir: string, title: string): Promise<Import
   if (!pages) throw new ConverterError("empty_pdf", "The PDF has no pages.", "Check the file and try again.", 422);
   const width = 1920;
   const height = Math.round((width * hPt) / wPt);
-  const dpi = (width * 72) / wPt;
-  await run(PDFTOPPM, ["-r", String(dpi), "-png", path, join(dir, "page")], { what: "pdftoppm", timeoutMs: 600_000 });
+  await run(PDFTOPPM, ["-scale-to-x", String(width), "-scale-to-y", "-1", "-png", path, join(dir, "page")], { what: "pdftoppm", timeoutMs: 600_000 });
   const files = readdirSync(dir).filter((f) => /^page-\d+\.png$/.test(f)).sort((a, b) => Number(/\d+/.exec(a)![0]) - Number(/\d+/.exec(b)![0]));
   const assets: ImportedAsset[] = [];
   const slides: SlideInput[] = [];
