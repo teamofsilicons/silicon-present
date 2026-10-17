@@ -82,7 +82,7 @@ for (const [width, height, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]
     await page.getByRole("button", { name: `More actions for Q4 review ${run}` }).click();
     await shoot(page, `decks-menu-${tag}`);
     await page.getByRole("menuitem", { name: "Share" }).click();
-    await page.getByRole("dialog").getByText("People with access").waitFor();
+    await page.getByRole("dialog").getByText("People with access", { exact: true }).waitFor();
     await shoot(page, `share-${tag}`);
     await page.keyboard.press("Escape");
 

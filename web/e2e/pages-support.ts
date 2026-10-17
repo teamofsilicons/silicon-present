@@ -71,7 +71,9 @@ export function textElement(id: string, text: string, extra: Record<string, unkn
 
 /** A deck with `slides` slides, each a title text; returns the slide ids in order. */
 export async function deckWithSlides(context: BrowserContext, deck: string, slides: Array<{ id: string; title: string; notes?: string; skipped?: boolean; animated?: boolean; transition?: boolean; html?: boolean }>): Promise<string[]> {
-  const ops: unknown[] = [];
+  // A new deck starts with one blank title slide: these slides replace it, so a test knows every slide there is.
+  const existing = await call<{ slides: Array<{ id: string }> }>(context, "GET", `/v1/decks/${deck}/content?format=json`);
+  const ops: unknown[] = existing.body.slides.map(slide => ({ op: "delete_slide", slide: slide.id }));
   let after: string | null = null;
   for (const slide of slides) {
     // Ids are "e_" + 6 characters (docs/architecture.md): a letter for the role, then the slide id's last five.

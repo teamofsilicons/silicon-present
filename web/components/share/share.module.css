@@ -48,3 +48,6 @@
   .controls { margin-left: auto; }
   .quietSelect { width: 128px; }
 }
+
+/* Without the invite line (a viewer's dialog) the list starts at the top. */
+.status + .block { margin-top: 0; }

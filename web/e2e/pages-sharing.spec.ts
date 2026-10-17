@@ -44,13 +44,13 @@ test("invite as viewer: the friend sees it in Shared with me and can only look",
   await dialog.getByRole("combobox", { name: "Role" }).click();
   await owner.page.getByRole("option", { name: "Viewer" }).click();
   await dialog.getByRole("button", { name: "Invite" }).click();
-  await expect(dialog.getByRole("list").getByText(friend.id)).toBeVisible();
+  await expect(dialog.getByRole("list").getByText(friend.id, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("combobox", { name: `Role for ${friend.id}` })).toContainText("Viewer");
 
   // A wrong id says why, next to the field.
   await dialog.getByLabel("Invite").fill("ada");
   await dialog.getByRole("button", { name: "Invite" }).click();
-  await expect(dialog.getByText(/has no c: or si: in front/)).toBeVisible();
+  await expect(dialog.getByRole("alert")).toContainText("has no c: or si: in front");
   await owner.page.keyboard.press("Escape");
 
   await friend.page.goto("/decks?scope=shared");
@@ -60,7 +60,7 @@ test("invite as viewer: the friend sees it in Shared with me and can only look",
 
   // A viewer sees who has access but cannot invite or change anything.
   const view = await openShareShared(friend.page, title);
-  await expect(view.getByText("People with access")).toBeVisible();
+  await expect(view.getByText("People with access", { exact: true })).toBeVisible();
   await expect(view.getByLabel("Invite")).toHaveCount(0);
   await expect(view.getByRole("button", { name: /^Remove / })).toHaveCount(0);
   await friend.page.keyboard.press("Escape");
@@ -87,7 +87,7 @@ test("make the friend an editor: they can rename and invite; an email invite wai
   const email = `present-invite-${run}@example.test`;
   await dialog.getByLabel("Invite").fill(email);
   await dialog.getByRole("button", { name: "Invite" }).click();
-  await expect(dialog.getByText(email)).toBeVisible();
+  await expect(dialog.getByText(email, { exact: true })).toBeVisible();
   await expect(dialog.getByText(/Invite sent/)).toBeVisible();
   await owner.page.keyboard.press("Escape");
 

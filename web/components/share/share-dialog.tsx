@@ -175,7 +175,7 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={`Share ${name ? `“${name}”` : `this ${what}`}`} description={kind === "folder" ? "Sharing a folder shares everything in it, including what is added later." : undefined} className={styles.dialog}>
-        <p className="sr-only" role="status" aria-live="polite">{notice}</p>
+        <p className={`sr-only ${styles.status}`} role="status" aria-live="polite">{notice}</p>
         {loadError ? <ErrorAlert error={loadError} title="Who has access could not be loaded" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Try again</Button>} /> : null}
 
         {access && canShare ? (

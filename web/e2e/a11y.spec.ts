@@ -81,7 +81,7 @@ for (const theme of ["light"] as const) {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "More actions for Accessibility check" }).first().click();
       await page.getByRole("menuitem", { name: "Share" }).click();
-      await page.getByRole("dialog", { name: "Share “Accessibility check”" }).getByText("People with access").waitFor();
+      await page.getByRole("dialog", { name: "Share “Accessibility check”" }).getByText("People with access", { exact: true }).waitFor();
       await audit(page, `share dialog (${where})`);
       await context.close();
     });
