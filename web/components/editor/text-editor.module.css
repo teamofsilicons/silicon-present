@@ -12,6 +12,9 @@
   outline: 2px solid var(--accent);
   outline-offset: 0;
   cursor: text;
+  /* The slide around it can't be selected (dragging moves elements); text here can. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .frame[data-readonly] {

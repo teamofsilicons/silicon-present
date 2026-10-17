@@ -82,7 +82,8 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await bo.page.mouse.dblclick(t.x, t.y);
   const picker = bo.page.getByTestId("text-picker");
   await picker.locator(".ql-editor").waitFor();
-  await picker.getByText("Revenue grew in every region").dblclick();
+  // Double-click a word (near the start of the line: the paragraph is wider than its words).
+  await picker.getByText("Revenue grew in every region").dblclick({ position: { x: 12, y: 6 } });
   await postComposer(bo.page, "Which regions exactly?");
 
   // 4. A whole slide and 5. the whole deck, from the list.
@@ -95,9 +96,7 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await expect(ada.page.frameLocator('[data-element-id="e_cmhtml"] iframe').locator("#live")).toContainText("tick");
   const h = await at(ada.page, 1450, 500);
   await ada.page.mouse.click(h.x, h.y);
-  console.log("DEBUG sel", await ada.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().selection)), await ada.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y)!; return e.tagName + " " + e.className; }, [h.x, h.y]));
   await ada.page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+m" : "Control+Alt+m");
-  console.log("DEBUG composer", await ada.page.evaluate(() => JSON.stringify((window as any).__presentEditor.ui.get().composer)));
   await postComposer(ada.page, "Slow this animation down");
 
   // Every anchor kind reached the service, and each page shows the other's threads live.
@@ -124,7 +123,9 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await list.getByRole("button", { name: /Which regions exactly/ }).click();
   await list.getByRole("combobox", { name: "Reply" }).fill("North and South");
   await list.getByRole("button", { name: "Reply", exact: true }).click();
-  await expect(bo.page.getByText("North and South")).toBeVisible();
+  await expect(list.getByText("North and South")).toBeVisible();
+  // Bo's list shows the reply arrive (live), under the thread.
+  await expect(bo.page.getByRole("complementary", { name: "Properties and comments" }).getByRole("button", { name: /Which regions exactly/ })).toContainText("1 reply");
   await list.getByRole("button", { name: "React" }).first().click();
   await ada.page.getByRole("button", { name: "React with 🎉" }).click();
   await expect(list.getByRole("button", { name: /🎉 1, you reacted/ })).toBeVisible();
@@ -132,7 +133,11 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await ada.page.getByRole("button", { name: "Edit", exact: true }).click();
   await list.getByRole("combobox", { name: "Edit comment" }).fill("North and South, mostly");
   await list.getByRole("button", { name: "Save" }).click();
-  await expect(bo.page.getByText("North and South, mostly")).toBeVisible();
+  await expect(list.getByText("North and South, mostly")).toBeVisible();
+  await eventually(async () => {
+    const all = (await call<{ threads: Array<{ comments: Array<{ body: string; editedAt: string | null }> }> }>(bo.context, "GET", `/v1/decks/${deck}/threads?state=all`)).body.threads;
+    expect(all.flatMap(x => x.comments).find(c => c.body === "North and South, mostly")?.editedAt).toBeTruthy();
+  });
   await list.getByRole("button", { name: "Resolve thread" }).click();
   await expect(ada.page.getByTestId("comment-pin")).toHaveCount(3);
   await list.getByRole("switch", { name: "Show resolved" }).click();
@@ -158,8 +163,9 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await ada.page.reload();
   await ada.page.getByTestId("slide-canvas").waitFor();
   await ada.page.getByTestId("tab-comments").click();
-  await expect(ada.page.getByRole("button", { name: /Is this star needed/ })).toContainText(/Shape|star|point/i);
-  await expect(ada.page.getByRole("button", { name: /Is this star needed/ })).toContainText("no longer in the deck");
+  const gone = ada.page.getByRole("complementary", { name: "Properties and comments" }).getByRole("button", { name: /Is this star needed/ });
+  await expect(gone).toContainText(/Shape|star|point/i);
+  await expect(gone).toContainText("no longer in the deck");
 
   expect(ada.errors).toEqual([]);
   expect(bo.errors).toEqual([]);
