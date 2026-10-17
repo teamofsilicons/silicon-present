@@ -62,8 +62,9 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
   `<ShareButton kind="deck" id={id} name={title} selfId={me?.id} role={deck.role} />` or the controlled
   `<ShareDialog ... open={open} onOpenChange={setOpen} onChanged={access => ...} />`. It reads and writes the service
   itself (no query client needed) and needs the kit's toast stack (`Providers`).
-- **Export menu**: `import { ExportMenu } from "@/components/export"`. `<ExportMenu deck={id} />`, or with `version` /
-  `slide`. Plain download links through the proxy (works for public visitors too).
+- **Export menu**: `import { ExportMenu } from "@/components/export"`. `<ExportMenu deck={id} />` gives the whole
+  deck in every format; `version` downloads the deck as it was; `slide` adds "This slide" as one PNG or JPG. Plain
+  download links through the proxy (works for public visitors too).
 - **Public decks signed out**: `lib/session-optional.ts`.
   - `proxy.ts` lets `/decks/[id]`, `/decks/[id]/present` and `/p/[id]` render without a session (`isPublicPage`).
   - The API proxy forwards the public reads with no token when there is no session (`lib/server/forward.ts`

@@ -3,8 +3,8 @@
  * HTML elements live; the presenter view (another window) shows notes and the next slide and moves with it; a follow
  * link followed in a second browser context (signed out, the deck is public) follows every slide change.
  */
-import { expect, test } from "@playwright/test";
-import { call, createDeck, deckWithSlides, signedIn, type Signed } from "./pages-support";
+import { expect, test, type Page } from "@playwright/test";
+import { call, createDeck, deckWithSlides, edit, signedIn, type Signed } from "./pages-support";
 import { BASE } from "./support";
 
 test.describe.configure({ mode: "serial" });
@@ -22,7 +22,16 @@ test.beforeAll(async ({ browser }) => {
     { id: "s_pre003", title: "Live HTML", notes: "This one runs code", html: true, transition: true },
     { id: "s_pre004", title: "Thanks" },
   ]);
+  // An element that reloads its own frame once: it must run again after the reload, not go blank.
+  await edit(me.context, deck, [{
+    op: "add_element",
+    slide: "s_pre004",
+    element: { id: "e_rld004", kind: "html", x: 160, y: 600, w: 800, h: 200, rotation: 0, html: '<div id="out">first load</div>', css: "#out{font:48px sans-serif}", js: "if (location.hash !== '#again') { location.hash = 'again'; location.reload(); } else { document.getElementById('out').textContent = 'ran after reload'; }" },
+  }]);
 });
+
+/** The text an HTML element's own script wrote, inside its sandboxed frame. */
+const htmlOutput = (page: Page, element: string) => page.frameLocator(`.sp-el[data-sp-id="${element}"] iframe`).last().locator("#out");
 
 test.afterAll(async () => {
   await me?.context.close();
@@ -43,13 +52,14 @@ test("keys step through animations, skip the skipped slide, and reach the end", 
   await page.keyboard.press("Space");
   await expect(stage).toHaveAttribute("data-slide", "s_pre003");
   // HTML elements run: their script changed the text inside the sandboxed frame.
-  const frame = page.frameLocator('.sp-el[data-sp-id="e_hre003"] iframe').last();
-  await expect(frame.locator("#out")).toHaveText("HTML ran 2", { timeout: 15_000 });
+  await expect(htmlOutput(page, "e_hre003")).toHaveText("HTML ran 2", { timeout: 15_000 });
   await page.keyboard.press("ArrowLeft");
   await expect(stage).toHaveAttribute("data-slide", "s_pre001");
   await expect(stage).toHaveAttribute("data-step", "1");
   await page.keyboard.press("End");
   await expect(stage).toHaveAttribute("data-slide", "s_pre004");
+  // An element that reloads its own frame runs again after the reload.
+  await expect(htmlOutput(page, "e_rld004")).toHaveText("ran after reload", { timeout: 15_000 });
   await page.keyboard.press("ArrowRight");
   await expect(page.getByText("End of the presentation.")).toBeVisible();
   await page.keyboard.press("Home");
@@ -70,6 +80,8 @@ test("the presenter view shows notes and the next slide, and moves present mode 
   await presenter.getByRole("button", { name: "Next", exact: true }).click();
   await expect(presenter.getByTestId("speaker-notes")).toHaveText("This one runs code");
   await expect(page.getByTestId("present-stage")).toHaveAttribute("data-slide", "s_pre003");
+  // The presenter's current slide runs its HTML elements too.
+  await expect(htmlOutput(presenter, "e_hre003")).toHaveText("HTML ran 2", { timeout: 15_000 });
 
   // And the other way: a key in present mode moves the presenter view.
   await page.bringToFront();
@@ -99,6 +111,8 @@ test("a follow link: a signed-out viewer of the public deck follows every slide 
   await presenter.keyboard.press("ArrowRight");
   await presenter.keyboard.press("ArrowRight");
   await expect(stage).toHaveAttribute("data-slide", "s_pre003", { timeout: 15_000 });
+  // A follower sees the HTML element run: its script wrote its text inside the sandboxed frame.
+  await expect(htmlOutput(follower, "e_hre003")).toHaveText("HTML ran 2", { timeout: 15_000 });
   await presenter.keyboard.press("ArrowRight");
   await expect(stage).toHaveAttribute("data-slide", "s_pre004", { timeout: 15_000 });
   // Present mode in the first window moved too.
@@ -108,6 +122,13 @@ test("a follow link: a signed-out viewer of the public deck follows every slide 
   await expect(follower.getByText("The presentation ended.")).toBeVisible({ timeout: 15_000 });
   await viewer.close();
   await presenter.close();
+});
+
+test("the history shows a version with its HTML elements running", async () => {
+  const { page } = me;
+  await page.goto(`/decks/${deck}/history`);
+  await page.getByRole("list", { name: "Slides in this version" }).getByRole("button", { name: /^Slide 3/ }).click();
+  await expect(htmlOutput(page, "e_hre003")).toHaveText("HTML ran 2", { timeout: 15_000 });
 });
 
 test("pages report no errors", async () => {
