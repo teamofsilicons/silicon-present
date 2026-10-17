@@ -1,0 +1,351 @@
+{
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "name": "Coral",
+    "fonts": {
+      "heading": "Manrope",
+      "body": "Manrope"
+    },
+    "colors": {
+      "background": "#fff8f5",
+      "text": "#2a1d1a",
+      "accent": "#e2614b",
+      "accent2": "#2d7f8f",
+      "accent3": "#f2a93b",
+      "muted": "#8a7570"
+    },
+    "customFonts": []
+  },
+  "master": {
+    "elements": []
+  },
+  "slides": [
+    {
+      "id": "s_000001",
+      "layout": "blank",
+      "background": null,
+      "skipped": false,
+      "section": null,
+      "hideMaster": false,
+      "transition": null,
+      "notes": "",
+      "elements": [
+        {
+          "id": "e_00000x",
+          "kind": "chart",
+          "x": 40,
+          "y": 40,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "bar",
+            "title": "bar",
+            "labels": [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May"
+            ],
+            "series": [
+              {
+                "name": "A",
+                "values": [
+                  5,
+                  7,
+                  3,
+                  9,
+                  6
+                ]
+              },
+              {
+                "name": "B",
+                "values": [
+                  2,
+                  4,
+                  6,
+                  5,
+                  8
+                ]
+              }
+            ],
+            "legend": true
+          }
+        },
+        {
+          "id": "e_00000y",
+          "kind": "chart",
+          "x": 510,
+          "y": 40,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "column",
+            "title": "column",
+            "labels": [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May"
+            ],
+            "series": [
+              {
+                "name": "A",
+                "values": [
+                  5,
+                  7,
+                  3,
+                  9,
+                  6
+                ]
+              },
+              {
+                "name": "B",
+                "values": [
+                  2,
+                  4,
+                  6,
+                  5,
+                  8
+                ]
+              }
+            ],
+            "legend": false
+          }
+        },
+        {
+          "id": "e_00000z",
+          "kind": "chart",
+          "x": 980,
+          "y": 40,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "line",
+            "title": "line",
+            "labels": [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May"
+            ],
+            "series": [
+              {
+                "name": "A",
+                "values": [
+                  5,
+                  7,
+                  3,
+                  9,
+                  6
+                ]
+              },
+              {
+                "name": "B",
+                "values": [
+                  2,
+                  4,
+                  6,
+                  5,
+                  8
+                ]
+              }
+            ],
+            "legend": true
+          }
+        },
+        {
+          "id": "e_000010",
+          "kind": "chart",
+          "x": 1450,
+          "y": 40,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "area",
+            "title": "area",
+            "labels": [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May"
+            ],
+            "series": [
+              {
+                "name": "A",
+                "values": [
+                  5,
+                  7,
+                  3,
+                  9,
+                  6
+                ]
+              },
+              {
+                "name": "B",
+                "values": [
+                  2,
+                  4,
+                  6,
+                  5,
+                  8
+                ]
+              }
+            ],
+            "legend": false
+          }
+        },
+        {
+          "id": "e_000011",
+          "kind": "chart",
+          "x": 40,
+          "y": 560,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "pie",
+            "title": "pie",
+            "labels": [
+              "North",
+              "South",
+              "East",
+              "West"
+            ],
+            "series": [
+              {
+                "name": "Share",
+                "values": [
+                  40,
+                  25,
+                  20,
+                  15
+                ]
+              }
+            ],
+            "legend": true
+          }
+        },
+        {
+          "id": "e_000012",
+          "kind": "chart",
+          "x": 510,
+          "y": 560,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "donut",
+            "title": "donut",
+            "labels": [
+              "North",
+              "South",
+              "East",
+              "West"
+            ],
+            "series": [
+              {
+                "name": "Share",
+                "values": [
+                  40,
+                  25,
+                  20,
+                  15
+                ]
+              }
+            ],
+            "legend": true
+          }
+        },
+        {
+          "id": "e_000013",
+          "kind": "chart",
+          "x": 980,
+          "y": 560,
+          "w": 450,
+          "h": 480,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "scatter",
+            "title": "Scatter",
+            "labels": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5"
+            ],
+            "series": [
+              {
+                "name": "y",
+                "values": [
+                  3,
+                  5,
+                  2,
+                  8,
+                  6
+                ]
+              },
+              {
+                "name": "z",
+                "values": [
+                  1,
+                  2,
+                  4,
+                  3,
+                  7
+                ]
+              }
+            ],
+            "legend": true
+          }
+        }
+      ]
+    }
+  ]
+}

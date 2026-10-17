@@ -1,0 +1,744 @@
+{
+  "size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "theme": {
+    "name": "Ivory",
+    "fonts": {
+      "heading": "Fraunces",
+      "body": "Inter"
+    },
+    "colors": {
+      "background": "#f8f5ee",
+      "text": "#211d17",
+      "accent": "#b4532a",
+      "accent2": "#3b6e8f",
+      "accent3": "#7a8b3a",
+      "muted": "#7d7468"
+    },
+    "customFonts": [
+      {
+        "family": "Brand Sans",
+        "src": "asset:7Fq2mP9xRtA1"
+      }
+    ]
+  },
+  "master": {
+    "elements": [
+      {
+        "id": "e_000000",
+        "kind": "text",
+        "x": 80,
+        "y": 1010,
+        "w": 600,
+        "h": 50,
+        "rotation": 0,
+        "locked": false,
+        "group": null,
+        "link": null,
+        "animation": null,
+        "style": {
+          "opacity": 0.6
+        },
+        "text": {
+          "paragraphs": [
+            {
+              "align": "left",
+              "runs": [
+                {
+                  "text": "Silicon Present · master footer"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "e_000001",
+        "kind": "shape",
+        "x": 1820,
+        "y": 1000,
+        "w": 40,
+        "h": 40,
+        "rotation": 0,
+        "locked": false,
+        "group": null,
+        "link": null,
+        "animation": null,
+        "style": {
+          "fill": "#b4532a"
+        },
+        "shape": "ellipse",
+        "text": {
+          "paragraphs": []
+        }
+      }
+    ]
+  },
+  "slides": [
+    {
+      "id": "s_000001",
+      "layout": "title-body",
+      "background": null,
+      "skipped": false,
+      "section": "Intro",
+      "hideMaster": false,
+      "transition": {
+        "type": "fade",
+        "duration": 400
+      },
+      "notes": "Speaker notes\nwith two lines",
+      "elements": [
+        {
+          "id": "e_000002",
+          "kind": "text",
+          "x": 100,
+          "y": 80,
+          "w": 1720,
+          "h": 900,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": {
+            "effect": "fade",
+            "trigger": "click",
+            "order": 1,
+            "duration": 500,
+            "delay": 0
+          },
+          "style": {
+            "fill": "#f4f4f5",
+            "stroke": "#1b1b1f",
+            "strokeWidth": 3,
+            "radius": 16,
+            "opacity": 0.9,
+            "shadow": true,
+            "padding": 24,
+            "verticalAlign": "middle"
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "align": "center",
+                "heading": 1,
+                "runs": [
+                  {
+                    "text": "Every "
+                  },
+                  {
+                    "bold": true,
+                    "text": "inline"
+                  },
+                  {
+                    "text": " attribute"
+                  }
+                ]
+              },
+              {
+                "runs": [
+                  {
+                    "bold": true,
+                    "text": "bold"
+                  },
+                  {
+                    "italic": true,
+                    "text": " italic"
+                  },
+                  {
+                    "underline": true,
+                    "text": " underline"
+                  },
+                  {
+                    "strike": true,
+                    "text": " strike"
+                  },
+                  {
+                    "color": "#e5484d",
+                    "text": " colour"
+                  },
+                  {
+                    "highlight": "#fff3a3",
+                    "text": " highlight"
+                  },
+                  {
+                    "size": 56,
+                    "text": " size"
+                  },
+                  {
+                    "font": "Fraunces",
+                    "text": " font"
+                  },
+                  {
+                    "underline": true,
+                    "link": "https://teamofsilicons.com",
+                    "text": " link"
+                  },
+                  {
+                    "code": true,
+                    "text": " code"
+                  },
+                  {
+                    "bold": true,
+                    "italic": true,
+                    "underline": true,
+                    "color": "#2f5bea",
+                    "size": 44,
+                    "font": "Inter",
+                    "text": " all"
+                  }
+                ]
+              },
+              {
+                "list": "bullet",
+                "runs": [
+                  {
+                    "text": "A bullet"
+                  }
+                ]
+              },
+              {
+                "list": "bullet",
+                "indent": 1,
+                "runs": [
+                  {
+                    "text": "An indented bullet"
+                  }
+                ]
+              },
+              {
+                "list": "ordered",
+                "runs": [
+                  {
+                    "text": "First"
+                  }
+                ]
+              },
+              {
+                "list": "ordered",
+                "runs": [
+                  {
+                    "text": "Second"
+                  }
+                ]
+              },
+              {
+                "list": "ordered",
+                "indent": 2,
+                "lineHeight": 1.6,
+                "runs": [
+                  {
+                    "text": "Nested, taller lines"
+                  }
+                ]
+              },
+              {
+                "align": "right",
+                "heading": 3,
+                "runs": [
+                  {
+                    "text": "Right aligned heading 3"
+                  }
+                ]
+              },
+              {
+                "align": "justify",
+                "heading": 2,
+                "runs": [
+                  {
+                    "text": "Justified heading 2"
+                  }
+                ]
+              },
+              {
+                "runs": []
+              },
+              {
+                "runs": [
+                  {
+                    "text": "Soft break and émoji 🎉 and ünïcödé"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "s_000002",
+      "layout": "blank",
+      "background": {
+        "color": "#f3efe6"
+      },
+      "skipped": false,
+      "section": null,
+      "hideMaster": true,
+      "transition": {
+        "type": "push",
+        "duration": 600,
+        "direction": "left"
+      },
+      "notes": "",
+      "elements": [
+        {
+          "id": "e_000003",
+          "kind": "shape",
+          "x": 100,
+          "y": 100,
+          "w": 500,
+          "h": 300,
+          "rotation": 12.5,
+          "locked": true,
+          "group": "g_000001",
+          "link": "slide:s_000003",
+          "animation": {
+            "effect": "fly-in",
+            "trigger": "click",
+            "order": 1,
+            "duration": 600,
+            "delay": 100,
+            "direction": "left"
+          },
+          "style": {
+            "fill": "#2f6b4f",
+            "stroke": "#1c2a22",
+            "strokeWidth": 4,
+            "radius": 32
+          },
+          "shape": "round-rect",
+          "text": {
+            "paragraphs": [
+              {
+                "align": "center",
+                "runs": [
+                  {
+                    "text": "Shape text"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "e_000004",
+          "kind": "shape",
+          "x": 650,
+          "y": 150,
+          "w": 300,
+          "h": 200,
+          "rotation": 0,
+          "locked": false,
+          "group": "g_000001",
+          "link": null,
+          "animation": {
+            "effect": "zoom",
+            "trigger": "with-previous",
+            "order": 2,
+            "duration": 400,
+            "delay": 0
+          },
+          "style": {},
+          "shape": "arrow-right",
+          "text": {
+            "paragraphs": []
+          }
+        },
+        {
+          "id": "e_000005",
+          "kind": "image",
+          "x": 1000,
+          "y": 100,
+          "w": 800,
+          "h": 450,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": "https://example.com",
+          "animation": {
+            "effect": "rise",
+            "trigger": "after-previous",
+            "order": 3,
+            "duration": 500,
+            "delay": 200
+          },
+          "style": {},
+          "src": "asset:Img1aaaaaaaa",
+          "alt": "A sample picture",
+          "fit": "cover"
+        },
+        {
+          "id": "e_000006",
+          "kind": "image",
+          "x": 1000,
+          "y": 600,
+          "w": 380,
+          "h": 380,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {
+            "radius": 24,
+            "shadow": true
+          },
+          "src": "https://example.com/logo.png",
+          "alt": "",
+          "fit": "contain"
+        },
+        {
+          "id": "e_000007",
+          "kind": "image",
+          "x": 1420,
+          "y": 600,
+          "w": 380,
+          "h": 380,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": {
+            "effect": "wipe",
+            "trigger": "click",
+            "order": 4,
+            "duration": 700,
+            "delay": 0,
+            "direction": "up"
+          },
+          "style": {},
+          "src": "",
+          "alt": "Image placeholder",
+          "fit": "fill"
+        },
+        {
+          "id": "e_000008",
+          "kind": "video",
+          "x": 100,
+          "y": 500,
+          "w": 640,
+          "h": 360,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": {
+            "effect": "appear",
+            "trigger": "click",
+            "order": 5,
+            "duration": 0,
+            "delay": 0
+          },
+          "style": {},
+          "src": "asset:Vid1aaaaaaaa",
+          "alt": "A clip",
+          "autoplay": true,
+          "loop": true,
+          "muted": true,
+          "poster": "asset:Img1aaaaaaaa"
+        },
+        {
+          "id": "e_000009",
+          "kind": "audio",
+          "x": 760,
+          "y": 900,
+          "w": 200,
+          "h": 80,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "src": "asset:Aud1aaaaaaaa",
+          "alt": "Narration",
+          "autoplay": false,
+          "loop": false,
+          "muted": false
+        }
+      ]
+    },
+    {
+      "id": "s_000003",
+      "layout": "title-only",
+      "background": {
+        "image": "asset:Img1aaaaaaaa",
+        "fit": "contain"
+      },
+      "skipped": true,
+      "section": null,
+      "hideMaster": false,
+      "transition": {
+        "type": "wipe",
+        "duration": 500,
+        "direction": "up"
+      },
+      "notes": "",
+      "elements": [
+        {
+          "id": "e_00000a",
+          "kind": "table",
+          "x": 100,
+          "y": 100,
+          "w": 900,
+          "h": 400,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {
+            "stroke": "#7d7468",
+            "strokeWidth": 2
+          },
+          "rows": 3,
+          "cols": 3,
+          "colWidths": [
+            300,
+            300,
+            300
+          ],
+          "rowHeights": [
+            120,
+            140,
+            140
+          ],
+          "headerRow": true,
+          "cells": [
+            [
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "align": "left",
+                      "runs": [
+                        {
+                          "text": "Region"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "bold": true,
+                          "text": "Q3"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "text": "Q4"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": "#ffe9d6"
+              }
+            ],
+            [
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "text": "North"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "text": "12"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "align": "right",
+                      "runs": [
+                        {
+                          "text": "18"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              }
+            ],
+            [
+              {
+                "text": {
+                  "paragraphs": []
+                },
+                "fill": null
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "text": "9"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": "#e8f3ec"
+              },
+              {
+                "text": {
+                  "paragraphs": [
+                    {
+                      "runs": [
+                        {
+                          "italic": true,
+                          "text": "11"
+                        }
+                      ]
+                    },
+                    {
+                      "runs": [
+                        {
+                          "size": 24,
+                          "text": "(est.)"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "fill": null
+              }
+            ]
+          ]
+        },
+        {
+          "id": "e_00000b",
+          "kind": "chart",
+          "x": 1050,
+          "y": 100,
+          "w": 770,
+          "h": 500,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {},
+          "chart": {
+            "type": "column",
+            "title": "Revenue",
+            "labels": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "series": [
+              {
+                "name": "2025",
+                "values": [
+                  10,
+                  12.5,
+                  9,
+                  14
+                ],
+                "color": "#3b6e8f"
+              },
+              {
+                "name": "2026",
+                "values": [
+                  12,
+                  15,
+                  13,
+                  18
+                ]
+              }
+            ],
+            "legend": true
+          }
+        },
+        {
+          "id": "e_00000c",
+          "kind": "html",
+          "x": 100,
+          "y": 560,
+          "w": 900,
+          "h": 420,
+          "rotation": 0,
+          "locked": false,
+          "group": null,
+          "link": null,
+          "animation": null,
+          "style": {
+            "radius": 12
+          },
+          "html": "<div class=\"pulse\">Live HTML</div>\n<canvas id=\"c\" width=\"300\" height=\"100\"></canvas>",
+          "css": ".pulse { font: 600 48px system-ui; color: #b4532a; animation: p 1s infinite alternate; }\n@keyframes p { to { opacity: .4 } }",
+          "js": "const c = document.getElementById('c').getContext('2d');\nc.fillStyle = '#3b6e8f';\nc.fillRect(0, 0, 300, 100);"
+        }
+      ]
+    },
+    {
+      "id": "s_000004",
+      "layout": "section",
+      "background": null,
+      "skipped": false,
+      "section": "Appendix",
+      "hideMaster": false,
+      "transition": {
+        "type": "zoom",
+        "duration": 300
+      },
+      "notes": "",
+      "elements": []
+    },
+    {
+      "id": "s_000005",
+      "layout": "blank",
+      "background": null,
+      "skipped": false,
+      "section": null,
+      "hideMaster": false,
+      "transition": {
+        "type": "cover",
+        "duration": 700,
+        "direction": "down"
+      },
+      "notes": "",
+      "elements": []
+    }
+  ]
+}
