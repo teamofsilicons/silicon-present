@@ -1,0 +1,139 @@
+/* The in-place rich text editor: Quill's DOM styled to match @silicon-present/render's text (packages/render/src/text.ts):
+   paragraphs without margins, headings 96/64/48 px in the heading face, lists indented 1.1em per level with markers. */
+
+.frame {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  cursor: text;
+}
+
+.frame[data-readonly] {
+  outline: 2px dashed var(--accent);
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
+}
+
+.host {
+  position: relative;
+  width: 100%;
+}
+
+.pickHint {
+  position: absolute;
+  left: 0;
+  top: -40px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--foreground);
+  color: var(--surface);
+  font: 500 22px/1.3 system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.host :global(.ql-container) {
+  position: relative;
+}
+
+.host :global(.ql-editor) {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  min-height: 1.25em;
+  caret-color: currentColor;
+  tab-size: 4;
+}
+
+.host :global(.ql-clipboard) {
+  position: absolute;
+  left: -100000px;
+  height: 1px;
+  overflow-y: hidden;
+}
+
+.host :global(.ql-editor p),
+.host :global(.ql-editor h1),
+.host :global(.ql-editor h2),
+.host :global(.ql-editor h3),
+.host :global(.ql-editor ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.host :global(.ql-editor h1),
+.host :global(.ql-editor h2),
+.host :global(.ql-editor h3) {
+  font-family: var(--heading-font);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.host :global(.ql-editor h1) { font-size: 96px; font-weight: 700; }
+.host :global(.ql-editor h2) { font-size: 64px; font-weight: 600; }
+.host :global(.ql-editor h3) { font-size: 48px; font-weight: 600; }
+
+.host :global(.ql-editor code) {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: rgba(127, 127, 127, 0.16);
+  border-radius: 0.2em;
+  padding: 0 0.2em;
+  font-size: 0.9em;
+}
+
+.host :global(.ql-editor a) {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.host :global(.ql-editor strong) { font-weight: 700; }
+
+/* Lists: <ol><li data-list="bullet|ordered"><span class="ql-ui"></span>…</li></ol> */
+.host :global(.ql-editor li) {
+  list-style: none;
+  position: relative;
+  padding-left: 1.1em;
+  counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8;
+}
+
+.host :global(.ql-editor li > .ql-ui) {
+  position: absolute;
+  left: 0;
+  width: 1em;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.host :global(.ql-editor li[data-list="bullet"] > .ql-ui::before) { content: "•"; }
+.host :global(.ql-editor li[data-list="ordered"]) { counter-increment: list-0; }
+.host :global(.ql-editor li[data-list="ordered"] > .ql-ui::before) { content: counter(list-0) "."; }
+.host :global(.ql-editor ol) { counter-reset: list-0; }
+
+.host :global(.ql-editor .ql-indent-1) { padding-left: 1.1em; }
+.host :global(.ql-editor .ql-indent-2) { padding-left: 2.2em; }
+.host :global(.ql-editor .ql-indent-3) { padding-left: 3.3em; }
+.host :global(.ql-editor .ql-indent-4) { padding-left: 4.4em; }
+.host :global(.ql-editor .ql-indent-5) { padding-left: 5.5em; }
+.host :global(.ql-editor .ql-indent-6) { padding-left: 6.6em; }
+.host :global(.ql-editor .ql-indent-7) { padding-left: 7.7em; }
+.host :global(.ql-editor .ql-indent-8) { padding-left: 8.8em; }
+.host :global(.ql-editor li.ql-indent-1) { padding-left: 2.2em; }
+.host :global(.ql-editor li.ql-indent-2) { padding-left: 3.3em; }
+.host :global(.ql-editor li.ql-indent-3) { padding-left: 4.4em; }
+.host :global(.ql-editor li.ql-indent-4) { padding-left: 5.5em; }
+.host :global(.ql-editor li.ql-indent-1 > .ql-ui) { left: 1.1em; }
+.host :global(.ql-editor li.ql-indent-2 > .ql-ui) { left: 2.2em; }
+.host :global(.ql-editor li.ql-indent-3 > .ql-ui) { left: 3.3em; }
+.host :global(.ql-editor li.ql-indent-4 > .ql-ui) { left: 4.4em; }
+.host :global(.ql-editor li[data-list="bullet"].ql-indent-1 > .ql-ui::before) { content: "◦"; }
+.host :global(.ql-editor li[data-list="bullet"].ql-indent-2 > .ql-ui::before) { content: "▪"; }
+
+/* The placeholder look for an empty box */
+.host :global(.ql-editor.ql-blank::before) {
+  content: "";
+}
