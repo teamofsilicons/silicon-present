@@ -54,7 +54,7 @@ function t(x: number, y: number, s: string, c: Ctx, opts: { anchor?: "start" | "
 }
 
 export function chartSvg(chart: Chart, w: number, h: number, theme: Theme): string {
-  const fs = Math.max(12, Math.min(30, Math.min(w, h) * 0.045));
+  const fs = Math.max(16, Math.min(28, Math.min(w, h) * 0.06));
   const c: Ctx = {
     theme,
     fs,

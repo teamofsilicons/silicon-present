@@ -93,21 +93,21 @@ const PLAYER_JS = `
 })();
 `;
 
+// Slides that use embedded assets are kept in an inert <template> (nothing loads from it), then put into the page
+// with every "sp-asset:<id>" swapped for a blob URL made from the embedded bytes.
 const ASSETS_JS = `
 (function(){
-  var el = document.getElementById('${DECK_ASSETS_ID}'); if (!el) return;
-  var assets = JSON.parse(el.textContent || '{}'), urls = {};
+  var el = document.getElementById('${DECK_ASSETS_ID}');
+  var assets = el ? JSON.parse(el.textContent || '{}') : {}, urls = {};
   Object.keys(assets).forEach(function(id){
     var a = assets[id], bin = atob(a.data), bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     urls[id] = URL.createObjectURL(new Blob([bytes], { type: a.contentType }));
   });
   function swap(s){ return s.replace(/sp-asset:([A-Za-z0-9_-]+)/g, function(_, id){ return urls[id] || ''; }); }
-  document.querySelectorAll('[src^="sp-asset:"],[poster^="sp-asset:"]').forEach(function(n){
-    ['src','poster'].forEach(function(k){ var v = n.getAttribute(k); if (v && v.indexOf('sp-asset:') === 0) n.setAttribute(k, swap(v)); });
-  });
-  document.querySelectorAll('[style*="sp-asset:"]').forEach(function(n){ n.setAttribute('style', swap(n.getAttribute('style'))); });
   document.querySelectorAll('style').forEach(function(s){ if (s.textContent.indexOf('sp-asset:') >= 0) s.textContent = swap(s.textContent); });
+  var t = document.getElementById('sp-slides');
+  if (t) { t.insertAdjacentHTML('afterend', swap(t.innerHTML)); t.remove(); }
 })();
 `;
 
@@ -141,7 +141,10 @@ export function renderDeckHtml(deck: DeckJson, opts: DeckHtmlOptions = {}): stri
   }
   const embeds: string[] = [];
   if (opts.embedDeck) embeds.push(`<script type="application/json" id="${DECK_JSON_ID}">${scriptJson(deck)}</script>`);
-  if (opts.assets) embeds.push(`<script type="application/json" id="${DECK_ASSETS_ID}">${scriptJson(opts.assets)}</script>`, `<script>${ASSETS_JS}</script>`);
+  if (opts.assets) {
+    body = `<template id="sp-slides">${body}</template>`;
+    embeds.push(`<script type="application/json" id="${DECK_ASSETS_ID}">${scriptJson(opts.assets)}</script>`, `<script>${ASSETS_JS}</script>`);
+  }
   const scripts = mode === "player" ? `<script>${PLAYER_JS}</script>` : "";
   return `${head}<style>${fonts}\n${SLIDE_CSS}\n${css}</style></head><body>${body}${embeds.join("")}${scripts}</body></html>`;
 }
