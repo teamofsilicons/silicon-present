@@ -28,7 +28,9 @@ export function robotsTxt(origin: string): string {
     "User-agent: *",
     "Allow: /",
     "Allow: /llms.txt",
-    ...["/api/", "/auth/", "/sign-in", ...workspace].map(path => `Disallow: ${path}`),
+    // Present: decks are reachable only by their link and never listed (UNDERSTANDING.md "Public decks"), so the deck
+    // pages, follow-along links and the HTML element sandbox stay out of crawlers too.
+    ...["/api/", "/auth/", "/sign-in", ...workspace, "/p/", "/sandbox/"].map(path => `Disallow: ${path}`),
     "",
     `Sitemap: ${origin}/sitemap.xml`,
     "",

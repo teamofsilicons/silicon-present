@@ -2,18 +2,20 @@
  * Runs a rendered slide's HTML elements live (browser only). `@silicon-present/render` draws each HTML element as
  * `<iframe class="sp-html" sandbox="allow-scripts" srcdoc="…">`; a srcdoc frame inherits this site's CSP (scripts by
  * nonce only), so its JS would never run. `liveHtmlElements(root)` swaps each one for a frame of /sandbox/html (same
- * sandbox, its own permissive policy, an opaque origin) and posts it the element's document once that page says it is
- * ready.
+ * sandbox, its own permissive policy, an opaque origin) and posts it the element's document whenever that page says it
+ * is ready.
  *
  *   const stop = liveHtmlElements(container);     // after putting renderSlideHtml(...) into container
  *   stop();                                        // when the container is replaced or unmounted
  *
- * Idempotent and safe to call twice (React runs effects twice in development): the document stays with its frame
- * until it is posted, so whichever call is listening when the frame is ready answers it.
+ * Robust the way the editor's frames are (components/editor/slide-element.tsx): the document stays with its frame for
+ * the frame's whole life, not with one call. So React running effects twice (development), a remount over the same
+ * markup, or the element reloading its own frame never leaves it blank: whichever call is listening when the frame
+ * says it is ready answers it, every time it says so.
  */
 const READY = "present:sandbox-ready";
 
-/** Each swapped frame's document, until it has been handed over. */
+/** Each swapped frame's document, for as long as the frame exists. */
 const documents = new WeakMap<HTMLIFrameElement, string>();
 
 export function liveHtmlElements(root: HTMLElement): () => void {
@@ -30,7 +32,7 @@ export function liveHtmlElements(root: HTMLElement): () => void {
     if (!frame) return;
     const doc = documents.get(frame);
     if (doc === undefined) return;
-    documents.delete(frame);
+    // The sandbox page takes the first document it is handed per load and ignores repeats.
     (event.source as Window).postMessage({ type: "present:html", doc }, "*");
   };
   window.addEventListener("message", onMessage);

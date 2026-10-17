@@ -9,7 +9,7 @@ const ORIGIN = "https://present.example";
 test("robots.txt opens the public pages and keeps the workspace, sign-in and the proxy out", () => {
   const text = robotsTxt(ORIGIN);
   assert.match(text, /^# https:\/\/present\.example: Present\./);
-  for (const line of ["User-agent: ClaudeBot", "User-agent: *", "Allow: /", "Allow: /llms.txt", "Disallow: /api/", "Disallow: /auth/", "Disallow: /sign-in", "Disallow: /decks", "Disallow: /transfers", "Disallow: /trash", `Sitemap: ${ORIGIN}/sitemap.xml`]) {
+  for (const line of ["User-agent: ClaudeBot", "User-agent: *", "Allow: /", "Allow: /llms.txt", "Disallow: /api/", "Disallow: /auth/", "Disallow: /sign-in", "Disallow: /decks", "Disallow: /transfers", "Disallow: /trash", "Disallow: /p/", "Disallow: /sandbox/", `Sitemap: ${ORIGIN}/sitemap.xml`]) {
     assert.ok(text.split("\n").includes(line), line);
   }
 });
