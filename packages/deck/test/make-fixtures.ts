@@ -62,7 +62,7 @@ export function fixtures(): Record<string, DeckJson> {
       { align: "right", heading: 3, runs: [{ text: "Right aligned heading 3" }] },
       { align: "justify", heading: 2, runs: [{ text: "Justified heading 2" }] },
       { runs: [] },
-      { runs: [{ text: "Soft break and émoji 🎉 and ünïcödé" }] },
+      { runs: [{ text: "Soft\u2028break and émoji 🎉 and ünïcödé" }] },
     ],
   };
 
