@@ -12,6 +12,7 @@ export const SECRET = process.env.CONVERTER_SECRET ?? "";
 export const SOFFICE = process.env.SOFFICE_PATH ?? "/opt/homebrew/bin/soffice";
 export const PDFTOPPM = process.env.PDFTOPPM_PATH ?? "/opt/homebrew/bin/pdftoppm";
 export const PDFTOTEXT = process.env.PDFTOTEXT_PATH ?? "/opt/homebrew/bin/pdftotext";
+export const PDFTOCAIRO = process.env.PDFTOCAIRO_PATH ?? "/opt/homebrew/bin/pdftocairo";
 export const PDFINFO = process.env.PDFINFO_PATH ?? "/opt/homebrew/bin/pdfinfo";
 export const KEYNOTE_APP = "/Applications/Keynote.app";
 /** Optional: re-encodes video/audio that PowerPoint and Keynote can't play (webm, ogg...) into mp4/mp3. */
@@ -40,6 +41,8 @@ process.on("exit", cleanupWorkDir);
 export const HAVE = {
   soffice: () => existsSync(SOFFICE),
   pdftoppm: () => existsSync(PDFTOPPM),
+  pdftotext: () => existsSync(PDFTOTEXT),
+  pdftocairo: () => existsSync(PDFTOCAIRO),
   keynote: () => process.platform === "darwin" && existsSync(KEYNOTE_APP),
   ffmpeg: () => existsSync(FFMPEG),
 };

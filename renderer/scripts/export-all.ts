@@ -8,7 +8,7 @@ const out = process.argv[2]!;
 mkdirSync(out, { recursive: true });
 const { base, server } = await startAssetServer();
 const deck = exportDeck();
-for (const format of (process.argv[3] ?? "pdf,png,html,pptx,odp,ppt,key").split(",")) {
+for (const format of (process.argv[3] ?? "pptx,odp,pdf,txt,png,jpg").split(",")) {
   const t = Date.now();
   try {
     const r = await doExport({ deck, format, assetBase: base });

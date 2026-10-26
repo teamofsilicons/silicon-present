@@ -235,10 +235,15 @@ function iconSvg(kind: "image" | "audio", c: string, size: number): string {
 }
 
 /** The srcdoc document of an HTML element: its HTML, CSS and JS, nothing else of the deck. */
+/** The page defaults every HTML element starts from (the editor's edit-inside frame draws its parts on the same). */
+export function htmlElementBaseCss(theme: Theme): string {
+  return `html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:${fontStack(theme.fonts.body)};color:${color(theme.colors.text, "#111")}}`;
+}
+
 export function htmlElementDoc(e: { html: string; css: string; js: string }, theme: Theme): string {
   return (
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:${fontStack(theme.fonts.body)};color:${color(theme.colors.text, "#111")}}</style>` +
+    `<style>${htmlElementBaseCss(theme)}</style>` +
     `<style>${e.css ?? ""}</style></head><body>${e.html ?? ""}<script>${(e.js ?? "").replace(/<\/script/gi, "<\\/script")}</script></body></html>`
   );
 }

@@ -2,6 +2,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import type { DeckJson } from "@silicon-present/deck";
 import { renderDeckHtml, renderSlideDocument, type RenderOptions } from "@silicon-present/render";
 import { ConverterError } from "./errors";
+import { assetPermission, networkRequest } from "./network";
 
 // One shared headless Chromium (Playwright's, from ~/Library/Caches/ms-playwright) for screenshots, PDF and image work.
 
@@ -9,7 +10,7 @@ let browserP: Promise<Browser> | null = null;
 
 export function browser(): Promise<Browser> {
   if (!browserP) {
-    browserP = chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--font-render-hinting=none"] }).catch((e) => {
+    browserP = chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required", "--font-render-hinting=none", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] }).catch((e) => {
       browserP = null;
       throw new ConverterError("chromium_unavailable", `Chromium could not start: ${e instanceof Error ? e.message : e}`, "Install Playwright's Chromium on the converter host (pnpm exec playwright install chromium).", 500);
     });
@@ -25,10 +26,22 @@ export async function closeBrowser(): Promise<void> {
   }
 }
 
-async function withPage<T>(opts: { width: number; height: number; scale?: number }, fn: (page: Page) => Promise<T>): Promise<T> {
+async function withPage<T>(opts: { width: number; height: number; scale?: number; assetUrl?: (id: string) => string }, fn: (page: Page) => Promise<T>): Promise<T> {
   const b = await browser();
-  const ctx = await b.newContext({ viewport: { width: Math.round(opts.width), height: Math.round(opts.height) }, deviceScaleFactor: opts.scale ?? 1 });
+  const ctx = await b.newContext({ viewport: { width: Math.round(opts.width), height: Math.round(opts.height) }, deviceScaleFactor: opts.scale ?? 1, serviceWorkers: "block",
+    // Any Chromium networking path not intercepted below fails closed. HTTP is fulfilled by Node.
+    proxy: { server: "http://127.0.0.1:0", bypass: "<-loopback>" } });
   try {
+    const assetAllowed = assetPermission(opts.assetUrl);
+    // Fulfil from our pinned transport. Never hand an approved URL back to Chromium for another DNS lookup.
+    await ctx.route("**/*", async (route) => {
+      const request = route.request();
+      try {
+        const response = await networkRequest(request.url(), { assetAllowed, method: request.method(), headers: request.headers(), body: request.postDataBuffer() });
+        await route.fulfill({ status: response.status, headers: response.headers, body: response.data });
+      } catch { await route.abort("blockedbyclient").catch(() => {}); }
+    });
+    await ctx.routeWebSocket("**/*", (socket) => socket.close());
     const page = await ctx.newPage();
     return await fn(page);
   } finally {
@@ -74,7 +87,7 @@ export async function screenshotSlides(deck: DeckJson, slideIds: string[], o: Sh
   const W = deck.size.width;
   const H = deck.size.height;
   const outW = Math.max(16, Math.min(7680, Math.round(o.width ?? W)));
-  return withPage({ width: W, height: H, scale: outW / W }, async (page) => {
+  return withPage({ width: W, height: H, scale: outW / W, assetUrl: o.assetUrl }, async (page) => {
     const out: Buffer[] = [];
     for (const id of slideIds) {
       const ropts: RenderOptions = { assetUrl: o.assetUrl, media: "static", step: "all" };
@@ -96,7 +109,7 @@ export async function screenshotSlides(deck: DeckJson, slideIds: string[], o: Sh
 export async function deckPdf(deck: DeckJson, o: { assetUrl: (id: string) => string; at?: number; includeSkipped?: boolean }): Promise<Buffer> {
   const W = deck.size.width;
   const H = deck.size.height;
-  return withPage({ width: W, height: H }, async (page) => {
+  return withPage({ width: W, height: H, assetUrl: o.assetUrl }, async (page) => {
     await page.setContent(renderDeckHtml(deck, { mode: "print", assetUrl: o.assetUrl, media: "static", includeSkipped: o.includeSkipped }), { waitUntil: "load", timeout: 120_000 });
     await settle(page, o.at ?? (hasLive(deck, deck.slides.map((s) => s.id)) ? 1500 : 50));
     await page.emulateMedia({ media: "screen" });
@@ -116,7 +129,7 @@ export async function elementPicture(deck: DeckJson, slideId: string, elementId:
   };
   const w = Math.max(1, Math.ceil(el.w));
   const h = Math.max(1, Math.ceil(el.h));
-  return withPage({ width: Math.max(w, 1), height: Math.max(h, 1), scale: o.scale ?? 1 }, async (page) => {
+  return withPage({ width: Math.max(w, 1), height: Math.max(h, 1), scale: o.scale ?? 1, assetUrl: o.assetUrl }, async (page) => {
     await page.setContent(renderSlideDocument(tmp, "s_pic000", { assetUrl: o.assetUrl, media: "static", transparent: true }), { waitUntil: "load", timeout: 60_000 });
     await settle(page, o.at ?? (el.kind === "html" || el.kind === "video" ? 1500 : 50));
     return page.screenshot({ type: "png", omitBackground: true, clip: { x: 0, y: 0, width: w, height: h } });

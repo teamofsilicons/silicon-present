@@ -1,14 +1,18 @@
 import { copyFileSync, existsSync, readdirSync, renameSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { HAVE, KEYNOTE_APP, SOFFICE, WORK_DIR } from "./config";
 import { ConverterError } from "./errors";
 import { run, serial } from "./proc";
+import { withKeynoteLock } from "./keynote-lock";
 
 // LibreOffice (headless, one private profile per converter process, one conversion at a time) and Keynote
-// (AppleScript, one at a time).
+// (AppleScript, one at a time across converter processes on this Mac).
 
 const sofficeQueue = serial();
 const keynoteQueue = serial();
+// Deliberately outside CONVERTER_TMP, which is different in each build lane.
+const KEYNOTE_LOCK = join(tmpdir(), "silicon-present-keynote.lock");
 const PROFILE = `file://${join(WORK_DIR, "lo-profile")}`;
 
 /**
@@ -92,7 +96,7 @@ function isFatalAlert(text: string): boolean {
 
 /** Close documents left open by converter processes that no longer exist (their names carry the pid). */
 async function closeOrphans(): Promise<void> {
-  const names = await osa(['tell application "Keynote" to get name of every document']).catch(() => "");
+  const names = await osa(['tell application "Keynote" to get name of every document']);
   for (const name of names.split(", ")) {
     const m = /^silicon-present-(\d+)-/.exec(name.trim());
     if (!m) continue;
@@ -106,6 +110,17 @@ async function closeOrphans(): Promise<void> {
   }
 }
 
+export function keynoteError(error: unknown): ConverterError {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (error instanceof ConverterError && error.code !== "tool_failed") return error;
+  // Missing scripting classes (-1728/-1708), corrupt input and application bugs
+  // are conversion failures, not evidence that Automation permission was denied.
+  if (/-1743|-10004|not authori[sz]ed to send Apple events|not allowed to send Apple events/i.test(msg)) {
+    return new ConverterError("keynote_unavailable", "Keynote is installed but this converter isn't allowed to control it.", KEYNOTE_HINT, 501);
+  }
+  return new ConverterError("keynote_failed", `Keynote could not convert the file: ${msg.slice(0, 400)}`, "Check Keynote's scripting support and that the file opens in Keynote; otherwise use .pptx.", 422);
+}
+
 /**
  * Drive Keynote. The input is opened through LaunchServices (`open -g -a Keynote`), because Keynote's sandbox only
  * lets it read files handed to it that way (AppleScript's own `open` fails with "can't be imported"); saving and
@@ -116,7 +131,7 @@ async function keynote(action: "save" | "export-pptx", input: string, output: st
   if (!HAVE.keynote()) {
     throw new ConverterError("keynote_unavailable", `Keynote is not installed on this converter host (${KEYNOTE_APP}), so .key files can't be made or read here.`, KEYNOTE_HINT, 501);
   }
-  return keynoteQueue(async () => {
+  return keynoteQueue(() => withKeynoteLock(KEYNOTE_LOCK, async () => {
     const stem = `silicon-present-${process.pid}-${++keynoteN}-${Date.now().toString(36)}`;
     const src = join(dirname(output), stem + extname(input));
     copyFileSync(input, src);
@@ -132,7 +147,10 @@ async function keynote(action: "save" | "export-pptx", input: string, output: st
       await run("open", ["-g", "-a", KEYNOTE_APP, src, "--args", "-ApplePersistenceIgnoreState", "YES"], { what: "Keynote", timeoutMs: 30_000 });
       const deadline = Date.now() + 150_000;
       for (;;) {
-        const names = await osa(['tell application "Keynote" to get name of every document']).catch(() => "");
+        // A successful empty result means the file is still opening. A scripting
+        // error must reach the caller; swallowing it hid broken native scripting
+        // behind a misleading 150-second file-opening timeout.
+        const names = await osa(['tell application "Keynote" to get name of every document']);
         if (names.includes(stem)) break;
         const alert = await keynoteAlert();
         if (alert && isFatalAlert(alert)) throw new ConverterError("keynote_failed", `Keynote could not open the file: ${alert.trim()}`, "Check the file opens in Keynote; otherwise use .pptx.", 422);
@@ -171,12 +189,7 @@ async function keynote(action: "save" | "export-pptx", input: string, output: st
       }
       await job;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof ConverterError && e.code !== "tool_failed") throw e;
-      if (/not allowed|-1743|-10004|permission|not authori/i.test(msg)) {
-        throw new ConverterError("keynote_unavailable", "Keynote is installed but this converter isn't allowed to control it.", KEYNOTE_HINT, 501);
-      }
-      throw new ConverterError("keynote_failed", `Keynote could not convert the file: ${msg.slice(0, 300)}`, "Check the file opens in Keynote; otherwise use .pptx.", 422);
+      throw keynoteError(e);
     } finally {
       // never leave our document open, even when something failed
       await osa(['tell application "Keynote"', `repeat while (count of (every document whose name starts with "${stem}")) > 0`, `close (first document whose name starts with "${stem}") saving no`, "end repeat", "end tell"]).catch(() => undefined);
@@ -186,7 +199,7 @@ async function keynote(action: "save" | "export-pptx", input: string, output: st
     }
     if (!existsSync(output)) throw new ConverterError("keynote_failed", "Keynote finished without writing the file.", KEYNOTE_HINT, 422);
     return { path: output, warnings };
-  });
+  }));
 }
 
 export function pptxToKey(pptx: string, out: string): Promise<{ path: string; warnings: string[] }> {

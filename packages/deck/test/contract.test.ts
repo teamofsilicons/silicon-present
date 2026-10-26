@@ -39,7 +39,8 @@ for (const name of names) {
   });
 
   const rust = join(CONTRACT_DIR, `${name}.rust.yupdate`);
-  test(`${name}: the Rust-made .rust.yupdate decodes to the json`, { skip: existsSync(rust) ? false : `${name}.rust.yupdate not there yet (made by crates/present-deck)` }, () => {
+  test(`${name}: the Rust-made .rust.yupdate decodes to the json`, () => {
+    assert.ok(existsSync(rust), `${name}: missing Rust counterpart`);
     const doc = new Y.Doc();
     Y.applyUpdate(doc, new Uint8Array(readFileSync(rust)));
     assert.deepEqual(docToJson(doc), json);

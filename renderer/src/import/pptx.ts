@@ -6,12 +6,14 @@ import { extOf, imageSize, sniffType, typeForExt } from "../media";
 import { createHash } from "node:crypto";
 import { shapeGeometry } from "@silicon-present/render";
 import { connectorPath, custGeomSvg, flipPath, svgDoc, svgPad, type LineStyle, type Paint, type PaintColor } from "./geometry";
+import { readAnimations } from "./pptx-animations";
 import { EMPTY, attr, child, find, findAll, kids, num, parseXml, path, relsPathFor, resolvePart, textOf, type XNode } from "./xml";
 
 // Native .pptx importer. Reads the package (presentation, slides, layouts, masters, theme, charts, notes, media) and
 // builds deck JSON: text with runs and paragraph attributes (inherited from placeholders, layouts, masters and the
 // presentation's default text style), preset shapes with fills and lines, pictures, tables, charts, video/audio,
-// backgrounds, notes, sections, hidden slides and transitions. Group shapes are flattened (children keep a shared
+// backgrounds, notes, sections, hidden slides, transitions and entrance animations (pptx-animations.ts: PowerPoint's
+// effects mapped onto ours, timed as PowerPoint plays them). Group shapes are flattened (children keep a shared
 // `group` id and their real position). Anything it can't model (SmartArt, OLE objects, ink, 3D, custom geometry,
 // unknown graphic data, pictures browsers can't show) is returned as a "region" so the caller can replace it with a
 // picture of that part cut from LibreOffice's render of the slide. Nothing is dropped.
@@ -44,6 +46,8 @@ export interface PptxImport {
   /** Slide size in points (for cropping regions out of a PDF render). */
   pageWidthPt: number;
   pageHeightPt: number;
+  /** what was approximated or left out (animations PowerPoint has and we don't) */
+  notes: string[];
 }
 
 type Rels = Map<string, { target: string; type: string; external: boolean }>;
@@ -596,6 +600,8 @@ interface SlideBuild {
   group: string | null;
   /** reading a layout's or master's decorations (not the slide's own shapes) */
   decor?: boolean;
+  /** the elements each shape id on the slide became (a group's id: all its members), for animations */
+  spids?: Map<string, ElementInput[]>;
 }
 
 /** PowerPoint's "can't move" lock is our locked. */
@@ -1074,6 +1080,7 @@ async function readGraphicFrame(gf: XNode, b: SlideBuild, t: Transform, ctx: Ctx
 async function readTree(nodes: XNode[], b: SlideBuild, t: Transform, ctx: Ctx, from: Part, opts: { skipPlaceholders?: boolean } = {}): Promise<void> {
   for (const n of nodes) {
     if (opts.skipPlaceholders && phOf(phNode(n))) continue;
+    const before = b.elements.length;
     switch (n.name) {
       case "p:sp":
       case "p:cxnSp":
@@ -1105,6 +1112,8 @@ async function readTree(nodes: XNode[], b: SlideBuild, t: Transform, ctx: Ctx, f
         break;
       }
     }
+    const spid = attr(child(kids(n)[0], "p:cNvPr"), "id");
+    if (b.spids && spid && b.elements.length > before) b.spids.set(spid, b.elements.slice(before));
   }
 }
 
@@ -1265,6 +1274,7 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     if (first) sectionStart.set(attr(first, "id") ?? "", attr(sec, "name") ?? "Section");
   }
   const slides: Slide[] = [];
+  const notes: string[] = [];
   const masterDecorByPath = new Map<string, ElementInput[]>();
   const slideMasters: Array<string | null> = [];
   const layoutDecor = new Map<string, ElementInput[]>();
@@ -1282,22 +1292,23 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
     while (usedSlideIds.has(id)) id = newSlideId();
     usedSlideIds.add(id);
     ctx.slideIdByPart.set(part.path, id);
-    const b: SlideBuild = { elements: [], slideIndex: slides.length, part, layout, master, group: null };
+    const b: SlideBuild = { elements: [], slideIndex: slides.length, part, layout, master, group: null, spids: new Map() };
     // each master's decorations (non-placeholder shapes), read once
     if (master && !masterDecorByPath.has(master.path)) {
-      const mb: SlideBuild = { ...b, elements: [], decor: true };
+      const mb: SlideBuild = { ...b, elements: [], decor: true, spids: undefined };
       await readTree(kids(path(master.xml, "p:cSld", "p:spTree")), mb, IDENTITY, ctx, master, { skipPlaceholders: true });
       // decorations are copied onto many slides, so a part that would need a per-slide picture is left to the slides
       masterDecorByPath.set(master.path, mb.elements);
     }
     slideMasters.push(master?.path ?? null);
     if (layout && !layoutDecor.has(layout.path)) {
-      const lb: SlideBuild = { ...b, elements: [], decor: true };
+      const lb: SlideBuild = { ...b, elements: [], decor: true, spids: undefined };
       await readTree(kids(path(layout.xml, "p:cSld", "p:spTree")), lb, IDENTITY, ctx, layout, { skipPlaceholders: true });
       layoutDecor.set(layout.path, lb.elements);
     }
     slideLayouts.push(layout?.path ?? null);
     await readTree(kids(path(part.xml, "p:cSld", "p:spTree")), b, IDENTITY, ctx, part);
+    readAnimations(part.xml, b.spids!, slides.length + 1, notes);
     const showMaster = attr(part.xml, "showMasterSp") !== "0" && attr(layout?.xml, "showMasterSp") !== "0";
     const slide: Slide = {
       id,
@@ -1391,7 +1402,7 @@ export async function importPptx(data: Buffer): Promise<PptxImport> {
   // our own exports keep the theme's muted colour in dk2; elsewhere dk2 is just another dark colour
   if (textOf(find(core, "dc:creator")) === "Silicon Present" && theme.colors.dk2) themeOut.colors.muted = theme.colors.dk2;
   const deck = normalizeDeck({ title, size: { width, height }, theme: themeOut, master: { elements: masterElements }, slides: slides as never });
-  return { deck, assets: ctx.assets, regions: ctx.regions, pageWidthPt: cx / 12700, pageHeightPt: cy / 12700 };
+  return { deck, assets: ctx.assets, regions: ctx.regions, pageWidthPt: cx / 12700, pageHeightPt: cy / 12700, notes };
 }
 
 export { sameGeometry };

@@ -1,5 +1,5 @@
 // @silicon-present/render: the single definition of how a Silicon Present slide looks.
-export { renderSlideHtml, renderSlideDocument, renderElementHtml, slideSteps, transitionCss, fontCss, deckFonts, scaleToFit, resolveSrc, backgroundCss, htmlElementDoc } from "./slide";
+export { renderSlideHtml, renderSlideDocument, renderElementHtml, slideSteps, transitionCss, fontCss, deckFonts, scaleToFit, resolveSrc, backgroundCss, htmlElementDoc, htmlElementBaseCss } from "./slide";
 export type { RenderOptions, StepInfo, TransitionCss } from "./slide";
 export { renderDeckHtml, scriptJson, DECK_JSON_ID, DECK_ASSETS_ID } from "./deck";
 export type { DeckHtmlOptions, EmbeddedAsset } from "./deck";

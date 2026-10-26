@@ -70,7 +70,7 @@ test("add_element with z, update_element merges, reorder, delete", () => {
   applyOps(doc, [{ op: "delete_element", slide: "s_000002", element: r.elements[0]! }]);
   assert.ok(!docToJson(doc).slides[1]!.elements.some((e) => e.id === r.elements[0]));
   err(() => applyOps(doc, [{ op: "update_element", slide: "s_000002", element: "e_nope00", set: {} }]), "element_not_found");
-  err(() => applyOps(doc, [{ op: "update_element", slide: "s_000002", element: "e_000003", set: { kind: "text" } }]), "kind_change");
+  err(() => applyOps(doc, [{ op: "update_element", slide: "s_000002", element: "e_000003", set: { kind: "text" } }]), "invalid_field");
 });
 
 test("update_element on a table: resizing keeps cells, cells replace via diff", () => {

@@ -1,10 +1,10 @@
 import * as Y from "yjs";
-import { MASTER, deckMap, docToJson, orderArray, readElement, readSlide, slidesMap } from "./doc";
-import { newElementId, newGroupId, newSlideId, uniqueId } from "./ids";
+import { MASTER, docToJson, readElement, readSlide, existingMap, existingArray } from "./doc";
+import { newGroupId, newSlideId, uniqueId } from "./ids";
 import { layoutElements, type LayoutContent } from "./layouts";
-import { DEFAULT_SIZE, normalizeDeck, normalizeRichText, normalizeTheme, richTextToPlain } from "./normalize";
-import { applyOps, findAll, getElementMap, getSlideMap, getTextField } from "./ops";
-import { setPlainText, setRichText } from "./richtext";
+import { DEFAULT_SIZE, normalizeDeck, normalizeRichText, normalizeTheme, normalizeSize, richTextToPlain } from "./normalize";
+import { applyOps, findMatches, getElementMap, getSlideMap, ensureTextField } from "./ops";
+import { setRichText, replaceTextRange } from "./richtext";
 import type { DeckJson, Element, ElementInput, RichText, Size, Slide, SlideInput, Theme } from "./types";
 
 // Typed helpers the web editor uses to read and change a deck. Each one is a single local transaction on the doc
@@ -13,27 +13,28 @@ import type { DeckJson, Element, ElementInput, RichText, Size, Slide, SlideInput
 type Origin = unknown;
 
 export function getSize(doc: Y.Doc): Size {
-  return (deckMap(doc).get("size") as Size) ?? { ...DEFAULT_SIZE };
+  return normalizeSize(existingMap(doc, "deck")?.get("size"));
 }
 
 export function getTheme(doc: Y.Doc): Theme {
-  return normalizeTheme(deckMap(doc).get("theme"));
+  return normalizeTheme(existingMap(doc, "deck")?.get("theme"));
 }
 
 export function slideIds(doc: Y.Doc): string[] {
   const seen = new Set<string>();
-  const map = slidesMap(doc);
-  return orderArray(doc)
+  const map = existingMap(doc, "slides"), order = existingArray(doc, "order");
+  if (!map || !order) return [];
+  return order
     .toArray()
-    .filter((id) => id !== MASTER && map.has(id) && !seen.has(id) && (seen.add(id), true));
+    .filter((id) => typeof id === "string" && id !== MASTER && map.get(id) instanceof Y.Map && !seen.has(id) && (seen.add(id), true));
 }
 
 export function getSlide(doc: Y.Doc, slideId: string): Slide {
-  return readSlide(getSlideMap(doc, slideId));
+  return readSlide(getSlideMap(doc, slideId), slideId);
 }
 
 export function getElement(doc: Y.Doc, slideId: string, elementId: string): Element {
-  const e = readElement(getElementMap(doc, slideId, elementId));
+  const e = readElement(getElementMap(doc, slideId, elementId), elementId);
   if (!e) throw new Error(`Element ${elementId} could not be read.`);
   return e;
 }
@@ -99,7 +100,7 @@ export function updateSlide(
 }
 
 export function setNotes(doc: Y.Doc, slideId: string, notes: string, origin?: Origin): void {
-  doc.transact(() => setPlainText(getTextField(doc, slideId, null, "notes"), notes), origin);
+  updateSlide(doc, slideId, { notes }, origin);
 }
 
 /** Add an element (on a slide or "master"); z = index back to front, default in front. Returns its id. */
@@ -157,15 +158,16 @@ export function duplicateElements(
 
 /** Replace an element's rich text (text and shape elements). Plain strings become one paragraph per line. */
 export function setElementText(doc: Y.Doc, slideId: string, elementId: string, text: RichText | string, origin?: Origin): void {
-  doc.transact(() => setRichText(getTextField(doc, slideId, elementId, "text"), normalizeRichText(text)), origin);
+  updateElement(doc, slideId, elementId, { text }, origin);
 }
 
 export function setCellText(doc: Y.Doc, slideId: string, elementId: string, r: number, c: number, text: RichText | string, origin?: Origin): void {
-  doc.transact(() => setRichText(getTextField(doc, slideId, elementId, `cell:${r}:${c}`), normalizeRichText(text)), origin);
+  const target = normalizeRichText(text, true);
+  doc.transact(() => setRichText(ensureTextField(doc, slideId, elementId, `cell:${r}:${c}`), target), origin);
 }
 
 export function setCode(doc: Y.Doc, slideId: string, elementId: string, field: "html" | "css" | "js", value: string, origin?: Origin): void {
-  doc.transact(() => setPlainText(getTextField(doc, slideId, elementId, field), value), origin);
+  updateElement(doc, slideId, elementId, { [field]: value }, origin);
 }
 
 /** Group elements so they move together. Returns the group id. */
@@ -290,17 +292,15 @@ function eachTextField(deck: DeckJson, fn: (slide: string, element: string | nul
 export function findInDeck(deck: DeckJson, query: string, opts: { matchCase?: boolean } = {}): TextHit[] {
   const hits: TextHit[] = [];
   if (!query) return hits;
-  const q = opts.matchCase ? query : query.toLowerCase();
   eachTextField(deck, (slide, element, field, text) => {
-    const hay = opts.matchCase ? text : text.toLowerCase();
-    for (const i of findAll(hay, q)) {
-      hits.push({ slide, element, field, index: i, length: query.length, context: text.slice(Math.max(0, i - 30), i + query.length + 30) });
+    for (const hit of findMatches(text, query, opts.matchCase ?? false)) {
+      hits.push({ slide, element, field, ...hit, context: text.slice(Math.max(0, hit.index - 30), hit.index + hit.length + 30) });
     }
   });
   return hits;
 }
 
-/** Replace every occurrence of `query` (case as given unless matchCase is false) in one transaction. Returns the count. */
+/** Replace every occurrence of `query` (case-insensitive unless matchCase is true) in one transaction. Returns the count. */
 export function replaceInDeck(doc: Y.Doc, query: string, replacement: string, opts: { matchCase?: boolean; origin?: Origin } = {}): number {
   const deck = docToJson(doc);
   const hits = findInDeck(deck, query, opts);
@@ -309,40 +309,21 @@ export function replaceInDeck(doc: Y.Doc, query: string, replacement: string, op
     // Replace from the end of each field backwards so earlier indexes stay valid.
     const byField = new Map<string, TextHit[]>();
     for (const h of hits) {
-      const k = `${h.slide}|${h.element ?? ""}|${h.field}`;
+      const k = JSON.stringify([h.slide, h.element, h.field]);
       if (!byField.has(k)) byField.set(k, []);
       byField.get(k)!.push(h);
     }
     for (const list of byField.values()) {
       const first = list[0]!;
-      const t = getTextField(doc, first.slide, first.element, first.field);
+      const t = ensureTextField(doc, first.slide, first.element, first.field);
       for (const h of [...list].sort((a, b) => b.index - a.index)) {
         const rich = h.field === "text" || h.field.startsWith("cell:");
-        const attrs = rich ? inlineAttrsAt(t, h.index) : undefined;
-        t.delete(h.index, h.length);
-        if (replacement) {
-          if (attrs) t.insert(h.index, replacement, attrs);
-          else t.insert(h.index, replacement);
-        }
+        replaceTextRange(t, h.index, h.length, replacement, rich);
         count++;
       }
     }
   }, opts.origin);
   return count;
-}
-
-function inlineAttrsAt(t: Y.Text, index: number): Record<string, unknown> {
-  let pos = 0;
-  for (const op of t.toDelta() as Array<{ insert: unknown; attributes?: Record<string, unknown> }>) {
-    const len = typeof op.insert === "string" ? op.insert.length : 1;
-    if (index < pos + len) {
-      const a = { ...(op.attributes ?? {}) };
-      for (const k of ["align", "list", "indent", "heading", "lineHeight"]) delete a[k];
-      return a;
-    }
-    pos += len;
-  }
-  return {};
 }
 
 // ---------------------------------------------------------------- new decks

@@ -1,4 +1,5 @@
 import { ConverterError } from "./errors";
+import { assetPermission, networkRequest } from "./network";
 
 // assetBase (from the service) says where the converter fetches "asset:<id>": a URL template with "{id}", or a prefix
 // the id is appended to. e.g. "http://127.0.0.1:4321/v1/assets/{id}?sig=abc" or "http://127.0.0.1:4321/v1/assets/".
@@ -33,9 +34,9 @@ export function makeFetcher(assetBase: string | undefined) {
     }
     const u = src.startsWith("asset:") ? url(src.slice(6)) : src;
     if (!/^https?:\/\//.test(u)) throw new ConverterError("asset_unreachable", `The asset ${src} has no URL the converter can fetch.`, "Pass assetBase with the request so asset:<id> sources can be fetched.");
-    const res = await fetch(u, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) throw new ConverterError("asset_unreachable", `Fetching ${src} failed with HTTP ${res.status}.`, "Check the asset exists and the converter's signed asset URL is still valid.", 502);
-    return { contentType: res.headers.get("content-type")?.split(";")[0] ?? "application/octet-stream", data: Buffer.from(await res.arrayBuffer()) };
+    const res = await networkRequest(u, { assetAllowed: assetPermission(url) });
+    if (res.status < 200 || res.status >= 300) throw new ConverterError("asset_unreachable", `Fetching ${src} failed with HTTP ${res.status}.`, "Check the asset exists and the converter's signed asset URL is still valid.", 502);
+    return { contentType: res.headers["content-type"]?.split(";")[0] ?? "application/octet-stream", data: res.data };
   }
 }
 export type FetchSrc = ReturnType<typeof makeFetcher>;

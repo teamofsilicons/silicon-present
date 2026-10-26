@@ -1,6 +1,6 @@
 // Every export through the running converter, and round trips back through the importer:
 //   deck -> pptx -> deck keeps text, positions, tables, charts (within a pixel or two);
-//   deck -> html -> deck is exact; odp/ppt/key come back with their slides and text.
+//   odp comes back with its slides and text; ppt, key and html are not export formats.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import JSZip from "jszip";
 import { chromium, type Browser } from "playwright";
 import { normalizeDeck } from "@silicon-present/deck";
-import type { ChartElement, DeckJson, Element, ShapeElement, TableElement, TextElement } from "@silicon-present/deck";
+import type { ChartElement, DeckJson, ShapeElement, TableElement, TextElement } from "@silicon-present/deck";
 import { HAVE } from "../src/config";
 import { type Converter, ASSET_FILES, deckText, exportDeck, fixture, importThrough, jpgSize, plain, pngSize, startAssetServer, startConverter } from "./helpers";
 
@@ -141,38 +141,40 @@ test("png/jpg: a zip of every slide, or one slide", async () => {
   assert.ok(close(await pixel(one.data, "image/jpeg", Math.round(520 / 3), Math.round(265 / 3)), hexRgb("#2f6b4f"), 30));
 });
 
-// ---------------------------------------------------------------- html
-
-test("html: one self-contained file that plays the deck and opens back exactly", async () => {
-  const deck = exportDeck();
-  const r = await exportAs("html", {}, deck);
+test("txt: rendered text from all slides, including skipped slides, without speaker notes", async () => {
+  const r = await exportAs("txt");
   assert.equal(r.status, 200);
-  const html = r.data.toString("utf8");
-  assert.ok(!html.includes("127.0.0.1"), "no asset URLs: everything is inside the file");
-  // plays: arrow keys move through steps and slides, HTML elements run
-  const file = join(tmp, "deck.html");
-  writeFileSync(file, html);
-  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("requestfailed", (q) => errors.push(`request failed: ${q.url().slice(0, 60)}`));
-  await page.goto("file://" + file);
-  const state = () => page.evaluate(() => [(window as any).SiliconPresent.index, (window as any).SiliconPresent.step]);
-  assert.deepEqual(await state(), [0, 0]);
-  await page.keyboard.press("ArrowRight");
-  await page.keyboard.press("ArrowRight");
-  assert.deepEqual(await state(), [1, 0]);
-  const imgOk = await page.evaluate(() => Array.from(document.querySelectorAll(".sp-frame")[1]!.querySelectorAll("img")).every((i) => i.complete && i.naturalWidth > 0));
-  assert.ok(imgOk, "embedded pictures load");
-  assert.deepEqual(errors, []);
-  await page.close();
-  // and opens back exactly, with the same asset bytes
-  const back = await importThrough(c, "deck.html", r.data);
-  assert.deepEqual(back.deck, normalizeDeck(deck));
-  for (const [id, [file2]] of Object.entries(ASSET_FILES)) {
-    const a = back.assets.find((x) => x.key === id)!;
-    assert.deepEqual(Buffer.from(a.data, "base64"), fixture(file2), `asset ${id}`);
-  }
+  assert.equal(r.type, "text/plain; charset=utf-8");
+  assert.equal(r.ext, "txt");
+  const text = r.data.toString("utf8");
+  for (const t of ["Every inline attribute", "Region", "Silicon Present"]) assert.ok(text.includes(t), t);
+  assert.ok(!text.includes("Speaker notes"));
+  assert.ok(text.indexOf("Every inline attribute") < text.indexOf("Region"), "slide order is preserved");
+});
+
+test("svg: a standalone vector of the selected slide, including when skipped", async () => {
+  const deck = exportDeck();
+  deck.slides[1]!.skipped = true;
+  const r = await exportAs("svg", { slide: "s_000002" }, deck);
+  assert.equal(r.status, 200, r.data.toString().slice(0, 300));
+  assert.equal(r.type, "image/svg+xml");
+  assert.equal(r.ext, "svg");
+  const svg = r.data.toString("utf8");
+  assert.match(svg, /<svg\s/);
+  assert.match(svg, /<path\s/, "shapes and text remain vector paths");
+  assert.ok(!svg.includes("127.0.0.1"), "no private asset URLs in the file");
+  assert.ok(!svg.includes("<script"));
+  // The green shape is on slide 2, not slide 1: verify both selection and standalone image rendering.
+  assert.ok(close(await pixel(r.data, "image/svg+xml", 520, 265), hexRgb("#2f6b4f"), 30));
+});
+
+test("svg: requires a valid slide instead of silently exporting another slide", async () => {
+  const missing = await exportAs("svg");
+  assert.equal(missing.status, 400);
+  assert.equal(JSON.parse(missing.data.toString()).error.code, "slide_required");
+  const unknown = await exportAs("svg", { slide: "s_nope00" });
+  assert.equal(unknown.status, 404);
+  assert.equal(JSON.parse(unknown.data.toString()).error.code, "slide_not_found");
 });
 
 // ---------------------------------------------------------------- pptx
@@ -190,7 +192,10 @@ test("pptx: native objects, notes, sections, hidden slides, transitions, groups"
   assert.match(await slide(3), /<p:sld show="0"/);
   assert.match(await slide(2), /<p:push dir="l"\/>/);
   assert.match(await slide(1), /p14:dur="400"><p:fade\/>/);
-  assert.match(await slide(2), /<p:grpSp>/, "the two grouped shapes are a group");
+  // the two grouped shapes animate one by one, which a PowerPoint group can't (animations.test.ts has groups that stay)
+  assert.doesNotMatch(await slide(2), /<p:grpSp>/, "grouped shapes animating apart are left ungrouped");
+  assert.match(r.warnings, /Slide 2: grouped elements animate one by one/);
+  assert.match(await slide(2), /<p:timing>/, "animations are written");
   assert.match(await slide(3), /<a:tbl>/);
   assert.ok(files.some((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f)), "a native chart");
   assert.ok(files.some((f) => /^ppt\/media\/.*\.mp4$/.test(f)), "the webm video went in as mp4");
@@ -199,7 +204,7 @@ test("pptx: native objects, notes, sections, hidden slides, transitions, groups"
   for (const f of files.filter((x) => x.endsWith(".xml") || x.endsWith(".rels"))) assert.ok(!(await zip.file(f)!.async("string")).includes("undefined"), `${f} has no undefined`);
 });
 
-test("pptx round trip: text, positions, tables, charts, notes, master, groups survive", async () => {
+test("pptx round trip: text, positions, tables, charts, notes, master, animations survive", async () => {
   const orig = exportDeck();
   const r = await exportAs("pptx", {}, orig);
   const back = (await importThrough(c, "deck.pptx", r.data)).deck;
@@ -263,43 +268,31 @@ test("pptx round trip: text, positions, tables, charts, notes, master, groups su
       if (e.link && e.kind !== "html") assert.equal(b!.link, e.link, `${e.id} link`);
     }
   }
-  // grouped elements are grouped again (with a fresh group id)
-  const grouped = orig.slides[1]!.elements.filter((e) => e.group).map((e) => got.get(e.id)!);
-  assert.ok(grouped.length === 2 && grouped[0]!.group && grouped[0]!.group === grouped[1]!.group);
+  // grouped elements that animate one by one come back ungrouped, with their animations (a group that animates as
+  // one, or not at all, stays a group: animations.test.ts)
+  const grouped = orig.slides[1]!.elements.filter((e) => e.group);
+  assert.equal(grouped.length, 2);
+  for (const e of grouped) assert.deepEqual(got.get(e.id)!.animation, e.animation, `${e.id} animation`);
 });
 
-// ---------------------------------------------------------------- odp, ppt, key
+// ---------------------------------------------------------------- odp
 
-for (const fmt of ["odp", "ppt"]) {
-  test(`${fmt}: made through LibreOffice and opens back with every slide and its text`, { skip: HAVE.soffice() ? false : "LibreOffice is not installed" }, async () => {
-    const r = await exportAs(fmt);
-    assert.equal(r.status, 200, r.data.toString().slice(0, 300));
-    assert.equal(r.ext, fmt);
-    const back = await importThrough(c, `deck.${fmt}`, r.data);
-    assert.equal(back.status, 200);
-    assert.equal(back.deck.slides.length, 5);
-    assert.deepEqual(back.deck.slides.map((s) => s.skipped), [false, false, true, false, false]);
-    const text = deckText(back.deck);
-    for (const t of ["Every inline attribute", "Right aligned heading 3", "Shape text", "Region", "North", "Revenue"]) assert.ok(text.includes(t), t);
-    if (fmt === "ppt") assert.match(r.warnings, /became a picture/, "media that .ppt can't hold is pictured");
-  });
-}
-
-test("key: made through Keynote and opens back with every slide and its text", async () => {
-  const r = await exportAs("key");
-  if (!HAVE.keynote()) {
-    assert.equal(r.status, 501);
-    assert.equal((JSON.parse(r.data.toString()) as { error: { code: string } }).error.code, "keynote_unavailable");
-    return;
-  }
+test("odp: made through LibreOffice and opens back with every slide and its text", { skip: HAVE.soffice() ? false : "LibreOffice is not installed" }, async () => {
+  const r = await exportAs("odp");
   assert.equal(r.status, 200, r.data.toString().slice(0, 300));
-  assert.equal(r.type, "application/x-iwork-keynote-sffkey");
-  const back = await importThrough(c, "deck.key", r.data);
-  assert.equal(back.status, 200, JSON.stringify(back.error));
+  assert.equal(r.ext, "odp");
+  const back = await importThrough(c, "deck.odp", r.data);
+  assert.equal(back.status, 200);
   assert.equal(back.deck.slides.length, 5);
   assert.deepEqual(back.deck.slides.map((s) => s.skipped), [false, false, true, false, false]);
   const text = deckText(back.deck);
-  for (const t of ["Every inline attribute", "Right aligned heading 3", "Shape text", "Region", "North"]) assert.ok(text.includes(t), t);
-  // charts go to Keynote as pictures (Keynote drops pptx charts on import)
-  assert.ok(back.deck.slides[2]!.elements.filter((e: Element) => e.kind === "image").length >= 2);
+  for (const t of ["Every inline attribute", "Right aligned heading 3", "Shape text", "Region", "North", "Revenue"]) assert.ok(text.includes(t), t);
+});
+
+test("ppt, key and html are not export formats", async () => {
+  for (const format of ["ppt", "key", "html"]) {
+    const r = await exportAs(format);
+    assert.equal(r.status, 400, format);
+    assert.equal((JSON.parse(r.data.toString()) as { error: { code: string } }).error.code, "unsupported_format", format);
+  }
 });

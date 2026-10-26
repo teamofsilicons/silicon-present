@@ -10,11 +10,15 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FFMPEG, HAVE, jobDir } from "../config";
 import { run } from "../proc";
+import { groupMotion, insertTiming, renumberShapes, shapesByName, timingXml } from "./pptx-animations";
 
 // Deck -> .pptx with native objects: text runs, preset shapes, tables, charts, pictures, video/audio, notes,
-// sections, hidden slides and transitions. HTML elements (which PowerPoint can't run) become a picture of the element
-// as it renders, so no slide comes out blank. Element animations are not written (PowerPoint's timing XML is out of
-// scope for now); everything else round-trips through our importer.
+// sections, hidden slides, transitions and element animations. HTML elements (which PowerPoint can't run) become a
+// picture of the element as it renders, so no slide comes out blank. Animations are written as PowerPoint's own
+// entrance effects in each slide's <p:timing> (pptx-animations.ts), pointing at shapes by id: same effect, trigger,
+// order, duration, delay and direction. A group whose members animate one by one is left ungrouped (PowerPoint only
+// animates a group as a whole); master elements don't animate, as in the player. Everything round-trips through our
+// importer.
 
 const PX_PER_IN = 144; // 1920 px = 13.333 in, PowerPoint's 16:9
 const inch = (px: number) => px / PX_PER_IN;
@@ -59,8 +63,6 @@ interface Ctx {
   assetUrl: (id: string) => string;
   slideIndex: Map<string, number>;
   warnings: string[];
-  chartsAsPictures?: boolean;
-  mediaAsPictures?: boolean;
 }
 
 function runOptions(r: Run, para: { heading?: number }, ctx: Ctx, defaults: { size: number; color: string; font: string }) {
@@ -205,7 +207,7 @@ async function addPicture(slide: PptxGenJS.Slide, e: Element, slideId: string, c
 const PPT_VIDEO = new Set(["video/mp4", "video/quicktime", "video/x-m4v"]);
 const PPT_AUDIO = new Set(["audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/wav", "audio/x-wav", "audio/wave", "audio/aac"]);
 
-/** Media PowerPoint and Keynote can play: as is, or re-encoded with ffmpeg (webm/ogg/...), or null if neither. */
+/** Media PowerPoint can play: as is, or re-encoded with ffmpeg (webm/ogg/...), or null if neither. */
 async function playableMedia(data: Buffer, ct: string, kind: "video" | "audio"): Promise<{ data: Buffer; ct: string } | null> {
   if ((kind === "video" ? PPT_VIDEO : PPT_AUDIO).has(ct)) return { data, ct };
   if (!HAVE.ffmpeg()) return null;
@@ -233,13 +235,11 @@ async function addMedia(slide: PptxGenJS.Slide, e: Element & { kind: "video" | "
     const fetched = await ctx.fetchSrc(e.src);
     let ct0 = sniffType(fetched.data);
     if (ct0 === "application/octet-stream") ct0 = fetched.contentType;
-    const playable = ctx.mediaAsPictures ? null : await playableMedia(fetched.data, ct0, e.kind);
+    const playable = await playableMedia(fetched.data, ct0, e.kind);
     if (!playable) {
       // the closest thing: the poster (or a picture of the element) where the media was
       ctx.warnings.push(
-        ctx.mediaAsPictures
-          ? `${e.kind === "video" ? "Video" : "Audio"} ${e.src} became a picture: this format can't hold media.`
-          : `${e.kind === "video" ? "Video" : "Audio"} ${e.src} is ${ct0}, which PowerPoint and Keynote can't play, and ffmpeg isn't available to convert it; a picture was used instead.`,
+        `${e.kind === "video" ? "Video" : "Audio"} ${e.src} is ${ct0}, which PowerPoint can't play, and ffmpeg isn't available to convert it; a picture was used instead.`,
       );
       if (e.kind === "video" && e.poster) {
         const p = await imageData(e.poster, ctx);
@@ -412,8 +412,6 @@ async function addElement(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: Element, s
     case "table":
       return addTable(slide, e, ctx);
     case "chart":
-      // Keynote drops pptx charts on import, so decks headed for Keynote get a picture of the chart instead
-      if (ctx.chartsAsPictures) return addPicture(slide, e, slideId, ctx);
       return addChart(pptx, slide, e, ctx);
     case "html":
       return addPicture(slide, e, slideId, ctx);
@@ -445,7 +443,7 @@ const EMU_PER_PX = 914400 / PX_PER_IN;
  * Wrap each group's shapes in a <p:grpSp> (pptxgenjs can't make groups). Only groups whose members sit next to each
  * other in z-order can be wrapped without changing the stacking; others stay loose (their elements are all there).
  */
-function wrapGroups(xml: string, s: Slide): string {
+function wrapGroups(xml: string, s: Slide, wrapped: Map<string, string>, warnings: string[], slideNo: number): string {
   const groups = new Map<string, Element[]>();
   for (const e of s.elements) if (e.group) groups.set(e.group, [...(groups.get(e.group) ?? []), e]);
   if (![...groups.values()].some((g) => g.length > 1)) return xml;
@@ -456,8 +454,13 @@ function wrapGroups(xml: string, s: Slide): string {
   const blocks = [...inner.matchAll(/<p:(sp|pic|graphicFrame|cxnSp)>[\s\S]*?<\/p:\1>/g)].map((m) => ({ text: m[0], start: m.index!, name: /<p:cNvPr[^>]*name="([^"]*)"/.exec(m[0])?.[1] ?? "" }));
   let out = inner;
   let n = 0;
-  for (const members of groups.values()) {
+  for (const [gid, members] of groups) {
     if (members.length < 2) continue;
+    const motion = groupMotion(members, s);
+    if (motion === "apart") {
+      warnings.push(`Slide ${slideNo}: grouped elements animate one by one, so they were left ungrouped (PowerPoint animates a group as a whole).`);
+      continue;
+    }
     const ids = new Set(members.map((e) => e.id));
     const idx = blocks.map((b, i) => (ids.has(b.name) ? i : -1)).filter((i) => i >= 0);
     if (idx.length !== members.length || idx[idx.length - 1]! - idx[0]! !== idx.length - 1) continue;
@@ -473,6 +476,7 @@ function wrapGroups(xml: string, s: Slide): string {
       body +
       `</p:grpSp>`;
     out = out.replace(body, grp);
+    if (motion === "together") wrapped.set(gid, `Group ${n}`);
   }
   return xml.slice(0, open + "<p:spTree>".length) + out + xml.slice(close);
 }
@@ -523,8 +527,8 @@ function lockXml(xml: string, s: Slide): string {
   });
 }
 
-/** Write groups, transitions, hidden flags, locks and theme colours into the generated XML (pptxgenjs has none). */
-async function postProcess(buf: Buffer, slides: Slide[], theme: Theme): Promise<Buffer> {
+/** Write groups, transitions, animations, hidden flags, locks and theme colours into the generated XML (pptxgenjs has none). */
+async function postProcess(buf: Buffer, slides: Slide[], theme: Theme, warnings: string[]): Promise<Buffer> {
   const zip = await JSZip.loadAsync(buf);
   for (const name of Object.keys(zip.files).filter((f) => /^ppt\/theme\/theme\d+\.xml$/.test(f))) {
     zip.file(name, themeXml(await zip.file(name)!.async("string"), theme));
@@ -533,7 +537,8 @@ async function postProcess(buf: Buffer, slides: Slide[], theme: Theme): Promise<
     const path = `ppt/slides/slide${i + 1}.xml`;
     const f = zip.file(path);
     if (!f) continue;
-    let xml = lockXml(wrapGroups(await f.async("string"), s), s);
+    const wrapped = new Map<string, string>(); // group id -> name of its <p:grpSp>, for groups animating as one
+    let xml = renumberShapes(lockXml(wrapGroups(await f.async("string"), s, wrapped, warnings, i + 1), s));
     // the slide's id rides along as the slide name, so slide links and ids survive a round trip
     xml = xml.replace(/<p:cSld(\s+name="[^"]*")?>/, `<p:cSld name="${s.id}">`);
     if (s.skipped && !/<p:sld[^>]*\sshow="0"/.test(xml)) xml = xml.replace(/<p:sld(\s|>)/, '<p:sld show="0"$1');
@@ -550,12 +555,13 @@ async function postProcess(buf: Buffer, slides: Slide[], theme: Theme): Promise<
       if (xml.includes("</p:clrMapOvr>")) xml = xml.replace("</p:clrMapOvr>", `</p:clrMapOvr>${tx}`);
       else xml = xml.replace("</p:cSld>", `</p:cSld>${tx}`);
     }
+    xml = insertTiming(xml, timingXml(s, shapesByName(xml), wrapped));
     zip.file(path, xml);
   }
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
-export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; assetUrl: (id: string) => string; chartsAsPictures?: boolean; mediaAsPictures?: boolean }): Promise<{ data: Buffer; warnings: string[] }> {
+export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; assetUrl: (id: string) => string }): Promise<{ data: Buffer; warnings: string[] }> {
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "SILICON", width: inch(deck.size.width), height: inch(deck.size.height) });
   pptx.layout = "SILICON";
@@ -571,8 +577,6 @@ export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; ass
     assetUrl: opts.assetUrl,
     slideIndex: new Map(deck.slides.map((s, i) => [s.id, i + 1])),
     warnings: [],
-    chartsAsPictures: opts.chartsAsPictures,
-    mediaAsPictures: opts.mediaAsPictures,
   };
   let section: string | null = null;
   for (const s of deck.slides) {
@@ -592,5 +596,5 @@ export async function deckToPptx(deck: DeckJson, opts: { fetchSrc: FetchSrc; ass
     if (s.notes) slide.addNotes(s.notes);
   }
   const raw = (await pptx.write({ outputType: "nodebuffer", compression: true })) as Buffer;
-  return { data: await postProcess(raw, deck.slides, deck.theme), warnings: ctx.warnings };
+  return { data: await postProcess(raw, deck.slides, deck.theme, ctx.warnings), warnings: ctx.warnings };
 }

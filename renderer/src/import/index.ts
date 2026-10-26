@@ -9,6 +9,7 @@ import { ConverterError } from "../errors";
 import { extOf, fontFamily, imageSize, sniffType } from "../media";
 import { keyToPptx, soffice, sofficePdfAllSlides } from "../office";
 import { run } from "../proc";
+import { importHtmlDeck } from "./html";
 import { importPptx, type ImportedAsset, type PptxImport } from "./pptx";
 
 // Any supported file -> { deck, assets }. Assets come back as { key, filename, contentType, data (base64) } and the
@@ -101,7 +102,7 @@ async function fillRegions(imp: PptxImport, pptxPath: string, dir: string): Prom
 
 async function fromPptxFile(pptxPath: string, dir: string, title: string): Promise<ImportResponse> {
   const imp = await importPptx(readFileSync(pptxPath));
-  const notes = await fillRegions(imp, pptxPath, dir);
+  const notes = [...imp.notes, ...(await fillRegions(imp, pptxPath, dir))];
   if (!imp.deck.title) imp.deck.title = title;
   return out(imp.deck, imp.assets, notes);
 }
@@ -137,7 +138,7 @@ async function fromPdf(path: string, dir: string, title: string): Promise<Import
   return out(deck, assets);
 }
 
-function fromHtml(html: string, title: string): ImportResponse {
+async function fromHtml(html: string, title: string): Promise<ImportResponse> {
   // our own export: the deck JSON (and its assets) are embedded, so it opens exactly as it was
   const deckM = new RegExp(`<script[^>]*id="${DECK_JSON_ID}"[^>]*>([\\s\\S]*?)</script>`).exec(html);
   if (deckM) {
@@ -147,6 +148,14 @@ function fromHtml(html: string, title: string): ImportResponse {
     const assets: ImportedAsset[] = Object.entries(map).map(([key, a]) => ({ key, filename: a.filename, contentType: a.contentType, data: Buffer.from(a.data, "base64") }));
     return out(normalizeDeck(deck), assets);
   }
+  // a page of slides (Claude Design, reveal.js, .slide sections...): native elements where they map, live HTML elsewhere
+  const notes: string[] = [];
+  try {
+    const d = await importHtmlDeck(html, title);
+    if (d) return out(d.deck, d.assets, d.notes);
+  } catch (e) {
+    notes.push(`The page's slides could not be measured (${e instanceof Error ? e.message : e}), so it opened as one live HTML element.`);
+  }
   // any other page: one slide that is the page, running live
   const pageTitle = /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1]?.trim();
   const body = html.replace(/^\s*<!doctype[^>]*>/i, "");
@@ -155,7 +164,7 @@ function fromHtml(html: string, title: string): ImportResponse {
     theme: THEMES[0],
     slides: [{ id: newSlideId(), layout: "blank", elements: [{ id: newElementId(), kind: "html", x: 0, y: 0, w: 1920, h: 1080, html: body, css: "", js: "" }] }],
   });
-  return out(deck, []);
+  return out(deck, [], notes);
 }
 
 function fromMedia(data: Buffer, ct: string, filename: string, title: string): ImportResponse {
@@ -273,7 +282,7 @@ export async function importFile(req: ImportRequest): Promise<ImportResponse> {
         notes.push(...k.warnings);
       } catch (e) {
         if (!HAVE.soffice()) throw e;
-        notes.push(`Keynote was not available (${e instanceof Error ? e.message : e}); LibreOffice opened the file instead.`);
+        notes.push(`Native Keynote conversion failed (${e instanceof Error ? e.message : e}). LibreOffice opened the file instead; formatting, editable shapes and hidden-slide state may be lost.`);
         pptx = await soffice(p, "pptx", join(job.dir));
       }
       const r = await fromPptxFile(pptx, job.dir, title);
@@ -285,7 +294,7 @@ export async function importFile(req: ImportRequest): Promise<ImportResponse> {
       writeFileSync(p, data);
       return await fromPdf(p, job.dir, title);
     }
-    if (ext === "html" || ext === "htm" || ct === "text/html") return fromHtml(data.toString("utf8"), title);
+    if (ext === "html" || ext === "htm" || ct === "text/html") return await fromHtml(data.toString("utf8"), title);
     if (ct.startsWith("image/") || ct.startsWith("video/") || ct.startsWith("audio/")) return fromMedia(data, ct, filename, title);
     if (ct.startsWith("font/")) return fromFont(data, ct, filename, title);
     throw new ConverterError(
