@@ -1,0 +1,83 @@
+{
+  "version": "0.1.2",
+  "release_id": "f5950392-9f35-458f-a021-984b61917f4c",
+  "published": true,
+  "verified_at": "2026-10-25T12:42:20.816631+00:00",
+  "source": {
+    "version": "0.1.2",
+    "frozen_source_matches": true,
+    "source_fingerprint": "9dd19ffad9d47069b54c51657219039615313c7667e64f7e33cdcc1213944ddf",
+    "source_archive": "/Users/codanium/Documents/silicon/.dev/em-dash-20261025/release/present-0.1.2-source.tar.gz",
+    "source_archive_sha256": "52d5dec425c632606812d6e196e48f73a447647bba98360bb5e1d42ba24498db"
+  },
+  "native_development_installs": [
+    {
+      "target": "macos-aarch64",
+      "checks": 13,
+      "passed": true
+    },
+    {
+      "target": "linux-x86_64",
+      "checks": 13,
+      "passed": true
+    },
+    {
+      "target": "linux-aarch64",
+      "checks": 13,
+      "passed": true
+    },
+    {
+      "target": "windows-x86_64",
+      "checks": 13,
+      "passed": true
+    }
+  ],
+  "native_production_macos": true,
+  "public_catalog": {
+    "app": "present",
+    "version": "0.1.2",
+    "release_id": "f5950392-9f35-458f-a021-984b61917f4c",
+    "passed": true,
+    "checked_at": "2026-10-25T12:40:12.949985+00:00",
+    "targets": [
+      {
+        "target": "macos-aarch64",
+        "archive_sha256": "17ff872dbfd26ac9e37d86b3fe20f9023840c43c142144a4e6f4bf99b3e288c3",
+        "download_bytes": 4498172,
+        "passed": true,
+        "public_resolve_matches_native_validated_archive": true
+      },
+      {
+        "target": "linux-aarch64",
+        "archive_sha256": "c5cc8fc53d41c3c00e1ced70e62b7ae6d1674d1b289a0c523be6dd4e465970c5",
+        "download_bytes": 4282137,
+        "passed": true,
+        "public_resolve_matches_native_validated_archive": true
+      },
+      {
+        "target": "linux-x86_64",
+        "archive_sha256": "0582abacc3cec3010e6edd1de5319743e5a83823736e0637e04d9d2eec7dd24c",
+        "download_bytes": 4666276,
+        "passed": true,
+        "public_resolve_matches_native_validated_archive": true
+      },
+      {
+        "target": "windows-x86_64",
+        "archive_sha256": "326ec748733259e24a6e6d84d287b16fb6f687602fb14f4296bb2a639e7929ac",
+        "download_bytes": 4530593,
+        "passed": true,
+        "public_resolve_matches_native_validated_archive": true
+      }
+    ]
+  },
+  "behavior": "Silicon-authored CLI fields normalize em dash to hyphen by default. Global --dangerously-use-em-dash preserves em dashes for this command only. Carbon writing remains unchanged. Exact match selectors, anchors and references remain unchanged.",
+  "tests": "CLI and client suites, clippy, actual installed binary default/override/next-command cases on all four native targets",
+  "temporary_mac_session_cleanup": {
+    "passed": true,
+    "checked_at": "2026-10-25T12:47:28.097967+00:00",
+    "receipt": "/Users/codanium/Documents/silicon/.dev/em-dash-20261025/release/mac-session-cleanup.json",
+    "local_and_remote_listeners_closed": true,
+    "temporary_credentials_removed": true,
+    "existing_linux_windows_validation_preserved": true
+  }
+}

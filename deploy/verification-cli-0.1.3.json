@@ -1,0 +1,172 @@
+{
+ "version": "0.1.3",
+ "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+ "development_release_id": "cdb24565-e2ac-4134-8eae-1abb45424b40",
+ "published": true,
+ "verified_at": "2026-10-26T23:54:17.322960+00:00",
+ "source": {
+  "version": "0.1.3",
+  "source_fingerprint": "adc148641226d5449d6c9800bc9ffde409ff31985e74a602c68c97db7bff9a6c"
+ },
+ "packages": {
+  "macos-aarch64": {
+   "archive_sha256": "2d942ebf1edfdc79e15d371e0c247a8f87b11e7fdf4a40b15dd348501a781295",
+   "archive_bytes": 4497537,
+   "binary_sha256": "6a8fceb4a5c7b25fa6922d01d93d17f512f6203c889c34d11c7a58ead44c83d9"
+  },
+  "linux-aarch64": {
+   "archive_sha256": "885f1614a93cf6edd8c580a891ad51357e3be34f212e990400cd4b67be01366e",
+   "archive_bytes": 4284763,
+   "binary_sha256": "57fb39bb4cbcba6a5232da293b565df6d6e6c63aa7073e928ab0dffe39bd126c"
+  },
+  "linux-x86_64": {
+   "archive_sha256": "46af22a0d29b899fc58a0bc4f4e157bde19f0e4fe3d2bd1d1e3ddea5832252db",
+   "archive_bytes": 4668385,
+   "binary_sha256": "1de91dd193a03c1a4254d9e227cccaa33406378a1d2cbf01a29619cc16b603a7"
+  },
+  "windows-x86_64": {
+   "archive_sha256": "d74be7029e848188d9ac9240dcb5bb5128a2e7cd8b761e9a602072e216f805e7",
+   "archive_bytes": 4529255,
+   "binary_sha256": "479d63af8108741f515308f0bbacdfefc4428b33cdd05ca5b3571813abae5832"
+  }
+ },
+ "upload_validation": {
+  "linux-x86_64": "server-side isolated runner (3 commands passed)",
+  "linux-aarch64": "server-side isolated runner (3 commands passed)",
+  "macos-aarch64": "--confirm-platform-checks after native checks on this Mac",
+  "windows-x86_64": "--confirm-platform-checks on explicit user waiver; NOT run on Windows"
+ },
+ "windows_checks_performed": false,
+ "windows_waiver": "The user decided to publish without the Windows test run (\"no need to do the test run, it's okay\"). No Windows command, install or proof was run for 0.1.3; treat Windows as untested.",
+ "native_development_installs": [
+  {
+   "target": "macos-aarch64",
+   "checks": 17,
+   "passed": true,
+   "host": "this Mac"
+  },
+  {
+   "target": "linux-x86_64",
+   "checks": 17,
+   "passed": true,
+   "host": "i-0996026ca726ea516"
+  },
+  {
+   "target": "linux-aarch64",
+   "checks": 17,
+   "passed": true,
+   "host": "i-0ab490828cf8a6d2b"
+  },
+  {
+   "target": "windows-x86_64",
+   "checks": 0,
+   "passed": null,
+   "performed": false,
+   "note": "Waived by the user; not tested on Windows."
+  }
+ ],
+ "native_production_installs": [
+  {
+   "target": "macos-aarch64",
+   "checks": 17,
+   "passed": true,
+   "host": "this Mac"
+  },
+  {
+   "target": "linux-x86_64",
+   "checks": 17,
+   "passed": true,
+   "host": "i-0996026ca726ea516"
+  },
+  {
+   "target": "linux-aarch64",
+   "checks": 17,
+   "passed": true,
+   "host": "i-0ab490828cf8a6d2b"
+  },
+  {
+   "target": "windows-x86_64",
+   "checks": 0,
+   "passed": null,
+   "performed": false,
+   "note": "Waived by the user; not tested on Windows."
+  }
+ ],
+ "public_catalog": {
+  "app": "present",
+  "version": "0.1.3",
+  "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+  "passed": true,
+  "checked_at": "2026-10-26T23:52:55.066411+00:00",
+  "targets": [
+   {
+    "target": "macos-aarch64",
+    "archive_sha256": "2d942ebf1edfdc79e15d371e0c247a8f87b11e7fdf4a40b15dd348501a781295",
+    "download_bytes": 4497537,
+    "passed": true,
+    "public_resolve_matches_native_validated_archive": true
+   },
+   {
+    "target": "linux-aarch64",
+    "archive_sha256": "885f1614a93cf6edd8c580a891ad51357e3be34f212e990400cd4b67be01366e",
+    "download_bytes": 4284763,
+    "passed": true,
+    "public_resolve_matches_native_validated_archive": true
+   },
+   {
+    "target": "linux-x86_64",
+    "archive_sha256": "46af22a0d29b899fc58a0bc4f4e157bde19f0e4fe3d2bd1d1e3ddea5832252db",
+    "download_bytes": 4668385,
+    "passed": true,
+    "public_resolve_matches_native_validated_archive": true
+   },
+   {
+    "target": "windows-x86_64",
+    "archive_sha256": "d74be7029e848188d9ac9240dcb5bb5128a2e7cd8b761e9a602072e216f805e7",
+    "download_bytes": 4529255,
+    "passed": true,
+    "public_resolve_matches_native_validated_archive": true
+   }
+  ]
+ },
+ "public_downloads": [
+  {
+   "target": "macos-aarch64",
+   "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+   "version": "0.1.3",
+   "archive_sha256": "2d942ebf1edfdc79e15d371e0c247a8f87b11e7fdf4a40b15dd348501a781295",
+   "download_bytes": 4497537,
+   "signature_key_id": "apps-2026-10",
+   "passed": true
+  },
+  {
+   "target": "linux-aarch64",
+   "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+   "version": "0.1.3",
+   "archive_sha256": "885f1614a93cf6edd8c580a891ad51357e3be34f212e990400cd4b67be01366e",
+   "download_bytes": 4284763,
+   "signature_key_id": "apps-2026-10",
+   "passed": true
+  },
+  {
+   "target": "linux-x86_64",
+   "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+   "version": "0.1.3",
+   "archive_sha256": "46af22a0d29b899fc58a0bc4f4e157bde19f0e4fe3d2bd1d1e3ddea5832252db",
+   "download_bytes": 4668385,
+   "signature_key_id": "apps-2026-10",
+   "passed": true
+  },
+  {
+   "target": "windows-x86_64",
+   "release_id": "17339f70-108b-405a-9b2b-9ad0a39a2754",
+   "version": "0.1.3",
+   "archive_sha256": "d74be7029e848188d9ac9240dcb5bb5128a2e7cd8b761e9a602072e216f805e7",
+   "download_bytes": 4529255,
+   "signature_key_id": "apps-2026-10",
+   "passed": true
+  }
+ ],
+ "behavior": "present export --format takes exactly pptx, odp, pdf, txt, png, jpg, svg; ppt, key and html are refused by the CLI (they still open).",
+ "tests": "CLI and client suites (62), clippy -D warnings, native install proofs: version, help, accounts, signed-out login status, export help lists the seven formats, export refuses ppt/key/html, em-dash behaviour from 0.1.2 unchanged"
+}

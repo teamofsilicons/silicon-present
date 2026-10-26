@@ -2424,7 +2424,7 @@
     "converter",
     "renderer"
    ],
-   "acceptance": "Slide 2 of a deck holds a probe HTML element next to other elements and an image. si:designer runs `present render <deck> 2 --at 3000 -o s2.png`, `present export <deck> --format pdf` and `present export <deck> --format html`. The probe turns green only if all of these hold: reading the parent or top document fails; it finds no other element's content, signed asset URL, token or identity; credentialed fetches to the service's /v1/decks/<id>/content and the converter's /render return no deck data; fetch('file:///etc/passwd') fails. It also tries top.location = 'https://example.com'. s2.png and page 2 of the PDF show slide 2 with the probe green, and the exported .html opened in Chromium shows the probe green with every other slide intact."
+   "acceptance": "Slide 2 of a deck holds a probe HTML element next to other elements and an image. si:designer runs `present render <deck> 2 --at 3000 -o s2.png` and `present export <deck> --format pdf`. The probe turns green only if all of these hold: reading the parent or top document fails; it finds no other element's content, signed asset URL, token or identity; credentialed fetches to the service's /v1/decks/<id>/content and the converter's /render return no deck data; fetch('file:///etc/passwd') fails. It also tries top.location = 'https://example.com'. s2.png and page 2 of the PDF show slide 2 with the probe green."
   },
   {
    "id": "SLD-79",
@@ -3408,7 +3408,7 @@
    "id": "FMT-49",
    "section": "Formats",
    "requirement": "Any deck can be downloaded as a PowerPoint .pptx file.",
-   "quote": "| PowerPoint      | `.pptx`, `.ppt`  |",
+   "quote": "| PowerPoint      | `.pptx`                        |",
    "surfaces": [
     "service",
     "converter",
@@ -3420,34 +3420,34 @@
   {
    "id": "FMT-50",
    "section": "Formats",
-   "requirement": "Any deck can be downloaded as a PowerPoint 97-2003 .ppt file.",
-   "quote": "| PowerPoint      | `.pptx`, `.ppt`  |",
+   "requirement": "A deck cannot be downloaded as a PowerPoint 97-2003 .ppt file; .ppt only opens.",
+   "quote": "Any deck can be downloaded in exactly these formats, and no others:",
    "surfaces": [
     "service",
     "converter",
     "cli",
     "web"
    ],
-   "acceptance": "The Silicon runs `present export <deck> --format ppt -o d.ppt` on the same 3-slide deck: it exits 0, d.ppt starts with the compound-file signature D0 CF 11 E0 A1 B1 1A E1, and LibreOffice converts it to 3 pages in slide order with their text. A Carbon choosing Download > PowerPoint 97-2003 (.ppt) in /decks/<id> gets the same."
+   "acceptance": "`present export <deck> --format ppt` is refused by the CLI with the list of formats it takes, and GET /v1/decks/<id>/export?format=ppt answers 400 invalid_format whose hint lists pptx, odp, pdf, txt, png, jpg, svg. The Download menu in /decks/<id> has no PowerPoint 97-2003 item. `present open legacy.ppt` still makes a deck."
   },
   {
    "id": "FMT-51",
    "section": "Formats",
-   "requirement": "Any deck can be downloaded as a Keynote .key file.",
-   "quote": "| Keynote         | `.key`           |",
+   "requirement": "A deck cannot be downloaded as a Keynote .key file; .key only opens.",
+   "quote": "For Keynote, download `.pptx` and open it in Keynote.",
    "surfaces": [
     "service",
     "converter",
     "cli",
     "web"
    ],
-   "acceptance": "The Silicon runs `present export <deck> --format key -o d.key` on the 3-slide deck: it exits 0 and d.key is a Keynote document (a zip with Index/Document.iwa) that Keynote opens with the 3 slides; where Keynote is not installed, its structure is checked and `present open d.key` gives back 3 slides with their text. An error saying Keynote is not available does not pass. A Carbon choosing Download > Keynote (.key) in /decks/<id> gets the same."
+   "acceptance": "`present export <deck> --format key` is refused by the CLI with the list of formats it takes, and GET /v1/decks/<id>/export?format=key answers 400 invalid_format. The Download menu in /decks/<id> has no Keynote item; `present docs export` tells a Keynote user to export .pptx and open it in Keynote. `present open d.key` still makes a deck."
   },
   {
    "id": "FMT-52",
    "section": "Formats",
    "requirement": "Any deck can be downloaded as an OpenDocument .odp file.",
-   "quote": "| OpenDocument    | `.odp`           |",
+   "quote": "| OpenDocument    | `.odp`                         |",
    "surfaces": [
     "service",
     "converter",
@@ -3460,7 +3460,7 @@
    "id": "FMT-53",
    "section": "Formats",
    "requirement": "Any deck can be downloaded as a PDF.",
-   "quote": "| PDF             | `.pdf`           |",
+   "quote": "| PDF             | `.pdf`                         |",
    "surfaces": [
     "service",
     "converter",
@@ -3473,8 +3473,8 @@
   {
    "id": "FMT-54",
    "section": "Formats",
-   "requirement": "Any deck can be downloaded as a web page (.html).",
-   "quote": "| Web page        | `.html`          |",
+   "requirement": "A deck cannot be downloaded as a web page (.html); .html only opens.",
+   "quote": "Any deck can be downloaded in exactly these formats, and no others:",
    "surfaces": [
     "service",
     "converter",
@@ -3482,13 +3482,13 @@
     "web",
     "renderer"
    ],
-   "acceptance": "The Silicon runs `present export <deck> --format html -o d.html`: it exits 0 with one .html file which, opened from disk in a fresh browser profile with the Present service stopped, shows all 3 slides (each reachable) with their text and picture, the picture coming from inside the file. A Carbon choosing Download > Web page (.html) in /decks/<id> gets the same."
+   "acceptance": "`present export <deck> --format html` is refused by the CLI with the list of formats it takes, and GET /v1/decks/<id>/export?format=html answers 400 invalid_format. The Download menu in /decks/<id> has no web page item. Opening an .html file still makes a deck."
   },
   {
    "id": "FMT-55",
    "section": "Formats",
-   "requirement": "Any deck can be downloaded as .png images.",
-   "quote": "| Images          | `.png`, `.jpg`   |",
+   "requirement": "Any deck can be downloaded as .png images (one slide, or a .zip of every slide).",
+   "quote": "| Images          | `.png`, `.jpg`, `.svg` (one slide) |",
    "surfaces": [
     "service",
     "converter",
@@ -3501,8 +3501,8 @@
   {
    "id": "FMT-56",
    "section": "Formats",
-   "requirement": "Any deck can be downloaded as .jpg images.",
-   "quote": "| Images          | `.png`, `.jpg`   |",
+   "requirement": "Any deck can be downloaded as .jpg images (one slide, or a .zip of every slide).",
+   "quote": "| Images          | `.png`, `.jpg`, `.svg` (one slide) |",
    "surfaces": [
     "service",
     "converter",
@@ -3511,6 +3511,32 @@
     "renderer"
    ],
    "acceptance": "The Silicon runs `present export <deck> --format jpg -o d.zip` on the 3-slide deck: it exits 0 with a .zip of 3 JPEG images in slide order at the deck's aspect ratio, each looking like `present render <deck> <n>`. A Carbon choosing Download > Images (JPG) in /decks/<id> gets the same."
+  },
+  {
+   "id": "FMT-77",
+   "section": "Formats",
+   "requirement": "Any deck can be downloaded as plain text (.txt).",
+   "quote": "| Plain text      | `.txt`                         |",
+   "surfaces": [
+    "service",
+    "converter",
+    "cli",
+    "web"
+   ],
+   "acceptance": "`present export <deck> --format txt -o d.txt` exits 0 and d.txt holds the text of every slide in order. A Carbon choosing Download > Plain text (.txt) in /decks/<id> gets the same."
+  },
+  {
+   "id": "FMT-78",
+   "section": "Formats",
+   "requirement": "Any slide can be downloaded as an .svg image.",
+   "quote": "| Images          | `.png`, `.jpg`, `.svg` (one slide) |",
+   "surfaces": [
+    "service",
+    "converter",
+    "cli",
+    "web"
+   ],
+   "acceptance": "`present export <deck> --format svg --slide 2 -o s2.svg` exits 0 with one SVG of slide 2; without --slide the converter refuses with slide_required. A Carbon choosing Download > Scalable Vector Graphics (.svg, current slide) in /decks/<id> gets the slide on screen."
   },
   {
    "id": "FMT-57",
@@ -3539,7 +3565,7 @@
   {
    "id": "FMT-59",
    "section": "Formats",
-   "requirement": "Text is exported as real text wherever the format can hold text: editable text in .pptx, .ppt, .key and .odp, selectable text in .pdf and .html.",
+   "requirement": "Text is exported as real text wherever the format can hold text: editable text in .pptx and .odp, selectable text in .pdf, and all of it in .txt.",
    "quote": "it's exported as the closest thing that format allows",
    "surfaces": [
     "converter",
@@ -3551,7 +3577,7 @@
   {
    "id": "FMT-60",
    "section": "Formats",
-   "requirement": "Speaker notes are exported into the formats that hold notes: .pptx, .ppt, .key and .odp.",
+   "requirement": "Speaker notes are exported into the formats that hold notes: .pptx and .odp.",
    "quote": "it's exported as the closest thing that format allows",
    "surfaces": [
     "converter",
@@ -6827,7 +6853,7 @@
     "web",
     "cli"
    ],
-   "acceptance": "c:ada puts the text 'secret figure' on slide 2 and then deletes it. She shares the deck with c:carol and si:critic as commenters and si:reader and c:dan as viewers, then runs `present public <deck> view`. Acting as each of them, these commands are refused or return only the current deck: `present read <deck> --version <N before the delete>`, `present pull <deck> old/ --version N`, `present render <deck> 2 --version N` and `present export <deck> --format html --version N`. The same service calls made without a token (content?version=N, export?version=N, render?version=N) behave the same. 'secret figure' is never returned, and the web gives these accounts and an anonymous visitor no way to open an older version."
+   "acceptance": "c:ada puts the text 'secret figure' on slide 2 and then deletes it. She shares the deck with c:carol and si:critic as commenters and si:reader and c:dan as viewers, then runs `present public <deck> view`. Acting as each of them, these commands are refused or return only the current deck: `present read <deck> --version <N before the delete>`, `present pull <deck> old/ --version N`, `present render <deck> 2 --version N` and `present export <deck> --format pdf --version N`. The same service calls made without a token (content?version=N, export?version=N, render?version=N) behave the same. 'secret figure' is never returned, and the web gives these accounts and an anonymous visitor no way to open an older version."
   },
   {
    "id": "VER-24",
@@ -8890,7 +8916,7 @@
     "cli",
     "web"
    ],
-   "acceptance": "c:ada opens every deck menu, the share dialog and the deck settings in the web. She finds no custom domain, vanity URL or slug, SEO/meta settings, site navigation menu, page or route management, forms, or hosting option. The deck is reachable only at its own /decks/<id> link on the web editor's address (and at /p/<presentation> while it is presented). `present --help` lists no site, domain or hosting command. `present export <deck> --format html` and the web's .html download return a file (Content-Disposition: attachment), not a hosted address."
+   "acceptance": "c:ada opens every deck menu, the share dialog and the deck settings in the web. She finds no custom domain, vanity URL or slug, SEO/meta settings, site navigation menu, page or route management, forms, or hosting option. The deck is reachable only at its own /decks/<id> link on the web editor's address (and at /p/<presentation> while it is presented). `present --help` lists no site, domain or hosting command. `present export <deck> --format pdf` and every web download return a file (Content-Disposition: attachment), not a hosted address."
   },
   {
    "id": "NOT-04",

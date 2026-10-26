@@ -493,14 +493,12 @@ run "new deck from an old version" A new "CLI Deck at pull" --from "$DECK@$PULLE
 run "the copy has the old slides" A read "$OLDCOPY" --json && is "copy has 5 slides" "$(j '.slides | length')" "5"
 
 say "Export every format"
-for f in pptx ppt key odp pdf html png jpg; do
+for f in pptx odp pdf txt png jpg; do
   if run "export $f" A export "$DECK" --format "$f" -o "$WORK/out/deck.$f" --json; then
     case $f in
       pptx|odp|png|jpg) magic "$f file is a zip" "$WORK/out/deck.$f" "504b0304" ;;
-      ppt) magic "ppt file is OLE2" "$WORK/out/deck.$f" "d0cf11e0a1b11ae1" ;;
-      key) magic "key file is a zip (Keynote package)" "$WORK/out/deck.$f" "504b0304" ;;
       pdf) magic "pdf file" "$WORK/out/deck.$f" "25504446" ;;
-      html) has "html export is a page" "$(head -c 400 "$WORK/out/deck.$f" | tr 'A-Z' 'a-z')" "<html" ;;
+      txt) has "txt export holds the slide text" "$(cat "$WORK/out/deck.$f")" "Zebra" ;;
     esac
   fi
 done

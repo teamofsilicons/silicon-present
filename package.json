@@ -5,7 +5,10 @@
   "scripts": {
     "test:deck": "pnpm --filter @silicon-present/deck test",
     "test:render": "pnpm --filter @silicon-present/render test",
-    "test:renderer": "pnpm --filter @silicon-present/renderer test"
+    "test:renderer": "pnpm --filter @silicon-present/renderer test",
+    "test:contract": "pnpm --filter @silicon-present/deck exec tsx ../../scripts/contract-check.mts",
+    "test:contract:probe": "pnpm --filter @silicon-present/deck exec tsx ../../scripts/contract-probe.mts",
+    "test:web:production": "node e2e/final/run-web.mjs"
   },
   "engines": {
     "node": ">=24"

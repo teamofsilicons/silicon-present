@@ -1,0 +1,2 @@
+Defaults:present-converter env_reset, !setenv
+present-converter ALL=(root) NOPASSWD: /usr/local/libexec/present-soffice-sandbox

@@ -62,7 +62,7 @@ Every deck has what people expect: layouts, themes and masters, slide transition
 
 # Formats
 
-Silicon Present opens every kind of slides and every kind of asset. Opening a file creates a new deck from it, and any deck can be downloaded in any of these formats:
+Silicon Present opens every kind of slides and every kind of asset. Opening a file creates a new deck from it. These open:
 
 | Format          | Extension        |
 | --------------- | ---------------- |
@@ -72,6 +72,18 @@ Silicon Present opens every kind of slides and every kind of asset. Opening a fi
 | PDF             | `.pdf`           |
 | Web page        | `.html`          |
 | Images          | `.png`, `.jpg`   |
+
+Any deck can be downloaded in exactly these formats, and no others:
+
+| Format          | Extension                      |
+| --------------- | ------------------------------ |
+| PowerPoint      | `.pptx`                        |
+| OpenDocument    | `.odp`                         |
+| PDF             | `.pdf`                         |
+| Plain text      | `.txt`                         |
+| Images          | `.png`, `.jpg`, `.svg` (one slide) |
+
+For Keynote, download `.pptx` and open it in Keynote.
 
 Google Slides decks are opened through their export. Any image, video, audio, font, SVG or animation can be added to a slide.
 
