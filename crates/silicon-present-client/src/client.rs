@@ -16,8 +16,9 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use url::Url;
 
-/// The public API: the web's `/api` proxy in front of the service. Routes are `{api}/v1/...`.
-pub const DEFAULT_API_URL: &str = "https://present.teamofsilicons.com/api";
+/// The public bearer-token API. The web's `/api` proxy requires a sealed browser session.
+/// Routes are `{api}/v1/...`.
+pub const DEFAULT_API_URL: &str = "https://backend.present.teamofsilicons.com";
 const MAX_BODY: usize = 512 * 1024 * 1024;
 
 /// How long ordinary calls may take.
@@ -32,6 +33,7 @@ pub struct Client {
     http: reqwest::Client,
     base: Url,
     token: Option<Secret>,
+    replace_em_dashes: bool,
 }
 
 /// Which decks to list.
@@ -109,7 +111,7 @@ pub struct RenderOptions {
 
 impl Client {
     /// A client for the API at `api_url` (the service itself, e.g. `http://127.0.0.1:4321`, or
-    /// the public `https://present.teamofsilicons.com/api`). HTTPS is required; plain HTTP only
+    /// the public `https://backend.present.teamofsilicons.com`). HTTPS is required; plain HTTP only
     /// for this machine. No network call.
     pub fn new(api_url: &str) -> Result<Self> {
         let base = parse_base(api_url)?;
@@ -126,7 +128,24 @@ impl Client {
             http,
             base,
             token: None,
+            replace_em_dashes: false,
         })
+    }
+
+    /// Opt in to replacing em dashes in outgoing authored text. The CLI enables this
+    /// for Silicon accounts unless its explicit override is present; SDK default is off.
+    pub fn with_em_dash_replacement(mut self, enabled: bool) -> Self {
+        self.replace_em_dashes = enabled;
+        self
+    }
+
+    /// Whether this client rewrites authored em dashes (useful for retry journals).
+    pub fn replaces_em_dashes(&self) -> bool { self.replace_em_dashes }
+
+    fn writing_body(&self, body: &impl Serialize) -> Value {
+        let mut value = serde_json::to_value(body).expect("request bodies serialize");
+        if self.replace_em_dashes { crate::writing::normalize(&mut value); }
+        value
     }
 
     /// The API base this client calls, without a trailing slash.
@@ -247,7 +266,7 @@ impl Client {
         let url = self.url(segments);
         let mut req = self.request(method, url.clone());
         if let Some(b) = body {
-            req = req.json(b);
+            req = req.json(&self.writing_body(b));
         }
         self.value(req, &url).await
     }
@@ -300,7 +319,7 @@ impl Client {
     /// `POST /v1/decks`.
     pub async fn create_deck(&self, new: &NewDeck) -> Result<Deck> {
         let url = self.url(&["decks"]);
-        self.typed(self.request(Method::POST, url.clone()).json(new), &url, "deck").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(new)), &url, "deck").await
     }
 
     /// `GET /v1/decks/{id}`.
@@ -319,7 +338,7 @@ impl Client {
         if let Some(f) = folder {
             body["folder"] = json!(f);
         }
-        self.typed(self.request(Method::PATCH, url.clone()).json(&body), &url, "deck").await
+        self.typed(self.request(Method::PATCH, url.clone()).json(&self.writing_body(&body)), &url, "deck").await
     }
 
     /// `DELETE /v1/decks/{id}`: to the trash, with its whole history.
@@ -388,7 +407,13 @@ impl Client {
     /// `POST /v1/decks/{id}/edits`: one transaction of edit ops.
     pub async fn edit(&self, id: &str, request: &EditRequest) -> Result<EditOutcome> {
         let url = self.url(&["decks", id, "edits"]);
-        self.typed(self.request(Method::POST, url.clone()).json(request), &url, "edit").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(request)), &url, "edit").await
+    }
+
+    /// Retry one edit safely using the same key and identical request body.
+    pub async fn edit_idempotent(&self, id: &str, request: &EditRequest, key: &str) -> Result<EditOutcome> {
+        let url = self.url(&["decks", id, "edits"]);
+        self.typed(self.request(Method::POST, url.clone()).header("Idempotency-Key", key).json(&self.writing_body(request)), &url, "edit").await
     }
 
     /// `POST /v1/decks/{id}/updates`: applies a raw Yjs update (editors only).
@@ -398,7 +423,7 @@ impl Client {
             "update": base64::engine::general_purpose::STANDARD.encode(update),
             "session": session,
         });
-        self.value(self.request(Method::POST, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     /// `POST /v1/decks/{id}/presence`: shows you on a slide; expires after 30 s without another.
@@ -449,7 +474,7 @@ impl Client {
     pub async fn create_folder(&self, name: &str, parent: Option<&str>) -> Result<Folder> {
         let url = self.url(&["folders"]);
         let body = json!({ "name": name, "parent": parent });
-        self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "folder").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url, "folder").await
     }
 
     /// `GET /v1/folders/{id}`.
@@ -468,7 +493,7 @@ impl Client {
         if let Some(p) = parent {
             body["parent"] = json!(p);
         }
-        self.typed(self.request(Method::PATCH, url.clone()).json(&body), &url, "folder").await
+        self.typed(self.request(Method::PATCH, url.clone()).json(&self.writing_body(&body)), &url, "folder").await
     }
 
     /// `DELETE /v1/folders/{id}`: to the trash with everything in it.
@@ -509,14 +534,14 @@ impl Client {
     pub async fn share(&self, kind: ResourceKind, id: &str, to: &str, role: Role) -> Result<Member> {
         let url = self.url(&[kind.collection(), id, "access"]);
         let body = json!({ "to": to, "role": role.as_str() });
-        self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "member").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url, "member").await
     }
 
     /// `PATCH /v1/{decks|folders}/{id}/access/{member}`: change a role.
     pub async fn change_role(&self, kind: ResourceKind, id: &str, member: &str, role: Role) -> Result<Value> {
         let url = self.url(&[kind.collection(), id, "access", member]);
         let body = json!({ "role": role.as_str() });
-        self.value(self.request(Method::PATCH, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::PATCH, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     /// `DELETE /v1/{decks|folders}/{id}/access/{member}`.
@@ -529,7 +554,7 @@ impl Client {
     pub async fn set_public(&self, id: &str, mode: PublicMode) -> Result<Value> {
         let url = self.url(&["decks", id, "public"]);
         let body = json!({ "mode": mode.as_str() });
-        self.value(self.request(Method::PUT, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::PUT, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     // ---- transfers -------------------------------------------------------------------------
@@ -538,7 +563,7 @@ impl Client {
     pub async fn transfer(&self, kind: ResourceKind, id: &str, to: &str) -> Result<Transfer> {
         let url = self.url(&[kind.collection(), id, "transfer"]);
         let body = json!({ "to": to });
-        self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "transfer").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url, "transfer").await
     }
 
     /// `GET /v1/transfers?state=pending|all`: offered to you and by you.
@@ -583,7 +608,7 @@ impl Client {
         let v = version.to_string();
         let url = self.url(&["decks", id, "versions", &v, "name"]);
         let body = json!({ "name": name });
-        self.value(self.request(Method::POST, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     /// `GET /v1/decks/{id}/compare?from=&to=`: slides and elements added, removed and changed.
@@ -602,14 +627,14 @@ impl Client {
         if let Some(e) = element {
             body["element"] = json!(e);
         }
-        self.value(self.request(Method::POST, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     /// `POST /v1/decks/{id}/undo-account`: undo everything one Carbon or Silicon changed since a version.
     pub async fn undo_account(&self, id: &str, account: &str, since: u64) -> Result<Value> {
         let url = self.url(&["decks", id, "undo-account"]);
         let body = json!({ "account": account, "since": since });
-        self.value(self.request(Method::POST, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 
     // ---- comments --------------------------------------------------------------------------
@@ -629,14 +654,14 @@ impl Client {
     pub async fn comment(&self, id: &str, anchor: &Anchor, body: &str) -> Result<Thread> {
         let url = self.url(&["decks", id, "threads"]);
         let req = json!({ "anchor": anchor, "body": body });
-        self.typed(self.request(Method::POST, url.clone()).json(&req), &url, "thread").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&req)), &url, "thread").await
     }
 
     /// `POST /v1/threads/{t}/replies`.
     pub async fn reply(&self, thread: &str, body: &str) -> Result<Comment> {
         let url = self.url(&["threads", thread, "replies"]);
         let req = json!({ "body": body });
-        self.typed(self.request(Method::POST, url.clone()).json(&req), &url, "comment").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&req)), &url, "comment").await
     }
 
     /// `POST /v1/threads/{t}/resolve`.
@@ -655,7 +680,7 @@ impl Client {
     pub async fn edit_comment(&self, comment: &str, body: &str) -> Result<Value> {
         let url = self.url(&["comments", comment]);
         let req = json!({ "body": body });
-        self.value(self.request(Method::PATCH, url.clone()).json(&req), &url).await
+        self.value(self.request(Method::PATCH, url.clone()).json(&self.writing_body(&req)), &url).await
     }
 
     /// `DELETE /v1/comments/{c}` (kept in the history).
@@ -772,7 +797,7 @@ impl Client {
             Some(s) => json!({ "slide": s }),
             None => json!({}),
         };
-        self.typed(self.request(Method::POST, url.clone()).json(&body), &url, "presentation").await
+        self.typed(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url, "presentation").await
     }
 
     /// `GET /v1/decks/{id}/presentations`: presentations of a deck running now.
@@ -791,7 +816,7 @@ impl Client {
     pub async fn move_presentation(&self, id: &str, slide: &Value, step: u64) -> Result<Presentation> {
         let url = self.url(&["presentations", id]);
         let body = json!({ "slide": slide, "step": step });
-        self.typed(self.request(Method::PUT, url.clone()).json(&body), &url, "presentation").await
+        self.typed(self.request(Method::PUT, url.clone()).json(&self.writing_body(&body)), &url, "presentation").await
     }
 
     /// `DELETE /v1/presentations/{p}`: stop.
@@ -817,7 +842,7 @@ impl Client {
     pub async fn report(&self, message: &str, pr: Option<&str>, context: Value) -> Result<Value> {
         let url = self.url(&["reports"]);
         let body = json!({ "message": message, "pr": pr, "context": context });
-        self.value(self.request(Method::POST, url.clone()).json(&body), &url).await
+        self.value(self.request(Method::POST, url.clone()).json(&self.writing_body(&body)), &url).await
     }
 }
 
@@ -893,14 +918,20 @@ mod tests {
 
     #[test]
     fn urls_keep_the_base_path_and_encode_segments() {
-        let c = Client::new("https://present.teamofsilicons.com/api").unwrap();
+        let c = Client::new("https://api.example.test/present").unwrap();
         assert_eq!(
             c.url(&["comments", "abc", "reactions", "👍"]).as_str(),
-            "https://present.teamofsilicons.com/api/v1/comments/abc/reactions/%F0%9F%91%8D"
+            "https://api.example.test/present/v1/comments/abc/reactions/%F0%9F%91%8D"
         );
         let c = Client::new("http://127.0.0.1:4351/").unwrap();
         assert_eq!(c.url(&["decks"]).as_str(), "http://127.0.0.1:4351/v1/decks");
         assert!(Client::new("http://example.com").is_err());
+    }
+
+    #[test]
+    fn public_default_calls_the_bearer_api_directly() {
+        let client = Client::new(DEFAULT_API_URL).unwrap();
+        assert_eq!(client.url(&["decks"]).as_str(), "https://backend.present.teamofsilicons.com/v1/decks");
     }
 
     #[test]

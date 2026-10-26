@@ -37,10 +37,13 @@ Docs: present docs [topic]   ·   Rust package: silicon-present-client   ·   Re
     disable_help_subcommand = true
 )]
 pub struct Cli {
+    /// Preserve em dashes in Silicon-authored text for this command only.
+    #[arg(long, global = true)]
+    pub dangerously_use_em_dash: bool,
     /// Print machine-readable JSON (errors too, as {"error":{code,message,hint}}).
     #[arg(long, global = true)]
     pub json: bool,
-    /// The Silicon Present API (default https://present.teamofsilicons.com/api; locally the service itself, e.g. http://127.0.0.1:4321).
+    /// The Silicon Present API (default https://backend.present.teamofsilicons.com; locally the service itself, e.g. http://127.0.0.1:4321).
     #[arg(long, global = true, env = "PRESENT_API_URL", value_name = "URL")]
     pub api_url: Option<String>,
     /// The Silicon Accounts origin used to sign in (default https://accounts.teamofsilicons.com).
@@ -212,6 +215,13 @@ pub enum Command {
         after_help = "Examples:\n  present slide dk7Hq2mP9xRt 3\n  present slide dk7Hq2mP9xRt s_ab12cd --json\n  present slide add dk7Hq2mP9xRt --layout title-body --title \"Plan\" --body $'One\\nTwo'\n  present slide notes dk7Hq2mP9xRt 3 \"Say hello\""
     )]
     Slide(SlideArgs),
+    /// List layers front first, or move a selection while preserving groups and locks.
+    #[command(
+        args_conflicts_with_subcommands = true,
+        subcommand_negates_reqs = true,
+        after_help = "Examples:\n  present layers dk7Hq2mP9xRt 1 --json\n  present layers move dk7Hq2mP9xRt 1 e_ab12cd e_cd34ef --to front\n  present layers move dk7Hq2mP9xRt 1 text:2 --before image:1\n\nBefore is in front of the target; after is behind. See `present docs layers`."
+    )]
+    Layers(LayersArgs),
     /// Render one slide (or --all) to an image, exactly as a Carbon sees it. HTML elements run first.
     #[command(after_help = "Examples:\n  present render dk7Hq2mP9xRt 1 -o s1.png\n  present render dk7Hq2mP9xRt 3 --width 960 --format jpg -o s3.jpg\n  present render dk7Hq2mP9xRt 2 --at 4000 -o later.png    # let an animation run 4 s\n  present render dk7Hq2mP9xRt --all -o renders/\n\nThen look at the image, fix what you see with present set / replace, render again.")]
     Render {
@@ -302,7 +312,7 @@ pub enum Command {
         #[arg(long)]
         field: Option<String>,
     },
-    /// Bring an element to the front (or one step forward with --step).
+    /// Bring an element and its group to the front (or one step forward with --step); respect locks.
     #[command(after_help = "Example: present front dk7Hq2mP9xRt 2 e_ab12cd")]
     Front {
         /// The deck.
@@ -315,7 +325,7 @@ pub enum Command {
         #[arg(long)]
         step: bool,
     },
-    /// Send an element to the back (or one step backward with --step).
+    /// Send an element and its group to the back (or one step backward with --step); respect locks.
     #[command(after_help = "Example: present back dk7Hq2mP9xRt 2 e_ab12cd")]
     Back {
         /// The deck.
@@ -531,12 +541,12 @@ pub enum Command {
     },
 
     // ---- files -------------------------------------------------------------------------
-    /// Download a deck as pptx, ppt, key, odp, pdf, html, png or jpg (png/jpg of a whole deck is a zip).
-    #[command(after_help = "Examples:\n  present export dk7Hq2mP9xRt --format pptx\n  present export dk7Hq2mP9xRt --format pdf -o q4.pdf\n  present export dk7Hq2mP9xRt --format png --slide 3 -o s3.png\n  present export dk7Hq2mP9xRt --format html --version 12")]
+    /// Download a deck as pptx, odp, pdf, txt, png, jpg or svg (svg needs --slide).
+    #[command(after_help = "Examples:\n  present export dk7Hq2mP9xRt --format pptx\n  present export dk7Hq2mP9xRt --format pdf -o q4.pdf\n  present export dk7Hq2mP9xRt --format png --slide 3 -o s3.png\n  present export dk7Hq2mP9xRt --format pdf --version 12")]
     Export {
         /// The deck.
         deck: DeckRef,
-        /// pptx, ppt, key, odp, pdf, html, png or jpg.
+        /// pptx, odp, pdf, txt, png, jpg or svg.
         #[arg(long, value_enum)]
         format: ExportFormat,
         /// Where to write (default: the file name the service suggests, here).
@@ -730,20 +740,18 @@ pub enum PublicArg {
 pub enum ExportFormat {
     /// PowerPoint.
     Pptx,
-    /// PowerPoint 97-2003.
-    Ppt,
-    /// Keynote.
-    Key,
     /// OpenDocument.
     Odp,
     /// PDF.
     Pdf,
-    /// One self-contained web page.
-    Html,
     /// PNG (zip of every slide unless --slide).
     Png,
     /// JPG (zip of every slide unless --slide).
     Jpg,
+    /// Plain text from all slides.
+    Txt,
+    /// Scalable Vector Graphics of one slide (requires --slide).
+    Svg,
 }
 
 impl ExportFormat {
@@ -751,13 +759,12 @@ impl ExportFormat {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pptx => "pptx",
-            Self::Ppt => "ppt",
-            Self::Key => "key",
             Self::Odp => "odp",
             Self::Pdf => "pdf",
-            Self::Html => "html",
             Self::Png => "png",
             Self::Jpg => "jpg",
+            Self::Txt => "txt",
+            Self::Svg => "svg",
         }
     }
 }
@@ -835,6 +842,57 @@ pub enum FolderCmd {
         #[arg(long, value_enum)]
         role: RoleArg,
     },
+}
+
+/// `present layers`.
+#[derive(Debug, Args)]
+pub struct LayersArgs {
+    /// The deck.
+    #[arg(required = true)]
+    pub deck: Option<DeckRef>,
+    /// The slide (number, id or master).
+    #[arg(required = true)]
+    pub slide: Option<String>,
+    /// Move layers.
+    #[command(subcommand)]
+    pub sub: Option<LayersCmd>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum LayersCmd {
+    /// Move objects together, keeping their relative order; locked objects and groups stay put.
+    #[command(after_help = "Examples:\n  present layers move dk7Hq2mP9xRt 1 e_ab12cd e_cd34ef --to forward\n  present layers move dk7Hq2mP9xRt 1 text:2 --after image:1\n\nChoose exactly one destination. Before means in front of the target; after means behind it. Selecting any group member moves its whole group, unless any member is locked.")]
+    Move(LayersMoveArgs),
+}
+
+#[derive(Debug, Args)]
+#[group(skip)]
+#[command(group(clap::ArgGroup::new("destination").required(true).multiple(false).args(["to", "before", "after"])))]
+pub struct LayersMoveArgs {
+    /// The deck.
+    pub deck: DeckRef,
+    /// The slide (number, id or master).
+    pub slide: String,
+    /// Element ids, z positions (1 = back) or kind:n selectors, all resolved before moving.
+    #[arg(required = true, num_args = 1..)]
+    pub elements: Vec<String>,
+    /// Move to an end, or one step through the stack.
+    #[arg(long, value_enum)]
+    pub to: Option<LayerDirection>,
+    /// Place in front of this element (or its whole group).
+    #[arg(long, value_name = "ELEMENT")]
+    pub before: Option<String>,
+    /// Place behind this element (or its whole group).
+    #[arg(long, value_name = "ELEMENT")]
+    pub after: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum LayerDirection {
+    Front,
+    Back,
+    Forward,
+    Backward,
 }
 
 /// `present slide`.

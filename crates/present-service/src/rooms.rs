@@ -75,7 +75,12 @@ async fn load(st: &AppState, deck: &str) -> ApiResult<Arc<Room>> {
     let (tx, _) = broadcast::channel(1024);
     Ok(Arc::new(Room {
         deck: deck.to_string(),
-        state: Mutex::new(RoomState { doc, seq, json, presence: HashMap::new() }),
+        state: Mutex::new(RoomState {
+            doc,
+            seq,
+            json,
+            presence: HashMap::new(),
+        }),
         tx,
         last_used: std::sync::Mutex::new(Instant::now()),
     }))
@@ -85,7 +90,9 @@ impl Rooms {
     pub async fn get(&self, st: &AppState, deck: &str) -> ApiResult<Arc<Room>> {
         let cell = {
             let mut map = self.map.lock().await;
-            map.entry(deck.to_string()).or_insert_with(|| Arc::new(OnceCell::new())).clone()
+            map.entry(deck.to_string())
+                .or_insert_with(|| Arc::new(OnceCell::new()))
+                .clone()
         };
         let room = cell.get_or_try_init(|| load(st, deck)).await;
         match room {
@@ -114,13 +121,25 @@ impl Rooms {
     pub async fn sweep(&self, idle: Duration) {
         let mut map = self.map.lock().await;
         map.retain(|_, cell| match cell.get() {
-            Some(room) => room.tx.receiver_count() > 0 || room.last_used.lock().map(|t| t.elapsed() < idle).unwrap_or(true),
+            Some(room) => {
+                room.tx.receiver_count() > 0
+                    || room
+                        .last_used
+                        .lock()
+                        .map(|t| t.elapsed() < idle)
+                        .unwrap_or(true)
+            }
             None => true,
         });
     }
 
     pub async fn all(&self) -> Vec<Arc<Room>> {
-        self.map.lock().await.values().filter_map(|c| c.get().cloned()).collect()
+        self.map
+            .lock()
+            .await
+            .values()
+            .filter_map(|c| c.get().cloned())
+            .collect()
     }
 }
 
@@ -154,9 +173,15 @@ pub fn b64(bytes: &[u8]) -> String {
 }
 
 pub fn unb64(s: &str, what: &str) -> ApiResult<Vec<u8>> {
-    base64::engine::general_purpose::STANDARD.decode(s.trim()).map_err(|_| {
-        ApiError::bad_request("invalid_base64", format!("`{what}` isn't valid base64."), format!("Send `{what}` as standard base64 (with padding)."))
-    })
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim())
+        .map_err(|_| {
+            ApiError::bad_request(
+                "invalid_base64",
+                format!("`{what}` isn't valid base64."),
+                format!("Send `{what}` as standard base64 (with padding)."),
+            )
+        })
 }
 
 fn has_pending(doc: &Doc) -> bool {
@@ -178,36 +203,61 @@ pub async fn commit_with<T>(
     let mut s = room.state.lock().await;
     let (update, extra) = f(&s.doc)?;
     let decoded = Update::decode_v1(&update).map_err(|e| {
-        ApiError::bad_request("invalid_update", format!("The Yjs update couldn't be decoded: {e}."), "Send a Yjs v1 update (Y.encodeStateAsUpdate), base64 encoded.")
+        ApiError::bad_request(
+            "invalid_update",
+            format!("The Yjs update couldn't be decoded: {e}."),
+            "Send a Yjs v1 update (Y.encodeStateAsUpdate), base64 encoded.",
+        )
     })?;
-    let before_sv = s.doc.transact().state_vector();
-    let applied = s.doc.transact_mut().apply_update(decoded);
-    if let Err(e) = applied {
-        drop(s);
-        st.rooms.evict(deck).await;
-        return Err(ApiError::bad_request("invalid_update", format!("The Yjs update couldn't be applied: {e}."), "Resync: reconnect to /live and resend."));
+    // Trial on a clone: malformed UTF-16 edits must never mutate the live room or its history.
+    let trial = present_deck::clone_doc(&s.doc);
+    let splits = yrs::utf16_boundary::split_count();
+    let trial_result = trial.transact_mut().apply_update(decoded);
+    if yrs::utf16_boundary::split_count() != splits {
+        return Err(ApiError::new(
+            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid_update",
+            "The update cuts a character in two.",
+            "Resync the deck and edit whole Unicode characters.",
+        ));
     }
-    if has_pending(&s.doc) {
-        drop(s);
-        st.rooms.evict(deck).await;
+    trial_result.map_err(|e| {
+        ApiError::bad_request(
+            "invalid_update",
+            format!("The Yjs update couldn't be applied: {e}."),
+            "Resync the deck.",
+        )
+    })?;
+    if has_pending(&trial) {
         return Err(ApiError::conflict(
             "update_needs_history",
             "The update builds on changes this deck doesn't have, so it wasn't applied.",
             "Reconnect to GET /v1/decks/{id}/live with your state vector, then send Y.encodeStateAsUpdate(doc, serverStateVector).",
         ));
     }
-    let after_sv = s.doc.transact().state_vector();
-    let after = present_deck::doc_to_json(&s.doc);
+    let before_sv = s.doc.transact().state_vector();
+    let after_sv = trial.transact().state_vector();
+    let after = present_deck::doc_to_json(&trial);
     if after_sv == before_sv && after == s.json {
-        return Ok((Commit { version: s.seq, changed: false, touched: vec![], summary: String::new() }, extra));
+        return Ok((
+            Commit {
+                version: s.seq,
+                changed: false,
+                touched: vec![],
+                summary: String::new(),
+            },
+            extra,
+        ));
     }
     let d = present_deck::diff(&s.json, &after);
     let touched = d.touched();
     // Only explicit summaries (ops, restore, undo, import) are stored; automatic ones are recomputed per version.
     let explicit = info.summary.clone().filter(|x| !x.trim().is_empty());
-    let summary = explicit.clone().unwrap_or_else(|| present_deck::summarize(&d));
+    let summary = explicit
+        .clone()
+        .unwrap_or_else(|| present_deck::summarize(&d));
     let seq = s.seq + 1;
-    let snapshot = (seq % SNAPSHOT_EVERY == 0).then(|| present_deck::encode_doc(&s.doc));
+    let snapshot = (seq % SNAPSHOT_EVERY == 0).then(|| present_deck::encode_doc(&trial));
     let write = async {
         let mut tx = st.pool.begin().await?;
         sqlx::query("insert into deck_updates (deck, seq, data, author, origin, summary, touched) values ($1, $2, $3, $4, $5, $6, $7)")
@@ -220,12 +270,14 @@ pub async fn commit_with<T>(
             .bind(&touched)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("update decks set seq = $2, updated_at = now(), search_text = $3 where id = $1")
-            .bind(deck)
-            .bind(seq)
-            .bind(crate::store::search_text(&after))
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "update decks set seq = $2, updated_at = now(), search_text = $3 where id = $1",
+        )
+        .bind(deck)
+        .bind(seq)
+        .bind(crate::store::search_text(&after))
+        .execute(&mut *tx)
+        .await?;
         if let Some(data) = &snapshot {
             sqlx::query("insert into deck_snapshots (deck, seq, data) values ($1, $2, $3) on conflict do nothing")
                 .bind(deck)
@@ -237,10 +289,10 @@ pub async fn commit_with<T>(
         tx.commit().await
     };
     if let Err(e) = write.await {
-        drop(s);
-        st.rooms.evict(deck).await;
         return Err(ApiError::internal(format!("saving the change failed: {e}")));
     }
+    // Publish only durable state. Existing waiters and live streams keep the same Room, even on refusal or I/O failure.
+    s.doc = trial;
     s.seq = seq;
     s.json = after;
     room.send(
@@ -255,17 +307,33 @@ pub async fn commit_with<T>(
             "session": info.session,
         }),
     );
-    Ok((Commit { version: seq, changed: true, touched, summary }, extra))
+    Ok((
+        Commit {
+            version: seq,
+            changed: true,
+            touched,
+            summary,
+        },
+        extra,
+    ))
 }
 
 /// Applies a client's Yjs update.
-pub async fn commit_update(st: &AppState, deck: &str, update: Vec<u8>, info: CommitInfo<'_>) -> ApiResult<Commit> {
+pub async fn commit_update(
+    st: &AppState,
+    deck: &str,
+    update: Vec<u8>,
+    info: CommitInfo<'_>,
+) -> ApiResult<Commit> {
     Ok(commit_with(st, deck, info, |_| Ok((update, ()))).await?.0)
 }
 
 /// The colour a Carbon or Silicon shows up in, stable per account.
 pub fn presence_color(uuid: Uuid) -> &'static str {
-    const COLORS: [&str; 10] = ["#e5484d", "#2f5bea", "#12a594", "#e8743b", "#8e4ec6", "#d6409f", "#0091ff", "#46a758", "#f76b15", "#6e56cf"];
+    const COLORS: [&str; 10] = [
+        "#e5484d", "#2f5bea", "#12a594", "#e8743b", "#8e4ec6", "#d6409f", "#0091ff", "#46a758",
+        "#f76b15", "#6e56cf",
+    ];
     let b = uuid.as_bytes();
     COLORS[(b[0] as usize + b[15] as usize) % COLORS.len()]
 }
@@ -274,7 +342,12 @@ pub fn presence_color(uuid: Uuid) -> &'static str {
 pub async fn expire_presence(st: &AppState) {
     for room in st.rooms.all().await {
         let mut s = room.state.lock().await;
-        let gone: Vec<String> = s.presence.iter().filter(|(_, p)| p.seen.elapsed() > PRESENCE_TTL).map(|(k, _)| k.clone()).collect();
+        let gone: Vec<String> = s
+            .presence
+            .iter()
+            .filter(|(_, p)| p.seen.elapsed() > PRESENCE_TTL)
+            .map(|(k, _)| k.clone())
+            .collect();
         for session in gone {
             s.presence.remove(&session);
             room.send("presence_left", json!({ "session": session }));

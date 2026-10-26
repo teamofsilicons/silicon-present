@@ -1,0 +1,154 @@
+{
+  "name": "null-geometry-reset",
+  "description": "null geometry reset",
+  "findings": [],
+  "start": {
+    "size": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "Paper",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": [
+          {
+            "id": "e_000001",
+            "kind": "text",
+            "x": 0,
+            "y": 0,
+            "w": 400,
+            "h": 200,
+            "rotation": 0,
+            "locked": false,
+            "group": null,
+            "link": null,
+            "animation": null,
+            "style": {},
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Hi",
+                      "bold": true
+                    },
+                    {
+                      "text": " there",
+                      "italic": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "ops": [
+    {
+      "op": "update_element",
+      "slide": "s_000001",
+      "element": "e_000001",
+      "set": {
+        "w": null,
+        "x": "12"
+      }
+    }
+  ],
+  "expect": {
+    "size": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "Paper",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": [
+          {
+            "id": "e_000001",
+            "kind": "text",
+            "x": 12,
+            "y": 0,
+            "w": 400,
+            "h": 200,
+            "rotation": 0,
+            "locked": false,
+            "group": null,
+            "link": null,
+            "animation": null,
+            "style": {},
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Hi",
+                      "bold": true
+                    },
+                    {
+                      "text": " there",
+                      "italic": true
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -47,8 +47,19 @@ pub struct FakeDirectory {
 impl FakeDirectory {
     pub fn add(&self, handle: &str, profile: Option<Profile>) -> Uuid {
         let uuid = Uuid::new_v4();
-        let kind = if handle.starts_with("si:") { "silicon" } else { "carbon" };
-        self.accounts.lock().unwrap().push((DirAccount { uuid, handle: handle.into(), kind: kind.into() }, profile));
+        let kind = if handle.starts_with("si:") {
+            "silicon"
+        } else {
+            "carbon"
+        };
+        self.accounts.lock().unwrap().push((
+            DirAccount {
+                uuid,
+                handle: handle.into(),
+                kind: kind.into(),
+            },
+            profile,
+        ));
         uuid
     }
     pub fn rename(&self, uuid: Uuid, handle: &str) {
@@ -72,10 +83,22 @@ impl FakeDirectory {
 impl AccountsDirectory for FakeDirectory {
     async fn lookup(&self, q: &str) -> Result<Option<DirAccount>, ApiError> {
         let q = q.to_lowercase();
-        Ok(self.accounts.lock().unwrap().iter().find(|(a, _)| a.uuid.to_string() == q || a.handle == q).map(|(a, _)| a.clone()))
+        Ok(self
+            .accounts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(a, _)| a.uuid.to_string() == q || a.handle == q)
+            .map(|(a, _)| a.clone()))
     }
     async fn profile(&self, uuid: Uuid) -> Result<Option<Profile>, ApiError> {
-        Ok(self.accounts.lock().unwrap().iter().find(|(a, _)| a.uuid == uuid).and_then(|(_, p)| p.clone()))
+        Ok(self
+            .accounts
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(a, _)| a.uuid == uuid)
+            .and_then(|(_, p)| p.clone()))
     }
 }
 
@@ -95,7 +118,10 @@ impl TingSender for FakeTing {
     async fn send(&self, ting: &OutgoingTing) -> Result<(), SendFailure> {
         if self.fail_next.load(Ordering::SeqCst) > 0 {
             self.fail_next.fetch_sub(1, Ordering::SeqCst);
-            return Err(SendFailure { retryable: true, message: "fake outage".into() });
+            return Err(SendFailure {
+                retryable: true,
+                message: "fake outage".into(),
+            });
         }
         self.sent.lock().unwrap().push(ting.clone());
         Ok(())
@@ -113,7 +139,11 @@ pub const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 13, 10, 26, 10, 0, 0, 0, 0];
 impl Converter for FakeConverter {
     async fn render(&self, body: Value) -> Result<ConvertedFile, ApiError> {
         self.calls.lock().unwrap().push(("render".into(), body));
-        Ok(ConvertedFile { bytes: PNG.to_vec().into(), content_type: "image/png".into(), ext: None })
+        Ok(ConvertedFile {
+            bytes: PNG.to_vec().into(),
+            content_type: "image/png".into(),
+            ext: None,
+        })
     }
     async fn export(&self, body: Value) -> Result<ConvertedFile, ApiError> {
         let format = body["format"].as_str().unwrap_or("").to_string();
@@ -121,17 +151,34 @@ impl Converter for FakeConverter {
         self.calls.lock().unwrap().push(("export".into(), body));
         // Like the real converter: png/jpg of a whole deck is a zip, of one named slide the image itself.
         if one_slide && (format == "png" || format == "jpg") {
-            return Ok(ConvertedFile { bytes: PNG.to_vec().into(), content_type: if format == "png" { "image/png".into() } else { "image/jpeg".into() }, ext: None });
+            return Ok(ConvertedFile {
+                bytes: PNG.to_vec().into(),
+                content_type: if format == "png" {
+                    "image/png".into()
+                } else {
+                    "image/jpeg".into()
+                },
+                ext: None,
+            });
         }
         let ct = match format.as_str() {
             "pdf" => "application/pdf",
+            "txt" => "text/plain; charset=utf-8",
+            "svg" => "image/svg+xml",
             "png" | "jpg" => "application/zip",
             _ => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         };
-        Ok(ConvertedFile { bytes: format!("FILE:{format}").into_bytes().into(), content_type: ct.into(), ext: None })
+        Ok(ConvertedFile {
+            bytes: format!("FILE:{format}").into_bytes().into(),
+            content_type: ct.into(),
+            ext: None,
+        })
     }
     async fn import(&self, body: Value) -> Result<Value, ApiError> {
-        self.calls.lock().unwrap().push(("import".into(), body.clone()));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(("import".into(), body.clone()));
         Ok(json!({
             "deck": { "title": "Imported deck", "slides": [
                 { "layout": "title", "notes": "imported notes", "elements": [
@@ -184,10 +231,13 @@ pub struct Stack {
 }
 
 async fn serve_jwks(jwks: Value) -> String {
-    let app = axum::Router::new().route("/.well-known/jwks.json", axum::routing::get(move || {
-        let j = jwks.clone();
-        async move { axum::Json(j) }
-    }));
+    let app = axum::Router::new().route(
+        "/.well-known/jwks.json",
+        axum::routing::get(move || {
+            let j = jwks.clone();
+            async move { axum::Json(j) }
+        }),
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -206,14 +256,28 @@ impl Stack {
     }
 
     /// `real_converter`: use this converter instead of the fake one.
-    pub async fn start_full(ting: bool, converter: bool, real_converter: Option<Arc<dyn Converter>>) -> Stack {
+    pub async fn start_full(
+        ting: bool,
+        converter: bool,
+        real_converter: Option<Arc<dyn Converter>>,
+    ) -> Stack {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let db_name = format!("present_t_{}_{}_{}", std::process::id(), n, rand::random::<u32>());
-        let admin = sqlx::PgPool::connect(ADMIN_URL).await.expect("the dev cluster on 5490 must be running (scripts/dev-db.sh start)");
+        let db_name = format!(
+            "present_t_{}_{}_{}",
+            std::process::id(),
+            n,
+            rand::random::<u32>()
+        );
+        let admin = sqlx::PgPool::connect(ADMIN_URL)
+            .await
+            .expect("the dev cluster on 5490 must be running (scripts/dev-db.sh start)");
         if n == 0 {
             sweep_stale_databases(&admin).await;
         }
-        sqlx::query(sqlx::AssertSqlSafe(format!("create database {db_name}"))).execute(&admin).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("create database {db_name}")))
+            .execute(&admin)
+            .await
+            .unwrap();
         admin.close().await;
         let database_url = format!("postgres://present@127.0.0.1:5490/{db_name}");
         let pool = present_service::connect(&database_url).await.unwrap();
@@ -236,14 +300,24 @@ impl Stack {
         ]
         .into();
         let cfg = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
-        let client = silicon_accounts_client::AccountsClient::builder().base_url(accounts_url).allow_insecure_http(true).build().unwrap();
+        let client = silicon_accounts_client::AccountsClient::builder()
+            .base_url(accounts_url)
+            .allow_insecure_http(true)
+            .build()
+            .unwrap();
         let directory = Arc::new(FakeDirectory::default());
         let ting_fake = Arc::new(FakeTing::default());
         let converter_fake = Arc::new(FakeConverter::default());
         let deps = Deps {
-            verifier: Arc::new(present_service::auth::AccountsTokenVerifier::new(client, "present", ISSUER)),
+            verifier: Arc::new(present_service::auth::AccountsTokenVerifier::new(
+                client, "present", ISSUER,
+            )),
             directory: directory.clone(),
-            ting: if ting { Some(ting_fake.clone() as Arc<dyn TingSender>) } else { None },
+            ting: if ting {
+                Some(ting_fake.clone() as Arc<dyn TingSender>)
+            } else {
+                None
+            },
             converter: match (real_converter, converter) {
                 (Some(c), _) => Some(c),
                 (None, true) => Some(converter_fake.clone() as Arc<dyn Converter>),
@@ -277,9 +351,20 @@ impl Stack {
     }
 
     pub fn person_with(&self, handle: &str, email: Option<&str>) -> Person {
-        let profile = Profile { display_name: handle.trim_start_matches("si:").trim_start_matches("c:").to_string(), pfp_url: None, email: email.map(String::from) };
+        let profile = Profile {
+            display_name: handle
+                .trim_start_matches("si:")
+                .trim_start_matches("c:")
+                .to_string(),
+            pfp_url: None,
+            email: email.map(String::from),
+        };
         let uuid = self.directory.add(handle, Some(profile));
-        Person { uuid, handle: handle.to_string(), token: self.token(uuid, handle, 600, "present") }
+        Person {
+            uuid,
+            handle: handle.to_string(),
+            token: self.token(uuid, handle, 600, "present"),
+        }
     }
 
     pub fn token(&self, uuid: Uuid, handle: &str, ttl: i64, aud: &str) -> String {
@@ -293,11 +378,24 @@ impl Stack {
         jsonwebtoken::encode(&header, &claims, &self.keys.encoding).unwrap()
     }
 
-    pub async fn req(&self, method: &str, path: &str, who: Option<&Person>, body: Option<Value>) -> (u16, Value) {
+    pub async fn req(
+        &self,
+        method: &str,
+        path: &str,
+        who: Option<&Person>,
+        body: Option<Value>,
+    ) -> (u16, Value) {
         self.req_h(method, path, who, body, &[]).await.0
     }
 
-    pub async fn req_h(&self, method: &str, path: &str, who: Option<&Person>, body: Option<Value>, headers: &[(&str, &str)]) -> ((u16, Value), reqwest::header::HeaderMap) {
+    pub async fn req_h(
+        &self,
+        method: &str,
+        path: &str,
+        who: Option<&Person>,
+        body: Option<Value>,
+        headers: &[(&str, &str)],
+    ) -> ((u16, Value), reqwest::header::HeaderMap) {
         let m = reqwest::Method::from_bytes(method.as_bytes()).unwrap();
         let mut r = self.http.request(m, format!("{}{}", self.url, path));
         if let Some(p) = who {
@@ -313,7 +411,11 @@ impl Stack {
         let status = resp.status().as_u16();
         let h = resp.headers().clone();
         let text = resp.text().await.unwrap();
-        let v = if text.is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap_or(Value::String(text)) };
+        let v = if text.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&text).unwrap_or(Value::String(text))
+        };
         ((status, v), h)
     }
 
@@ -332,26 +434,41 @@ impl Stack {
     }
 
     pub async fn content(&self, deck: &str, who: &Person) -> Value {
-        let (s, c) = self.get(&format!("/v1/decks/{deck}/content"), Some(who)).await;
+        let (s, c) = self
+            .get(&format!("/v1/decks/{deck}/content"), Some(who))
+            .await;
         assert_eq!(s, 200, "{c}");
         c
     }
 
     pub async fn edits(&self, deck: &str, who: &Person, ops: Value) -> (u16, Value) {
-        self.post(&format!("/v1/decks/{deck}/edits"), who, json!({ "ops": ops })).await
+        self.post(
+            &format!("/v1/decks/{deck}/edits"),
+            who,
+            json!({ "ops": ops }),
+        )
+        .await
     }
 
     pub async fn share(&self, kind: &str, id: &str, owner: &Person, to: &str, role: &str) {
-        let (s, b) = self.post(&format!("/v1/{kind}/{id}/access"), owner, json!({ "to": to, "role": role })).await;
+        let (s, b) = self
+            .post(
+                &format!("/v1/{kind}/{id}/access"),
+                owner,
+                json!({ "to": to, "role": role }),
+            )
+            .await;
         assert!(s == 201 || s == 200, "{s} {b}");
     }
 
     /// Waits until the outbox has delivered everything due (or 5 s pass).
     pub async fn outbox(&self) -> Vec<(String, Uuid, String, Value, String)> {
-        sqlx::query_as::<_, (String, Uuid, String, Value, String)>("select type, recipient, idempotency_key, payload, state from ting_outbox order by id")
-            .fetch_all(&self.pool)
-            .await
-            .unwrap()
+        sqlx::query_as::<_, (String, Uuid, String, Value, String)>(
+            "select type, recipient, idempotency_key, payload, state from ting_outbox order by id",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap()
     }
 
     pub async fn wait_until<F: Fn() -> bool>(&self, what: &str, f: F) {
@@ -374,10 +491,17 @@ impl Stack {
 fn drop_database(name: String) {
     // Runs on its own thread and runtime, so it works from Drop and after a panic.
     let _ = std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         rt.block_on(async {
             if let Ok(admin) = sqlx::PgPool::connect(ADMIN_URL).await {
-                let _ = sqlx::query(sqlx::AssertSqlSafe(format!("drop database if exists {name} with (force)"))).execute(&admin).await;
+                let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+                    "drop database if exists {name} with (force)"
+                )))
+                .execute(&admin)
+                .await;
                 admin.close().await;
             }
         });
@@ -387,12 +511,27 @@ fn drop_database(name: String) {
 
 /// Drops databases left by test processes that are gone (e.g. killed mid-run).
 async fn sweep_stale_databases(admin: &sqlx::PgPool) {
-    let names: Vec<String> = sqlx::query_scalar("select datname from pg_database where datname like 'present_t_%'").fetch_all(admin).await.unwrap_or_default();
+    let names: Vec<String> =
+        sqlx::query_scalar("select datname from pg_database where datname like 'present_t_%'")
+            .fetch_all(admin)
+            .await
+            .unwrap_or_default();
     for name in names {
         let pid = name.split('_').nth(2).and_then(|p| p.parse::<u32>().ok());
-        let alive = pid.is_some_and(|p| std::process::Command::new("kill").arg("-0").arg(p.to_string()).status().map(|s| s.success()).unwrap_or(false));
+        let alive = pid.is_some_and(|p| {
+            std::process::Command::new("kill")
+                .arg("-0")
+                .arg(p.to_string())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        });
         if !alive {
-            let _ = sqlx::query(sqlx::AssertSqlSafe(format!("drop database if exists {name} with (force)"))).execute(admin).await;
+            let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+                "drop database if exists {name} with (force)"
+            )))
+            .execute(admin)
+            .await;
         }
     }
 }
@@ -427,7 +566,12 @@ impl Sse {
             r = r.bearer_auth(t);
         }
         let resp = r.send().await.unwrap();
-        assert_eq!(resp.status().as_u16(), 200, "SSE connect to {url} failed: {}", resp.text().await.unwrap_or_default());
+        assert_eq!(
+            resp.status().as_u16(),
+            200,
+            "SSE connect to {url} failed: {}",
+            resp.text().await.unwrap_or_default()
+        );
         let (tx, rx) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
             use futures::StreamExt;
@@ -464,7 +608,10 @@ impl Sse {
     pub async fn next(&mut self, event: &str) -> Ev {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         loop {
-            let ev = tokio::time::timeout_at(deadline, self.rx.recv()).await.unwrap_or_else(|_| panic!("no `{event}` event within 5 s")).expect("stream ended");
+            let ev = tokio::time::timeout_at(deadline, self.rx.recv())
+                .await
+                .unwrap_or_else(|_| panic!("no `{event}` event within 5 s"))
+                .expect("stream ended");
             if ev.event == event {
                 return ev;
             }
@@ -500,16 +647,32 @@ impl LiveClient {
     pub async fn connect_with_doc(stack: &Stack, deck: &str, who: &Person, doc: Doc) -> LiveClient {
         let session = Uuid::new_v4().to_string();
         let sv = doc.transact().state_vector().encode_v1();
-        let url = format!("{}/v1/decks/{deck}/live?sv={}&session={session}", stack.url, urlencode(&b64(&sv)));
+        let url = format!(
+            "{}/v1/decks/{deck}/live?sv={}&session={session}",
+            stack.url,
+            urlencode(&b64(&sv))
+        );
         let mut sse = Sse::connect(&url, Some(&who.token)).await;
         let sync = sse.next("sync").await;
         let update = unb64(sync.data["update"].as_str().unwrap());
-        doc.transact_mut().apply_update(Update::decode_v1(&update).unwrap()).unwrap();
+        doc.transact_mut()
+            .apply_update(Update::decode_v1(&update).unwrap())
+            .unwrap();
         // Send what the server lacks (changes made while offline).
         let server_sv = StateVector::decode_v1(&unb64(sync.data["sv"].as_str().unwrap())).unwrap();
         let missing = doc.transact().encode_state_as_update_v1(&server_sv);
-        let client = LiveClient { doc, sse, session, base: stack.url.clone(), deck: deck.to_string(), token: who.token.clone() };
-        if Update::decode_v1(&missing).map(|u| !u.is_empty()).unwrap_or(false) {
+        let client = LiveClient {
+            doc,
+            sse,
+            session,
+            base: stack.url.clone(),
+            deck: deck.to_string(),
+            token: who.token.clone(),
+        };
+        if Update::decode_v1(&missing)
+            .map(|u| !u.is_empty())
+            .unwrap_or(false)
+        {
             client.send(missing).await;
         }
         client
@@ -531,8 +694,13 @@ impl LiveClient {
 
     /// Applies ops locally (like an editor would) and sends the resulting update.
     pub async fn edit(&self, ops: Value) -> Value {
-        let (update, _) = present_deck::apply_ops_update(&self.doc, &present_deck::parse_ops(&ops).unwrap()).unwrap();
-        self.doc.transact_mut().apply_update(Update::decode_v1(&update).unwrap()).unwrap();
+        let (update, _) =
+            present_deck::apply_ops_update(&self.doc, &present_deck::parse_ops(&ops).unwrap())
+                .unwrap();
+        self.doc
+            .transact_mut()
+            .apply_update(Update::decode_v1(&update).unwrap())
+            .unwrap();
         self.send(update).await
     }
 
@@ -540,7 +708,10 @@ impl LiveClient {
     pub async fn receive(&mut self) -> Ev {
         let ev = self.sse.next("update").await;
         let u = unb64(ev.data["update"].as_str().unwrap());
-        self.doc.transact_mut().apply_update(Update::decode_v1(&u).unwrap()).unwrap();
+        self.doc
+            .transact_mut()
+            .apply_update(Update::decode_v1(&u).unwrap())
+            .unwrap();
         ev
     }
 
@@ -552,7 +723,9 @@ impl LiveClient {
 pub fn urlencode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()

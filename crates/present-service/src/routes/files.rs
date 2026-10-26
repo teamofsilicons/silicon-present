@@ -8,7 +8,7 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use base64::Engine;
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
@@ -133,6 +133,15 @@ pub fn asset_base(st: &AppState, deck: &str) -> String {
     format!("{}/v1/signed/{deck}/{exp}/{}/assets/", st.cfg.public_url, sign(st, deck, exp))
 }
 
+// Raster/media/font formats remain embeddable; uploaded documents and code download.
+// SVG is safe as an image, but a navigation still needs an opaque, scriptless sandbox.
+fn asset_inline_type(content_type: &str) -> bool {
+    matches!(content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase().as_str(),
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml" |
+        "video/mp4" | "video/webm" | "video/ogg" | "audio/mpeg" | "audio/mp4" | "audio/ogg" |
+        "audio/wav" | "audio/webm" | "font/woff" | "font/woff2" | "font/ttf" | "font/otf")
+}
+
 async fn serve_asset(st: &AppState, a: &AssetRow) -> ApiResult<Response> {
     let bytes = tokio::fs::read(asset_path(st, &a.id)).await.map_err(|_| {
         ApiError::not_found("asset_missing", format!("Asset `{}`'s file is missing from the service's storage.", a.id), "Upload it again.")
@@ -140,8 +149,10 @@ async fn serve_asset(st: &AppState, a: &AssetRow) -> ApiResult<Response> {
     let mut resp = bytes.into_response();
     let h = resp.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_str(&a.content_type).unwrap_or(HeaderValue::from_static("application/octet-stream")));
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=3600"));
-    if let Ok(v) = HeaderValue::from_str(&format!("inline; filename*=UTF-8''{}", encode_rfc5987(&a.filename))) {
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
+    h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
+    if let Ok(v) = HeaderValue::from_str(&format!("{}; filename*=UTF-8''{}", if asset_inline_type(&a.content_type) { "inline" } else { "attachment" }, encode_rfc5987(&a.filename))) {
         h.insert(header::CONTENT_DISPOSITION, v);
     }
     Ok(resp)
@@ -162,11 +173,11 @@ pub struct AssetQuery {
     sig: Option<String>,
 }
 
-pub async fn get_asset(State(st): State<AppState>, caller: MaybeCaller, Path(id): Path<String>, Q(q): Q<AssetQuery>) -> ApiResult<Response> {
+pub async fn get_asset(State(st): State<AppState>, caller: MaybeCaller, Extension(viewer): Extension<crate::viewers::ViewerIdentity>, Path(id): Path<String>, Q(q): Q<AssetQuery>) -> ApiResult<Response> {
     let a = asset_row(&st, &id).await?;
     let signed = matches!((&q.deck, q.exp, &q.sig), (Some(d), Some(exp), Some(sig)) if *d == a.deck && sig_ok(&st, d, exp, sig));
     if !signed {
-        access::deck_for(&st, &a.deck, caller.uuid(), Need::View).await?;
+        crate::viewers::deck_for(&st, &a.deck, caller.uuid(), Need::View, &viewer).await?;
     }
     serve_asset(&st, &a).await
 }
@@ -307,8 +318,11 @@ fn attachment(name: &str) -> String {
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{}", encode_rfc5987(name))
 }
 
-async fn deck_json_for(st: &AppState, deck: &DeckRow, version: Option<i64>, slide: Option<&str>) -> ApiResult<Value> {
+async fn deck_json_for(st: &AppState, deck: &DeckRow, version: Option<i64>, slide: Option<&str>, caller: Option<Uuid>, access: access::Access) -> ApiResult<Value> {
     let (live, _) = rooms::current_json(st, &deck.id).await?;
+    if version.is_some_and(|v| v != live) {
+        access::check("deck", &deck.id, access, caller, Need::Edit)?;
+    }
     let mut json = store::json_at(st, &DeckRow { seq: live, ..deck.clone() }, version.unwrap_or(live)).await?;
     if let Some(s) = slide {
         let slides = json["slides"].as_array().cloned().unwrap_or_default();
@@ -330,16 +344,16 @@ pub struct ExportQuery {
     at: Option<u32>,
 }
 
-const FORMATS: [&str; 8] = ["pptx", "ppt", "key", "odp", "pdf", "html", "png", "jpg"];
+const FORMATS: [&str; 7] = ["pptx", "odp", "pdf", "txt", "png", "jpg", "svg"];
 
 pub async fn export(State(st): State<AppState>, caller: MaybeCaller, Path(id): Path<String>, Q(q): Q<ExportQuery>) -> ApiResult<Response> {
-    let (deck, _) = access::deck_for(&st, &id, caller.uuid(), Need::View).await?;
+    let (deck, access) = access::deck_for(&st, &id, caller.uuid(), Need::View).await?;
     let format = q.format.as_deref().unwrap_or("pptx").to_lowercase();
     if !FORMATS.contains(&format.as_str()) {
         return Err(ApiError::bad_request("invalid_format", format!("`{format}` isn't an export format."), format!("Use one of: {}.", FORMATS.join(", "))));
     }
     let converter = st.converter.clone().ok_or_else(crate::converter::not_configured)?;
-    let json = deck_json_for(&st, &deck, q.version, q.slide.as_deref()).await?;
+    let json = deck_json_for(&st, &deck, q.version, q.slide.as_deref(), caller.uuid(), access).await?;
     // The deck is trimmed to the slide, and the converter is told which slide too: with `slide`, png/jpg come back as
     // one image instead of a zip of one.
     let mut body = json!({ "deck": json, "format": format, "assetBase": asset_base(&st, &id) });
@@ -371,14 +385,14 @@ pub struct RenderQuery {
 }
 
 pub async fn render(State(st): State<AppState>, caller: MaybeCaller, Path((id, slide)): Path<(String, String)>, Q(q): Q<RenderQuery>) -> ApiResult<Response> {
-    let (deck, _) = access::deck_for(&st, &id, caller.uuid(), Need::View).await?;
+    let (deck, access) = access::deck_for(&st, &id, caller.uuid(), Need::View).await?;
     let format = q.format.as_deref().unwrap_or("png").to_lowercase();
     if format != "png" && format != "jpg" {
         return Err(ApiError::bad_request("invalid_format", format!("`{format}` isn't an image format for rendering."), "Use format=png or format=jpg."));
     }
     let width = q.width.unwrap_or(1920).clamp(16, 7680);
     let converter = st.converter.clone().ok_or_else(crate::converter::not_configured)?;
-    let json = deck_json_for(&st, &deck, q.version, None).await?;
+    let json = deck_json_for(&st, &deck, q.version, None, caller.uuid(), access).await?;
     if slide != "master" && !json["slides"].as_array().into_iter().flatten().any(|s| s["id"] == slide.as_str()) {
         return Err(ApiError::not_found("slide_not_found", format!("There is no slide `{slide}` in this deck."), "Read the deck to get its slide ids."));
     }

@@ -17,7 +17,9 @@ fn content(v: &Value) -> Value {
 }
 
 fn apply(doc: &Doc, update: &[u8]) {
-    doc.transact_mut().apply_update(Update::decode_v1(update).unwrap()).unwrap();
+    doc.transact_mut()
+        .apply_update(Update::decode_v1(update).unwrap())
+        .unwrap();
 }
 
 /// Brings two documents to the same state, like two clients syncing.
@@ -35,12 +37,26 @@ fn ops(v: Value) -> Vec<Op> {
 }
 
 fn slide<'a>(deck: &'a Value, id: &str) -> &'a Value {
-    deck["slides"].as_array().unwrap().iter().find(|s| s["id"] == id).unwrap()
+    deck["slides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == id)
+        .unwrap()
 }
 
 fn element<'a>(deck: &'a Value, slide_id: &str, id: &str) -> &'a Value {
-    let s = if slide_id == "master" { &deck["master"] } else { slide(deck, slide_id) };
-    s["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).unwrap()
+    let s = if slide_id == "master" {
+        &deck["master"]
+    } else {
+        slide(deck, slide_id)
+    };
+    s["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == id)
+        .unwrap()
 }
 
 fn plain(rich: &Value) -> String {
@@ -54,16 +70,22 @@ fn json_round_trips_through_yjs() {
     assert_eq!(doc_to_json(&doc), content(&deck));
     let bytes = encode_doc(&doc);
     assert_eq!(doc_to_json(&decode_doc(&bytes).unwrap()), content(&deck));
-    let meta = DeckMeta { id: "dk1".into(), title: "T".into(), version: 3 };
+    let meta = DeckMeta {
+        id: "dk1".into(),
+        title: "T".into(),
+        version: 3,
+    };
     let with = meta.attach(doc_to_json(&doc));
     assert_eq!(with["id"], "dk1");
     assert_eq!(with["version"], 3);
 }
 
 #[test]
-fn defaults_fill_partial_json_and_unknown_keys_drop() {
+fn reader_defaults_fill_partial_json_and_unknown_keys_drop() {
     let deck = json!({ "slides": [ { "elements": [ { "kind": "text", "text": "Hi\nthere", "mystery": 1 }, { "kind": "table", "cells": [["a", "b", "c"]] } ] } ] });
-    let doc = json_to_doc(&deck).unwrap();
+    assert_eq!(json_to_doc(&deck).unwrap_err().code, "invalid_field");
+    let normalized = normalize_deck(&deck).unwrap();
+    let doc = json_to_doc(&normalized).unwrap();
     let out = doc_to_json(&doc);
     let s = &out["slides"][0];
     assert!(s["id"].as_str().unwrap().starts_with("s_"));
@@ -85,7 +107,10 @@ fn default_deck_has_one_title_slide() {
     let d = doc_to_json(&json_to_doc(&default_deck()).unwrap());
     assert_eq!(d["slides"].as_array().unwrap().len(), 1);
     assert_eq!(d["slides"][0]["layout"], "title");
-    assert_eq!(d["slides"][0]["elements"][0]["text"]["paragraphs"][0]["heading"], 1);
+    assert_eq!(
+        d["slides"][0]["elements"][0]["text"]["paragraphs"][0]["heading"],
+        1
+    );
 }
 
 #[test]
@@ -116,7 +141,12 @@ fn every_op_applies() {
     assert_eq!(outcome.replacements, 1);
     let d = doc_to_json(&doc);
     assert_eq!(d["size"]["width"], 1280);
-    let ids: Vec<&str> = d["slides"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = d["slides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
     assert_eq!(ids.len(), 3);
     assert_eq!(ids[0], "s_bbbbb2");
     assert_eq!(ids[1], "s_bbbbb1");
@@ -125,17 +155,34 @@ fn every_op_applies() {
     assert_eq!(slide(&d, "s_bbbbb2")["skipped"], true);
     assert_eq!(slide(&d, "s_bbbbb2")["notes"], "Now with notes");
     let s1 = slide(&d, "s_bbbbb1");
-    let order: Vec<&str> = s1["elements"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
+    let order: Vec<&str> = s1["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
     assert_eq!(order.first(), Some(&"e_new001"));
     assert_eq!(order.last(), Some(&"e_text01"));
     assert_eq!(element(&d, "s_bbbbb1", "e_shape1")["x"], 999);
-    assert_eq!(element(&d, "s_bbbbb1", "e_shape1")["style"], json!({ "fill": "#000000" }));
-    assert_eq!(element(&d, "s_bbbbb2", "e_html01")["css"], "#app { color: blue; }");
+    assert_eq!(
+        element(&d, "s_bbbbb1", "e_shape1")["style"],
+        json!({ "fill": "#000000" })
+    );
+    assert_eq!(
+        element(&d, "s_bbbbb2", "e_html01")["css"],
+        "#app { color: blue; }"
+    );
     // The replaced run keeps its bold formatting; neighbours are untouched.
     let runs = &element(&d, "s_bbbbb1", "e_text01")["text"]["paragraphs"][0]["runs"];
     assert_eq!(runs[1], json!({ "text": "strong", "bold": true }));
     assert_eq!(runs[3]["color"], "#ff0000");
-    assert!(slide(&d, "s_bbbbb2")["elements"].as_array().unwrap().iter().all(|e| e["id"] != "e_audio1"));
+    assert!(
+        slide(&d, "s_bbbbb2")["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["id"] != "e_audio1")
+    );
     assert_eq!(plain(&d["master"]["elements"][1]["text"]), "Footer\n");
 }
 
@@ -188,10 +235,26 @@ fn replace_text_in_notes_cells_and_whole_slide() {
     )
     .unwrap();
     let d = doc_to_json(&doc);
-    assert!(slide(&d, "s_bbbbb1")["notes"].as_str().unwrap().contains("2nd line ünïcødé 🎉"));
-    assert_eq!(plain(&element(&d, "s_bbbbb1", "e_table1")["cells"][1][0]["text"]), "Q4 2026\n");
-    assert_eq!(plain(&element(&d, "s_bbbbb1", "e_shape1")["text"]), "Inside a shape\n");
-    assert!(element(&d, "s_bbbbb2", "e_html01")["js"].as_str().unwrap().contains("Live!"));
+    assert!(
+        slide(&d, "s_bbbbb1")["notes"]
+            .as_str()
+            .unwrap()
+            .contains("2nd line ünïcødé 🎉")
+    );
+    assert_eq!(
+        plain(&element(&d, "s_bbbbb1", "e_table1")["cells"][1][0]["text"]),
+        "Q4 2026\n"
+    );
+    assert_eq!(
+        plain(&element(&d, "s_bbbbb1", "e_shape1")["text"]),
+        "Inside a shape\n"
+    );
+    assert!(
+        element(&d, "s_bbbbb2", "e_html01")["js"]
+            .as_str()
+            .unwrap()
+            .contains("Live!")
+    );
 }
 
 #[test]
@@ -211,7 +274,10 @@ fn minimal_text_diffs_keep_concurrent_typing() {
     apply_ops(&a, &ops(json!([{ "op": "update_element", "slide": "s_bbbbb2", "element": "e_html01", "set": { "html": "<div id=\"app\">Live now</div>" } }]))).unwrap();
     apply_ops(&b, &ops(json!([{ "op": "update_element", "slide": "s_bbbbb2", "element": "e_html01", "set": { "html": "<main><div id=\"app\">Live</div>" } }]))).unwrap();
     sync(&a, &b);
-    assert_eq!(element(&doc_to_json(&a), "s_bbbbb2", "e_html01")["html"], "<main><div id=\"app\">Live now</div>");
+    assert_eq!(
+        element(&doc_to_json(&a), "s_bbbbb2", "e_html01")["html"],
+        "<main><div id=\"app\">Live now</div>"
+    );
 }
 
 #[test]
@@ -224,10 +290,17 @@ fn setting_rich_text_changes_only_formatting_where_it_differs() {
     apply_ops(&doc, &ops(json!([{ "op": "update_element", "slide": "s_bbbbb1", "element": "e_text01", "set": { "text": target.clone() } }]))).unwrap();
     let now = doc_to_json(&doc);
     let got = &element(&now, "s_bbbbb1", "e_text01")["text"];
-    assert_eq!(got, &normalize_element(&json!({"kind": "text", "text": target})).unwrap()["text"]);
+    assert_eq!(
+        got,
+        &normalize_element(&json!({"kind": "text", "text": target})).unwrap()["text"]
+    );
     // Only formatting changed, so no characters were deleted: the update has no delete set beyond format markers.
     let update = doc.transact().encode_state_as_update_v1(&sv);
-    assert!(update.len() < 400, "formatting-only change should be small, got {} bytes", update.len());
+    assert!(
+        update.len() < 400,
+        "formatting-only change should be small, got {} bytes",
+        update.len()
+    );
 }
 
 #[test]
@@ -269,15 +342,33 @@ fn reconcile_restores_whole_deck_slide_and_element() {
         { "op": "update_deck", "set": { "theme": { "name": "Other" } } }
     ]))).unwrap();
     // One element back.
-    reconcile(&doc, &v1, &Scope::Element { slide: "s_bbbbb1".into(), element: "e_table1".into() }).unwrap();
+    reconcile(
+        &doc,
+        &v1,
+        &Scope::Element {
+            slide: "s_bbbbb1".into(),
+            element: "e_table1".into(),
+        },
+    )
+    .unwrap();
     let d = doc_to_json(&doc);
-    let order: Vec<&str> = slide(&d, "s_bbbbb1")["elements"].as_array().unwrap().iter().map(|e| e["id"].as_str().unwrap()).collect();
+    let order: Vec<&str> = slide(&d, "s_bbbbb1")["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
     assert_eq!(order, vec!["e_text01", "e_shape1", "e_table1", "e_chart1"]);
     assert_eq!(element(&d, "s_bbbbb1", "e_chart1")["chart"]["type"], "pie");
     // One slide back, in its old place.
     reconcile(&doc, &v1, &Scope::Slide("s_bbbbb2".into())).unwrap();
     let d = doc_to_json(&doc);
-    let ids: Vec<&str> = d["slides"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = d["slides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
     assert_eq!(ids, vec!["s_later1", "s_bbbbb1", "s_bbbbb2"]);
     // The whole deck back.
     reconcile(&doc, &v1, &Scope::Deck).unwrap();
@@ -312,29 +403,46 @@ fn diff_and_summary_say_what_changed() {
     apply_ops(&doc, &ops(json!([{ "op": "update_element", "slide": "s_bbbbb2", "element": "e_html01", "set": { "x": 10 } }]))).unwrap();
     let d = diff(&before, &doc_to_json(&doc));
     assert_eq!(d.slides_changed.len(), 1);
-    assert_eq!(d.slides_changed[0].elements_changed[0].fields, vec!["x".to_string()]);
+    assert_eq!(
+        d.slides_changed[0].elements_changed[0].fields,
+        vec!["x".to_string()]
+    );
     assert_eq!(summarize(&d), "changed slide 2");
     assert_eq!(d.touched(), vec!["s_bbbbb2".to_string()]);
 
     let before = doc_to_json(&doc);
-    apply_ops(&doc, &ops(json!([{ "op": "add_slide", "slide": {} }, { "op": "add_slide", "slide": {} }]))).unwrap();
-    assert_eq!(summarize(&diff(&before, &doc_to_json(&doc))), "added 2 slides");
+    apply_ops(
+        &doc,
+        &ops(json!([{ "op": "add_slide", "slide": {} }, { "op": "add_slide", "slide": {} }])),
+    )
+    .unwrap();
+    assert_eq!(
+        summarize(&diff(&before, &doc_to_json(&doc))),
+        "added 2 slides"
+    );
 
     let before = doc_to_json(&doc);
-    apply_ops(&doc, &ops(json!([
-        { "op": "delete_element", "slide": "s_bbbbb1", "element": "e_text01" },
-        { "op": "delete_element", "slide": "s_bbbbb1", "element": "e_shape1" },
-        { "op": "add_element", "slide": "s_bbbbb1", "element": { "kind": "text" } },
-        { "op": "add_element", "slide": "s_bbbbb1", "element": { "kind": "html" } },
-        { "op": "update_deck", "set": { "theme": { "name": "Ink" } } },
-        { "op": "move_slide", "slide": "s_bbbbb2", "after": null }
-    ]))).unwrap();
+    apply_ops(
+        &doc,
+        &ops(json!([
+            { "op": "delete_element", "slide": "s_bbbbb1", "element": "e_text01" },
+            { "op": "delete_element", "slide": "s_bbbbb1", "element": "e_shape1" },
+            { "op": "add_element", "slide": "s_bbbbb1", "element": { "kind": "text" } },
+            { "op": "add_element", "slide": "s_bbbbb1", "element": { "kind": "html" } },
+            { "op": "update_deck", "set": { "theme": { "name": "Ink" } } },
+            { "op": "move_slide", "slide": "s_bbbbb2", "after": null }
+        ])),
+    )
+    .unwrap();
     let s = summarize(&diff(&before, &doc_to_json(&doc)));
     assert!(s.contains("rebuilt slide"), "{s}");
     assert!(s.contains("changed the theme"), "{s}");
     assert!(s.contains("moved slide"), "{s}");
     let before = doc_to_json(&doc);
-    assert_eq!(summarize(&diff(&before, &before)), "made no visible changes");
+    assert_eq!(
+        summarize(&diff(&before, &before)),
+        "made no visible changes"
+    );
 }
 
 #[test]
@@ -385,8 +493,16 @@ fn text_view_shows_everything_a_silicon_needs() {
 fn concurrent_reorders_never_duplicate_slides() {
     let a = json_to_doc(&everything()).unwrap();
     let b = clone_doc(&a);
-    apply_ops(&a, &ops(json!([{ "op": "move_slide", "slide": "s_bbbbb1", "after": "s_bbbbb2" }]))).unwrap();
-    apply_ops(&b, &ops(json!([{ "op": "move_slide", "slide": "s_bbbbb1", "after": "s_bbbbb2" }]))).unwrap();
+    apply_ops(
+        &a,
+        &ops(json!([{ "op": "move_slide", "slide": "s_bbbbb1", "after": "s_bbbbb2" }])),
+    )
+    .unwrap();
+    apply_ops(
+        &b,
+        &ops(json!([{ "op": "move_slide", "slide": "s_bbbbb1", "after": "s_bbbbb2" }])),
+    )
+    .unwrap();
     sync(&a, &b);
     let d = doc_to_json(&a);
     assert_eq!(d["slides"].as_array().unwrap().len(), 2);
@@ -398,7 +514,11 @@ fn updates_from_series_rebuild_a_document() {
     let doc = json_to_doc(&everything()).unwrap();
     let first = encode_doc(&doc);
     let sv = doc.transact().state_vector();
-    apply_ops(&doc, &ops(json!([{ "op": "delete_slide", "slide": "s_bbbbb2" }]))).unwrap();
+    apply_ops(
+        &doc,
+        &ops(json!([{ "op": "delete_slide", "slide": "s_bbbbb2" }])),
+    )
+    .unwrap();
     let second = doc.transact().encode_state_as_update_v1(&sv);
     let rebuilt = doc_from_updates([first.as_slice(), second.as_slice()]).unwrap();
     assert_eq!(doc_to_json(&rebuilt), doc_to_json(&doc));
@@ -417,19 +537,49 @@ fn undo_author_reverts_only_their_changes_even_when_others_edited_after() {
         later.push((theirs, u));
     };
     // They rewrite the shape's text and add a slide; someone else edits the notes and the title afterwards.
-    step(true, json!([{ "op": "update_element", "slide": "s_bbbbb1", "element": "e_shape1", "set": { "text": "Rewritten by them", "x": 1 } },
-                      { "op": "add_slide", "slide": { "id": "s_theirs" } }]));
-    step(false, json!([{ "op": "update_slide", "slide": "s_bbbbb1", "set": { "notes": "Kept notes" } }]));
-    step(true, json!([{ "op": "delete_element", "slide": "s_bbbbb2", "element": "e_audio1" }]));
-    step(false, json!([{ "op": "replace_text", "slide": "s_bbbbb1", "element": "e_text01", "find": "Hello", "replace": "Howdy" }]));
+    step(
+        true,
+        json!([{ "op": "update_element", "slide": "s_bbbbb1", "element": "e_shape1", "set": { "text": "Rewritten by them", "x": 1 } },
+                      { "op": "add_slide", "slide": { "id": "s_theirs" } }]),
+    );
+    step(
+        false,
+        json!([{ "op": "update_slide", "slide": "s_bbbbb1", "set": { "notes": "Kept notes" } }]),
+    );
+    step(
+        true,
+        json!([{ "op": "delete_element", "slide": "s_bbbbb2", "element": "e_audio1" }]),
+    );
+    step(
+        false,
+        json!([{ "op": "replace_text", "slide": "s_bbbbb1", "element": "e_text01", "find": "Hello", "replace": "Howdy" }]),
+    );
     let refs: Vec<(bool, &[u8])> = later.iter().map(|(t, u)| (*t, u.as_slice())).collect();
     let out = undo_author(&[base.as_slice()], &refs).unwrap();
-    assert_eq!(plain_text(&element(&out, "s_bbbbb1", "e_shape1")["text"]), "In a shape\n");
+    assert_eq!(
+        plain_text(&element(&out, "s_bbbbb1", "e_shape1")["text"]),
+        "In a shape\n"
+    );
     assert_eq!(element(&out, "s_bbbbb1", "e_shape1")["x"], 100);
-    assert!(out["slides"].as_array().unwrap().iter().all(|s| s["id"] != "s_theirs"));
-    assert!(slide(&out, "s_bbbbb2")["elements"].as_array().unwrap().iter().any(|e| e["id"] == "e_audio1"));
+    assert!(
+        out["slides"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["id"] != "s_theirs")
+    );
+    assert!(
+        slide(&out, "s_bbbbb2")["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["id"] == "e_audio1")
+    );
     assert_eq!(slide(&out, "s_bbbbb1")["notes"], "Kept notes");
-    assert_eq!(element(&out, "s_bbbbb1", "e_text01")["text"]["paragraphs"][0]["runs"][0]["text"], "Howdy ");
+    assert_eq!(
+        element(&out, "s_bbbbb1", "e_text01")["text"]["paragraphs"][0]["runs"][0]["text"],
+        "Howdy "
+    );
 }
 
 #[test]
@@ -444,14 +594,28 @@ fn undo_author_keeps_later_work_positioned_after_theirs() {
         apply(&doc, &u);
         later.push((theirs, u));
     };
-    step(true, json!([{ "op": "add_slide", "after": "s_his001", "slide": { "id": "s_his002", "elements": [ { "kind": "text", "text": "Friend's slide" } ] } },
-                      { "op": "update_element", "slide": "s_his001", "element": "e_ow0001", "set": { "text": "Friend changed this" } }]));
-    step(false, json!([{ "op": "add_slide", "after": "s_his002", "slide": { "id": "s_his003", "elements": [ { "kind": "text", "text": "Owner's last slide" } ] } }]));
+    step(
+        true,
+        json!([{ "op": "add_slide", "after": "s_his001", "slide": { "id": "s_his002", "elements": [ { "kind": "text", "text": "Friend's slide" } ] } },
+                      { "op": "update_element", "slide": "s_his001", "element": "e_ow0001", "set": { "text": "Friend changed this" } }]),
+    );
+    step(
+        false,
+        json!([{ "op": "add_slide", "after": "s_his002", "slide": { "id": "s_his003", "elements": [ { "kind": "text", "text": "Owner's last slide" } ] } }]),
+    );
     let refs: Vec<(bool, &[u8])> = later.iter().map(|(t, u)| (*t, u.as_slice())).collect();
     let out = undo_author(&[base.as_slice()], &refs).unwrap();
-    let ids: Vec<&str> = out["slides"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = out["slides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
     assert_eq!(ids, vec!["s_his001", "s_his003"]);
-    assert_eq!(plain_text(&element(&out, "s_his001", "e_ow0001")["text"]), "Owner's first slide\n");
+    assert_eq!(
+        plain_text(&element(&out, "s_his001", "e_ow0001")["text"]),
+        "Owner's first slide\n"
+    );
 }
 
 #[test]
@@ -465,8 +629,14 @@ fn plain_text_set_over_an_element_keeps_its_look() {
         { "op": "update_element", "slide": "s_1", "element": "e_2", "set": { "text": "Into an empty heading" } }
     ]))).unwrap();
     let d = doc_to_json(&doc);
-    assert_eq!(element(&d, "s_1", "e_1")["text"], json!({ "paragraphs": [
+    assert_eq!(
+        element(&d, "s_1", "e_1")["text"],
+        json!({ "paragraphs": [
         { "heading": 1, "align": "center", "runs": [ { "text": "New title", "bold": true, "size": 72 } ] },
-        { "heading": 1, "align": "center", "runs": [ { "text": "Second line", "bold": true, "size": 72 } ] } ] }));
-    assert_eq!(element(&d, "s_1", "e_2")["text"], json!({ "paragraphs": [ { "heading": 1, "runs": [ { "text": "Into an empty heading" } ] } ] }));
+        { "heading": 1, "align": "center", "runs": [ { "text": "Second line", "bold": true, "size": 72 } ] } ] })
+    );
+    assert_eq!(
+        element(&d, "s_1", "e_2")["text"],
+        json!({ "paragraphs": [ { "heading": 1, "runs": [ { "text": "Into an empty heading" } ] } ] })
+    );
 }

@@ -10,6 +10,7 @@ pub const TOPICS: &[(&str, &str, &str)] = &[
     ("decks", "Decks, folders, trash, transfers and opening files", include_str!("../docs/decks.md")),
     ("reading", "Reading a deck as text or JSON, and rendering slides to images", include_str!("../docs/reading.md")),
     ("editing", "Changing exactly the slide or element you mean: add, set, replace, delete, slide ...", include_str!("../docs/editing.md")),
+    ("layers", "List layers and move objects or groups in front of or behind others", include_str!("../docs/layers.md")),
     ("html", "Live HTML elements: files, sandbox, rendering them", include_str!("../docs/html.md")),
     ("ops", "Raw edit ops (present edit): every op and its fields", include_str!("../docs/ops.md")),
     ("deck-json", "The deck JSON format: slides, elements, rich text, themes", include_str!("../docs/deck-json.md")),
@@ -61,7 +62,8 @@ mod tests {
     fn every_topic_has_text_and_uses_the_right_words() {
         for (name, _, text) in super::TOPICS {
             assert!(text.len() > 200, "{name} is too short");
-            let lower = text.to_ascii_lowercase();
+            // A service hostname is a literal connection setting, not product terminology.
+            let lower = text.to_ascii_lowercase().replace("backend.present.teamofsilicons.com", "present-api-host");
             for banned in ["human", "ai agent", "user account", "frontend", "backend", " org "] {
                 assert!(!lower.contains(banned), "{name} says `{banned}`");
             }

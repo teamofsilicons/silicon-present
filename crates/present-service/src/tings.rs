@@ -106,7 +106,8 @@ impl TingSender for HttpTingSender {
                     scopes: vec!["subscriptions.register".into()],
                     access_ttl_seconds: None,
                 },
-                Some(&format!("present-ting-enrol-{account}")),
+                // A fresh proof issuance is a new operation; an account-stable key can replay an expired proof forever.
+                Some(&format!("present-ting-enrol-{account}-{}", Uuid::new_v4())),
             )
             .await
             .map_err(|e| SendFailure { retryable: true, message: format!("issuing the User verification proof failed: {}", e.message()) })?;
@@ -275,4 +276,46 @@ pub async fn enrol_in_background(state: &AppState, account: Uuid, token: String)
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{Json, Router, http::{HeaderMap, StatusCode}, routing::post};
+    use std::{collections::HashMap, sync::Arc};
+
+    #[tokio::test]
+    async fn enrolment_retry_requests_a_new_proof_instead_of_replaying_an_expired_one() {
+        // Accounts honours idempotency; Ting regards the first issued proof as expired.
+        let issued = Arc::new(std::sync::Mutex::new(HashMap::<String, String>::new()));
+        let seen = issued.clone();
+        let app = Router::new()
+            .route("/v1/proofs/user-verification", post(move |headers: HeaderMap| {
+                let seen = seen.clone();
+                async move {
+                    let key = headers["idempotency-key"].to_str().unwrap().to_string();
+                    let mut proofs = seen.lock().unwrap();
+                    let number = proofs.len() + 1;
+                    let proof = proofs.entry(key).or_insert_with(|| format!("sap_test_{number}"));
+                    Json(json!({ "proof_token": proof }))
+                }
+            }))
+            .route("/v1/subscriptions", post(|headers: HeaderMap| async move {
+                if headers["authorization"] == "Bearer sap_test_1" {
+                    (StatusCode::UNAUTHORIZED, Json(json!({"error":{"code":"proof_expired"}})))
+                } else {
+                    (StatusCode::CREATED, Json(json!({"ok":true})))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        let accounts = AccountsClient::builder().base_url(&url).allow_insecure_http(true).build().unwrap();
+        let sender = HttpTingSender::new(reqwest::Client::new(), url, accounts, "present".into(), "sa_app_test".into(), "ting".into());
+        let account = Uuid::new_v4();
+        assert!(sender.enrol(account, "local_test_access_token").await.is_err());
+        sender.enrol(account, "local_test_access_token").await.unwrap();
+        assert_eq!(issued.lock().unwrap().len(), 2);
+        server.abort();
+    }
 }

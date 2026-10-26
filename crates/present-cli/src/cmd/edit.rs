@@ -6,7 +6,7 @@ use crate::ctx::{Ctx, to_value};
 use crate::fail::{Fail, R};
 use serde_json::{Map, Value, json};
 use silicon_present_client::deck::{self, Frame, LayoutContent};
-use silicon_present_client::ops::{EditRequest, Op, ZTarget};
+use silicon_present_client::ops::{EditRequest, Op};
 use silicon_present_client::{Client, RenderOptions};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -721,15 +721,6 @@ pub async fn delete_element(ctx: &Ctx, deck: &str, slide: &str, element: &str) -
     let sid = ctx.slide_id(&content, slide)?;
     let eid = deck::str_field(ctx.element(&content, &sid, element)?, "id").unwrap_or_default().to_owned();
     apply(ctx, &c, &id, vec![Op::DeleteElement { slide: sid.clone(), element: eid.clone() }], None, |_| format!("Deleted {eid} from {sid}.")).await.map(|_| ())
-}
-
-pub async fn reorder(ctx: &Ctx, deck: &str, slide: &str, element: &str, to: &str) -> R<()> {
-    let c = ctx.authed().await?;
-    let id = ctx.deck_id(&c, deck).await?;
-    let content = c.content(&id, None).await?;
-    let sid = ctx.slide_id(&content, slide)?;
-    let eid = deck::str_field(ctx.element(&content, &sid, element)?, "id").unwrap_or_default().to_owned();
-    apply(ctx, &c, &id, vec![Op::ReorderElement { slide: sid, element: eid.clone(), to: ZTarget::Named(to.into()) }], None, |_| format!("Moved {eid} {to}.")).await.map(|_| ())
 }
 
 pub async fn theme(ctx: &Ctx, deck: Option<&str>, name: Option<&str>, heading: Option<&str>, body: Option<&str>, colors: &[String], list: bool) -> R<()> {

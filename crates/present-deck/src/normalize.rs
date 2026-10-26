@@ -1,18 +1,90 @@
 //! Canonical deck JSON: every field present, defaults filled, numbers canonical.
 //!
-//! `doc_to_json` always returns canonical JSON, and `json_to_doc(x)` then `doc_to_json` gives `normalize_deck(x)`.
-//! Fields the model doesn't know are kept as plain values, so nothing a converter adds is dropped.
+//! Readers default invalid values and drop unknown object keys. Writers validate first (`validate`), then use
+//! these same normalizers; invalid input is never silently stored or discarded on a write.
 
 use serde_json::{Map, Value, json};
+use std::collections::HashSet;
 
 use crate::anyconv::canon;
 use crate::error::DeckError;
 use crate::ids::{element_id, slide_id};
 use crate::richtext::normalize_rich;
 
-pub(crate) const KINDS: [&str; 8] = ["text", "shape", "image", "video", "audio", "table", "chart", "html"];
-pub(crate) const LAYOUTS: [&str; 7] =
-    ["title", "title-body", "two-columns", "section", "title-only", "image-caption", "blank"];
+pub(crate) const KINDS: [&str; 8] = [
+    "text", "shape", "image", "video", "audio", "table", "chart", "html",
+];
+pub(crate) const LAYOUTS: [&str; 7] = [
+    "title",
+    "title-body",
+    "two-columns",
+    "section",
+    "title-only",
+    "image-caption",
+    "blank",
+];
+
+pub(crate) const SHAPES: [&str; 20] = [
+    "rect",
+    "round-rect",
+    "ellipse",
+    "triangle",
+    "right-triangle",
+    "diamond",
+    "pentagon",
+    "hexagon",
+    "octagon",
+    "star",
+    "heart",
+    "arrow-right",
+    "arrow-left",
+    "arrow-up",
+    "arrow-down",
+    "line",
+    "chevron",
+    "callout",
+    "cloud",
+    "plus",
+];
+
+pub(crate) fn number(v: &Value) -> Option<f64> {
+    let n = match v {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => {
+            let s = s.trim_matches([' ', '\t', '\n', '\r']);
+            match serde_json::from_str::<Value>(s).ok()? {
+                Value::Number(n) => n.as_f64(),
+                _ => None,
+            }
+        }
+        _ => None,
+    }?;
+    n.is_finite().then_some(if n == 0.0 { 0.0 } else { n })
+}
+pub(crate) fn string_value(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(_) => {
+            let n = number(v)?;
+            (n == 0.0 || (n.abs() >= 1e-6 && n.abs() < 1e21)).then(|| format!("{n}"))
+        }
+        _ => None,
+    }
+}
+pub(crate) fn normalize_size(v: &Value) -> Value {
+    let side = |k: &str, d: f64| {
+        crate::anyconv::float_to_json(v.get(k).and_then(number).filter(|n| *n > 0.0).unwrap_or(d))
+    };
+    json!({"width":side("width",1920.0),"height":side("height",1080.0)})
+}
+fn enum_or(v: Option<&Value>, values: &[&str], default: &str) -> Value {
+    Value::String(
+        v.and_then(Value::as_str)
+            .filter(|s| values.contains(s))
+            .unwrap_or(default)
+            .into(),
+    )
+}
 
 /// The theme a new deck gets ("Paper", the same default as `packages/deck`).
 pub fn default_theme() -> Value {
@@ -31,13 +103,15 @@ pub fn default_theme() -> Value {
 pub fn normalize_theme(value: &Value) -> Value {
     let d = default_theme();
     let mut m = value.as_object().cloned().unwrap_or_default();
-    if !matches!(m.get("name"), Some(Value::String(_))) {
-        m.insert("name".into(), d["name"].clone());
-    }
+    m.insert("name".into(), str_or(m.get("name"), "Paper"));
     for key in ["fonts", "colors"] {
-        let mut merged = d[key].as_object().cloned().unwrap_or_default();
-        for (k, v) in m.get(key).and_then(Value::as_object).cloned().unwrap_or_default() {
-            merged.insert(k, v);
+        let mut merged = m
+            .get(key)
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        for (k, default) in d[key].as_object().unwrap() {
+            merged.insert(k.clone(), str_or(merged.get(k), default.as_str().unwrap()));
         }
         m.insert(key.into(), Value::Object(merged));
     }
@@ -67,40 +141,24 @@ pub fn default_deck() -> Value {
 }
 
 fn num_or(v: Option<&Value>, d: f64) -> Value {
-    let n = match v {
-        Some(Value::Number(n)) => n.as_f64().unwrap_or(d),
-        Some(Value::String(s)) => s.trim().parse::<f64>().ok().filter(|f| f.is_finite()).unwrap_or(d),
-        _ => d,
-    };
-    crate::anyconv::float_to_json(n)
+    crate::anyconv::float_to_json(v.and_then(number).unwrap_or(d))
 }
-
 fn str_or(v: Option<&Value>, d: &str) -> Value {
-    match v {
-        Some(Value::String(s)) => Value::String(s.clone()),
-        _ => Value::String(d.to_string()),
-    }
+    Value::String(v.and_then(string_value).unwrap_or_else(|| d.into()))
 }
-
 fn bool_or(v: Option<&Value>, d: bool) -> Value {
-    match v {
-        Some(Value::Bool(b)) => Value::Bool(*b),
-        _ => Value::Bool(d),
-    }
+    Value::Bool(v.and_then(Value::as_bool).unwrap_or(d))
 }
-
 fn str_or_null(v: Option<&Value>) -> Value {
-    match v {
-        Some(Value::String(s)) => Value::String(s.clone()),
-        _ => Value::Null,
-    }
+    v.and_then(string_value)
+        .map(Value::String)
+        .unwrap_or(Value::Null)
 }
-
 fn value_or_null(v: Option<&Value>) -> Value {
-    match v {
-        None | Some(Value::Null) => Value::Null,
-        Some(x) => canon(x.clone()),
-    }
+    v.filter(|v| v.is_object())
+        .cloned()
+        .map(canon)
+        .unwrap_or(Value::Null)
 }
 
 /// Which element fields are Yjs types (not plain values) for an element kind.
@@ -122,7 +180,11 @@ pub fn normalize_element(value: &Value) -> Result<Value, DeckError> {
             "Send an element like {\"kind\": \"text\", \"x\": 100, \"y\": 100, \"w\": 800, \"h\": 200, \"text\": \"Hello\"}.",
         ));
     };
-    let kind = e.get("kind").and_then(Value::as_str).unwrap_or("").to_string();
+    let kind = e
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     if !KINDS.contains(&kind.as_str()) {
         return Err(DeckError::new(
             "unknown_element_kind",
@@ -156,14 +218,20 @@ pub fn normalize_element(value: &Value) -> Result<Value, DeckError> {
     match kind.as_str() {
         "text" | "shape" => {
             if kind == "shape" {
-                m.insert("shape".into(), str_or(e.get("shape"), "rect"));
+                m.insert("shape".into(), enum_or(e.get("shape"), &SHAPES, "rect"));
             }
-            m.insert("text".into(), normalize_rich(e.get("text").unwrap_or(&Value::Null)));
+            m.insert(
+                "text".into(),
+                normalize_rich(e.get("text").unwrap_or(&Value::Null)),
+            );
         }
         "image" => {
             m.insert("src".into(), str_or(e.get("src"), ""));
             m.insert("alt".into(), str_or(e.get("alt"), ""));
-            m.insert("fit".into(), str_or(e.get("fit"), "contain"));
+            m.insert(
+                "fit".into(),
+                enum_or(e.get("fit"), &["cover", "contain", "fill"], "contain"),
+            );
         }
         "video" | "audio" => {
             m.insert("src".into(), str_or(e.get("src"), ""));
@@ -177,14 +245,25 @@ pub fn normalize_element(value: &Value) -> Result<Value, DeckError> {
         }
         "table" => normalize_table(e, &mut m),
         "chart" => {
-            let mut chart = e.get("chart").and_then(Value::as_object).cloned().unwrap_or_default();
-            chart.insert("type".into(), str_or(chart.get("type"), "column"));
+            let mut chart = e
+                .get("chart")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            chart.insert(
+                "type".into(),
+                enum_or(
+                    chart.get("type"),
+                    &["bar", "column", "line", "area", "pie", "donut", "scatter"],
+                    "column",
+                ),
+            );
             let labels: Vec<Value> = chart
                 .get("labels")
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
-                .map(|l| Value::String(l.as_str().map(String::from).unwrap_or_else(|| l.to_string())))
+                .map(|l| str_or(Some(l), ""))
                 .collect();
             chart.insert("labels".into(), Value::Array(labels));
             let series: Vec<Value> = chart
@@ -195,8 +274,13 @@ pub fn normalize_element(value: &Value) -> Result<Value, DeckError> {
                 .map(|s| {
                     let mut so = s.as_object().cloned().unwrap_or_default();
                     so.insert("name".into(), str_or(so.get("name"), ""));
-                    let values: Vec<Value> =
-                        so.get("values").and_then(Value::as_array).into_iter().flatten().map(|v| num_or(Some(v), 0.0)).collect();
+                    let values: Vec<Value> = so
+                        .get("values")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .map(|v| num_or(Some(v), 0.0))
+                        .collect();
                     so.insert("values".into(), Value::Array(values));
                     Value::Object(so)
                 })
@@ -216,26 +300,52 @@ pub fn normalize_element(value: &Value) -> Result<Value, DeckError> {
 }
 
 fn fit_array(v: Option<&Value>, n: usize, total: f64) -> Value {
-    let arr: Vec<f64> = v.and_then(Value::as_array).into_iter().flatten().map(|x| x.as_f64().unwrap_or(0.0)).collect();
-    let out: Vec<f64> = if arr.len() == n { arr } else { (0..n).map(|i| arr.get(i).copied().unwrap_or(total / n as f64)).collect() };
-    canon(json!(out))
+    let arr = v
+        .and_then(Value::as_array)
+        .filter(|a| a.len() == n)
+        .and_then(|a| a.iter().map(number).collect::<Option<Vec<_>>>());
+    canon(json!(arr.unwrap_or_else(|| vec![total / n as f64; n])))
 }
 
 fn normalize_table(e: &Map<String, Value>, m: &mut Map<String, Value>) {
-    let cells_in = e.get("cells").and_then(Value::as_array).cloned().unwrap_or_default();
+    let cells_in = e
+        .get("cells")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let count = |v: Option<&Value>, d: usize| -> usize {
-        match v.and_then(Value::as_f64) {
-            Some(f) if f.is_finite() => (f.round() as i64).max(1) as usize,
-            _ => d.max(1),
-        }
+        v.and_then(number)
+            .filter(|n| n.fract() == 0.0 && (1.0..=100.0).contains(n))
+            .map(|n| n as usize)
+            .unwrap_or(d.clamp(1, 100))
     };
-    let rows = count(e.get("rows"), if cells_in.is_empty() { 2 } else { cells_in.len() });
-    let widest = cells_in.iter().filter_map(Value::as_array).map(Vec::len).max().unwrap_or(0);
+    let rows = count(
+        e.get("rows"),
+        if cells_in.is_empty() {
+            2
+        } else {
+            cells_in.len()
+        },
+    );
+    let widest = cells_in
+        .iter()
+        .filter_map(Value::as_array)
+        .map(Vec::len)
+        .max()
+        .unwrap_or(0);
     let cols = count(e.get("cols"), if widest == 0 { 2 } else { widest });
     let mut grid = Vec::with_capacity(rows);
     for r in 0..rows {
-        let row_in = cells_in.get(r).and_then(Value::as_array).cloned().unwrap_or_default();
-        grid.push(Value::Array((0..cols).map(|c| normalize_cell(row_in.get(c).unwrap_or(&Value::Null))).collect()));
+        let row_in = cells_in
+            .get(r)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        grid.push(Value::Array(
+            (0..cols)
+                .map(|c| normalize_cell(row_in.get(c).unwrap_or(&Value::Null)))
+                .collect(),
+        ));
     }
     let w = m["w"].as_f64().unwrap_or(400.0);
     let h = m["h"].as_f64().unwrap_or(200.0);
@@ -250,12 +360,9 @@ fn normalize_table(e: &Map<String, Value>, m: &mut Map<String, Value>) {
 /// A canonical table cell: `{ text: RichText, fill: null | string }`. A plain string is the cell's text.
 pub(crate) fn normalize_cell(v: &Value) -> Value {
     match v {
-        Value::String(_) => json!({ "text": normalize_rich(v), "fill": null }),
+        Value::String(_) | Value::Number(_) => json!({ "text": normalize_rich(v), "fill": null }),
         Value::Object(o) => {
-            let fill = match o.get("fill") {
-                Some(Value::String(s)) => Value::String(s.clone()),
-                _ => Value::Null,
-            };
+            let fill = str_or_null(o.get("fill"));
             json!({ "text": normalize_rich(o.get("text").unwrap_or(&Value::Null)), "fill": fill })
         }
         _ => json!({ "text": { "paragraphs": [] }, "fill": null }),
@@ -276,49 +383,58 @@ pub fn normalize_slide(value: &Value) -> Result<Value, DeckError> {
         _ => slide_id(),
     };
     m.insert("id".into(), Value::String(id));
-    m.insert("layout".into(), str_or(s.get("layout"), "blank"));
+    m.insert("layout".into(), enum_or(s.get("layout"), &LAYOUTS, "blank"));
     m.insert("background".into(), value_or_null(s.get("background")));
     m.insert("skipped".into(), bool_or(s.get("skipped"), false));
     m.insert("section".into(), str_or_null(s.get("section")));
     m.insert("hideMaster".into(), bool_or(s.get("hideMaster"), false));
     m.insert("transition".into(), value_or_null(s.get("transition")));
     m.insert("notes".into(), str_or(s.get("notes"), ""));
-    let mut elements = Vec::new();
-    for e in s.get("elements").and_then(Value::as_array).into_iter().flatten() {
-        elements.push(normalize_element(e)?);
-    }
+    let elements = normalize_elements(s.get("elements"));
     m.insert("elements".into(), Value::Array(elements));
     Ok(Value::Object(m))
 }
 
-/// Canonical deck JSON: `size`, `theme`, `master`, `slides`, plus `id`, `title` and `version` when present.
+fn normalize_elements(v: Option<&Value>) -> Vec<Value> {
+    let mut seen = HashSet::new();
+    v.and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| normalize_element(e).ok())
+        .filter(|e| seen.insert(e["id"].as_str().unwrap().to_string()))
+        .collect()
+}
+
+/// Tolerant, canonical reader for arbitrary deck JSON.
 pub fn normalize_deck(value: &Value) -> Result<Value, DeckError> {
-    let Value::Object(input) = value else {
-        return Err(DeckError::invalid("A deck must be a JSON object.", "Send deck JSON as `docs/architecture.md` describes it."));
-    };
+    let input = value.as_object().cloned().unwrap_or_default();
     let mut m = Map::new();
     for key in ["id", "title", "version"] {
         if let Some(v) = input.get(key) {
-            m.insert(key.into(), v.clone());
+            m.insert(key.into(), canon(v.clone()));
         }
     }
     m.insert(
         "size".into(),
-        match input.get("size") {
-            Some(Value::Object(s)) => canon(Value::Object(s.clone())),
-            _ => json!({ "width": 1920, "height": 1080 }),
-        },
+        normalize_size(input.get("size").unwrap_or(&Value::Null)),
     );
-    m.insert("theme".into(), normalize_theme(input.get("theme").unwrap_or(&Value::Null)));
-    let mut master = Vec::new();
-    for e in input.get("master").and_then(|v| v.get("elements")).and_then(Value::as_array).into_iter().flatten() {
-        master.push(normalize_element(e)?);
-    }
-    m.insert("master".into(), json!({ "elements": master }));
-    let mut slides = Vec::new();
-    for s in input.get("slides").and_then(Value::as_array).into_iter().flatten() {
-        slides.push(normalize_slide(s)?);
-    }
+    m.insert(
+        "theme".into(),
+        normalize_theme(input.get("theme").unwrap_or(&Value::Null)),
+    );
+    m.insert(
+        "master".into(),
+        json!({"elements":normalize_elements(input.get("master").and_then(|m|m.get("elements")))}),
+    );
+    let mut seen = HashSet::new();
+    let slides: Vec<Value> = input
+        .get("slides")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|s| normalize_slide(s).ok())
+        .filter(|s| s["id"] != "master" && seen.insert(s["id"].as_str().unwrap().to_string()))
+        .collect();
     m.insert("slides".into(), Value::Array(slides));
     Ok(Value::Object(m))
 }

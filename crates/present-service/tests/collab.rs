@@ -372,7 +372,7 @@ async fn assets_imports_exports_and_renders() {
     assert_eq!(get(Some(&ada), format!("/v1/decks/{id}/export?format=doc")).await.unwrap().status().as_u16(), 400);
     // One slide as an image is the image itself, and the converter is told which slide.
     let one = first_slide(&s.content(&id, &ada).await);
-    for (format, ct) in [("png", "image/png"), ("jpg", "image/jpeg")] {
+    for (format, ct) in [("png", "image/png"), ("jpg", "image/jpeg"), ("svg", "image/svg+xml")] {
         let r = get(Some(&ada), format!("/v1/decks/{id}/export?format={format}&slide={one}&width=800")).await.unwrap();
         assert_eq!(r.status().as_u16(), 200);
         assert_eq!(r.headers()["content-type"], ct);
@@ -382,6 +382,10 @@ async fn assets_imports_exports_and_renders() {
         assert_eq!(call.1["width"], 800);
         assert_eq!(call.1["deck"]["slides"].as_array().unwrap().len(), 1);
     }
+    let text = get(Some(&ada), format!("/v1/decks/{id}/export?format=txt")).await.unwrap();
+    assert_eq!(text.status().as_u16(), 200);
+    assert_eq!(text.headers()["content-type"], "text/plain; charset=utf-8");
+    assert!(text.headers()["content-disposition"].to_str().unwrap().contains("Files & things.txt"));
     // Render one slide.
     let c = s.content(&id, &ada).await;
     let slide = first_slide(&c);

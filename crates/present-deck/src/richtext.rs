@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
-use yrs::types::text::YChange;
 use yrs::types::Attrs;
-use yrs::{Any, Out, Text, TextRef, TransactionMut, ReadTxn};
+use yrs::types::text::YChange;
+use yrs::{Any, Out, ReadTxn, Text, TextRef, TransactionMut};
 
-use crate::anyconv::{any_to_json, canon, json_to_any};
+use crate::anyconv::{any_to_json, json_to_any};
 
 pub(crate) const PARAGRAPH_KEYS: [&str; 5] = ["align", "list", "indent", "heading", "lineHeight"];
 
@@ -32,8 +32,18 @@ pub(crate) fn is_inline_key(key: &str) -> bool {
     INLINE_KEYS.contains(&key)
 }
 
-pub(crate) const INLINE_KEYS: [&str; 10] =
-    ["bold", "italic", "underline", "strike", "color", "highlight", "size", "font", "link", "code"];
+pub(crate) const INLINE_KEYS: [&str; 10] = [
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "color",
+    "highlight",
+    "size",
+    "font",
+    "link",
+    "code",
+];
 
 /// Attributes that are the same as absent: null, false, "" (and indent 0 for paragraphs).
 fn keep_attr(v: &Value) -> bool {
@@ -48,7 +58,13 @@ fn keep_paragraph_attr(key: &str, v: &Value) -> bool {
 pub fn rich_from_plain(text: &str) -> Value {
     let paragraphs: Vec<Value> = text
         .split('\n')
-        .map(|line| if line.is_empty() { json!({ "runs": [] }) } else { json!({ "runs": [ { "text": line } ] }) })
+        .map(|line| {
+            if line.is_empty() {
+                json!({ "runs": [] })
+            } else {
+                json!({ "runs": [ { "text": line } ] })
+            }
+        })
         .collect();
     json!({ "paragraphs": paragraphs })
 }
@@ -57,9 +73,17 @@ pub fn rich_from_plain(text: &str) -> Value {
 /// (heading, list, align, …) and the first run's (bold, size, colour, font, …), like `present set … text=…`.
 pub(crate) fn restyle_plain(text: &str, current: &Value) -> Value {
     let first = current.get("paragraphs").and_then(|p| p.get(0));
-    let mut para = first.and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut para = first
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
     para.remove("runs");
-    let mut run = first.and_then(|p| p.get("runs")).and_then(|r| r.get(0)).and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut run = first
+        .and_then(|p| p.get("runs"))
+        .and_then(|r| r.get(0))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
     run.remove("text");
     let paragraphs: Vec<Value> = text
         .split('\n')
@@ -83,37 +107,47 @@ pub(crate) fn restyle_plain(text: &str, current: &Value) -> Value {
 /// Only known attributes are kept; a `"\n"` inside a run splits the paragraph there (like `packages/deck`).
 pub(crate) fn normalize_rich(value: &Value) -> Value {
     match value {
-        Value::String(s) => rich_from_plain(s),
+        Value::String(_) | Value::Number(_) => crate::normalize::string_value(value)
+            .map(|s| rich_from_plain(&s))
+            .unwrap_or_else(|| json!({"paragraphs":[]})),
         Value::Object(obj) if obj.get("paragraphs").is_some_and(Value::is_array) => {
             let mut out = Vec::new();
             for p in obj["paragraphs"].as_array().into_iter().flatten() {
                 let mut para = Map::new();
                 for key in PARAGRAPH_KEYS {
-                    if let Some(v) = p.get(key)
-                        && keep_paragraph_attr(key, v)
-                    {
-                        para.insert(key.to_string(), canon(v.clone()));
+                    if let Some(v) = p.get(key).and_then(|v| crate::validate::attr(key, v)) {
+                        para.insert(key.to_string(), v);
                     }
                 }
                 let mut runs: Vec<Map<String, Value>> = Vec::new();
-                for r in p.get("runs").and_then(Value::as_array).into_iter().flatten() {
-                    let text = match r.get("text") {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(Value::Null) | None => String::new(),
-                        Some(other) => other.to_string(),
-                    };
+                for r in p
+                    .get("runs")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    let text = r
+                        .get("text")
+                        .and_then(crate::normalize::string_value)
+                        .unwrap_or_default();
                     let mut attrs = Map::new();
                     for key in INLINE_KEYS {
-                        if let Some(v) = r.get(key)
-                            && keep_attr(v)
-                        {
-                            attrs.insert(key.to_string(), canon(v.clone()));
+                        if let Some(v) = r.get(key).and_then(|v| crate::validate::attr(key, v)) {
+                            attrs.insert(key.to_string(), v);
                         }
                     }
                     for (i, piece) in text.split('\n').enumerate() {
                         if i > 0 {
                             let mut done = para.clone();
-                            done.insert("runs".into(), Value::Array(std::mem::take(&mut runs).into_iter().map(Value::Object).collect()));
+                            done.insert(
+                                "runs".into(),
+                                Value::Array(
+                                    std::mem::take(&mut runs)
+                                        .into_iter()
+                                        .map(Value::Object)
+                                        .collect(),
+                                ),
+                            );
                             out.push(Value::Object(done));
                         }
                         if !piece.is_empty() {
@@ -121,7 +155,10 @@ pub(crate) fn normalize_rich(value: &Value) -> Value {
                         }
                     }
                 }
-                para.insert("runs".into(), Value::Array(runs.into_iter().map(Value::Object).collect()));
+                para.insert(
+                    "runs".into(),
+                    Value::Array(runs.into_iter().map(Value::Object).collect()),
+                );
                 out.push(Value::Object(para));
             }
             json!({ "paragraphs": out })
@@ -135,7 +172,11 @@ fn push_run(runs: &mut Vec<Map<String, Value>>, text: String, attrs: Map<String,
         let mut last_attrs = last.clone();
         last_attrs.remove("text");
         if last_attrs == attrs {
-            let joined = format!("{}{}", last.get("text").and_then(Value::as_str).unwrap_or(""), text);
+            let joined = format!(
+                "{}{}",
+                last.get("text").and_then(Value::as_str).unwrap_or(""),
+                text
+            );
             last.insert("text".into(), Value::String(joined));
             return;
         }
@@ -151,8 +192,18 @@ fn push_run(runs: &mut Vec<Map<String, Value>>, text: String, attrs: Map<String,
 /// The plain string a rich text is stored as: every paragraph's text followed by `"\n"`.
 pub fn plain_text(rich: &Value) -> String {
     let mut s = String::new();
-    for p in rich.get("paragraphs").and_then(Value::as_array).into_iter().flatten() {
-        for r in p.get("runs").and_then(Value::as_array).into_iter().flatten() {
+    for p in rich
+        .get("paragraphs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        for r in p
+            .get("runs")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             s.push_str(r.get("text").and_then(Value::as_str).unwrap_or(""));
         }
         s.push('\n');
@@ -177,7 +228,11 @@ fn attrs_from_json(obj: &Map<String, Value>, paragraph: bool) -> Attrs {
         if k == "text" || k == "runs" {
             continue;
         }
-        let known = if paragraph { is_paragraph_key(k) && keep_paragraph_attr(k, v) } else { is_inline_key(k) && keep_attr(v) };
+        let known = if paragraph {
+            is_paragraph_key(k) && keep_paragraph_attr(k, v)
+        } else {
+            is_inline_key(k) && keep_attr(v)
+        };
         if !known {
             continue;
         }
@@ -194,12 +249,19 @@ pub(crate) fn segments(rich: &Value) -> Vec<Seg> {
         for r in p["runs"].as_array().into_iter().flatten() {
             let obj = r.as_object().cloned().unwrap_or_default();
             out.push(Seg {
-                text: obj.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+                text: obj
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
                 attrs: attrs_from_json(&obj, false),
             });
         }
         let pobj = p.as_object().cloned().unwrap_or_default();
-        out.push(Seg { text: "\n".into(), attrs: attrs_from_json(&pobj, true) });
+        out.push(Seg {
+            text: "\n".into(),
+            attrs: attrs_from_json(&pobj, true),
+        });
     }
     out
 }
@@ -217,15 +279,24 @@ pub(crate) fn read_segments<T: ReadTxn>(txn: &T, text: &TextRef) -> Vec<Seg> {
         while !rest.is_empty() {
             match rest.find('\n') {
                 Some(0) => {
-                    out.push(Seg { text: "\n".into(), attrs: attrs.clone() });
+                    out.push(Seg {
+                        text: "\n".into(),
+                        attrs: attrs.clone(),
+                    });
                     rest = &rest[1..];
                 }
                 Some(i) => {
-                    out.push(Seg { text: rest[..i].to_string(), attrs: attrs.clone() });
+                    out.push(Seg {
+                        text: rest[..i].to_string(),
+                        attrs: attrs.clone(),
+                    });
                     rest = &rest[i..];
                 }
                 None => {
-                    out.push(Seg { text: rest.to_string(), attrs: attrs.clone() });
+                    out.push(Seg {
+                        text: rest.to_string(),
+                        attrs: attrs.clone(),
+                    });
                     rest = "";
                 }
             }
@@ -250,7 +321,15 @@ pub(crate) fn read_rich<T: ReadTxn>(txn: &T, text: &TextRef) -> Value {
                     }
                 }
             }
-            para.insert("runs".into(), Value::Array(std::mem::take(&mut runs).into_iter().map(Value::Object).collect()));
+            para.insert(
+                "runs".into(),
+                Value::Array(
+                    std::mem::take(&mut runs)
+                        .into_iter()
+                        .map(Value::Object)
+                        .collect(),
+                ),
+            );
             paragraphs.push(Value::Object(para));
             open = false;
         } else {
@@ -272,10 +351,13 @@ pub(crate) fn read_rich<T: ReadTxn>(txn: &T, text: &TextRef) -> Value {
     }
     if open {
         let mut para = Map::new();
-        para.insert("runs".into(), Value::Array(runs.into_iter().map(Value::Object).collect()));
+        para.insert(
+            "runs".into(),
+            Value::Array(runs.into_iter().map(Value::Object).collect()),
+        );
         paragraphs.push(Value::Object(para));
     }
-    json!({ "paragraphs": paragraphs })
+    normalize_rich(&json!({ "paragraphs": paragraphs }))
 }
 
 /// Writes rich text into an empty Y.Text.
@@ -290,18 +372,19 @@ pub(crate) fn write_rich(txn: &mut TransactionMut, text: &TextRef, rich: &Value)
 /// Replaces a Y.Text's plain content with `target` through a minimal character diff, so concurrent typing
 /// elsewhere in the text survives and untouched characters keep their formatting.
 pub(crate) fn set_plain(txn: &mut TransactionMut, text: &TextRef, target: &str) {
+    remove_embeds(txn, text);
     let current = text.get_string(txn);
     if current == target {
         return;
     }
     let mut pos = 0u32;
-    for chunk in dissimilar::diff(&current, target) {
-        match chunk {
-            dissimilar::Chunk::Equal(s) => pos += utf16_len(s),
-            dissimilar::Chunk::Delete(s) => text.remove_range(txn, pos, utf16_len(s)),
-            dissimilar::Chunk::Insert(s) => {
-                text.insert(txn, pos, s);
-                pos += utf16_len(s);
+    for (kind, s) in crate::textdiff::diff(&current, target) {
+        match kind {
+            crate::textdiff::Kind::Equal => pos += utf16_len(&s),
+            crate::textdiff::Kind::Delete => text.remove_range(txn, pos, utf16_len(&s)),
+            crate::textdiff::Kind::Insert => {
+                text.insert(txn, pos, &s);
+                pos += utf16_len(&s);
             }
         }
     }
@@ -336,7 +419,13 @@ pub(crate) fn set_rich(txn: &mut TransactionMut, text: &TextRef, target: &Value)
         let end = cur[i].1.min(tgt[j].1);
         if end > at {
             let newline = tgt[j].2;
-            let relevant = |k: &str| if newline { is_paragraph_key(k) } else { is_inline_key(k) };
+            let relevant = |k: &str| {
+                if newline {
+                    is_paragraph_key(k)
+                } else {
+                    is_inline_key(k)
+                }
+            };
             let mut patch: Attrs = HashMap::new();
             for (k, v) in tgt[j].3.iter() {
                 if relevant(k) && cur[i].3.get(k) != Some(v) {
@@ -344,7 +433,7 @@ pub(crate) fn set_rich(txn: &mut TransactionMut, text: &TextRef, target: &Value)
                 }
             }
             for (k, v) in cur[i].3.iter() {
-                if relevant(k) && !tgt[j].3.contains_key(k) && !matches!(v, Any::Null) {
+                if (!relevant(k) || !tgt[j].3.contains_key(k)) && !matches!(v, Any::Null) {
                     patch.insert(k.clone(), Any::Null);
                 }
             }
@@ -373,10 +462,24 @@ pub(crate) fn set_rich(txn: &mut TransactionMut, text: &TextRef, target: &Value)
 pub fn rich_to_markdownish(rich: &Value) -> String {
     let mut lines = Vec::new();
     let mut ordered = 0;
-    for p in rich.get("paragraphs").and_then(Value::as_array).into_iter().flatten() {
+    for p in rich
+        .get("paragraphs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         let mut line = String::new();
-        for r in p.get("runs").and_then(Value::as_array).into_iter().flatten() {
-            let mut t = r.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+        for r in p
+            .get("runs")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let mut t = r
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let flag = |k: &str| r.get(k).and_then(Value::as_bool).unwrap_or(false);
             if flag("code") {
                 t = format!("`{t}`");
@@ -421,4 +524,44 @@ pub fn rich_to_markdownish(rich: &Value) -> String {
         lines.push(line);
     }
     lines.join("\n")
+}
+
+/// Remove embeds before editing the canonical text view, whose offsets exclude them.
+pub(crate) fn remove_embeds(txn: &mut TransactionMut, text: &TextRef) {
+    let mut pos = 0;
+    let mut removes = Vec::new();
+    for chunk in text.diff(txn, YChange::identity) {
+        match chunk.insert {
+            Out::Any(Any::String(s)) => pos += utf16_len(&s),
+            _ => {
+                removes.push(pos);
+                pos += 1;
+            }
+        }
+    }
+    for pos in removes.into_iter().rev() {
+        text.remove_range(txn, pos, 1);
+    }
+}
+
+/// Plain fields carry no rich-text formatting, even if a raw Yjs peer supplied some.
+pub(crate) fn set_unformatted(txn: &mut TransactionMut, text: &TextRef, target: &str) {
+    set_plain(txn, text, target);
+    let mut at = 0;
+    let mut patches = Vec::new();
+    for chunk in text.diff(txn, YChange::identity) {
+        if let Out::Any(Any::String(s)) = chunk.insert {
+            let len = utf16_len(&s);
+            if let Some(attrs) = chunk.attributes {
+                let patch: Attrs = attrs.keys().map(|k| (k.clone(), Any::Null)).collect();
+                if !patch.is_empty() {
+                    patches.push((at, len, patch));
+                }
+            }
+            at += len;
+        }
+    }
+    for (at, len, attrs) in patches {
+        text.format(txn, at, len, attrs);
+    }
 }

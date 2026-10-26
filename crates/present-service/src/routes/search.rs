@@ -2,7 +2,7 @@
 //! `/v1/accounts/resolve` and `/health`.
 
 use axum::extract::State;
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -36,7 +36,7 @@ fn snippet(text: &str, q: &str) -> Option<String> {
     Some(s)
 }
 
-pub async fn search(State(st): State<AppState>, caller: Caller, Q(params): Q<SearchQuery>) -> ApiResult<Json<Value>> {
+pub async fn search(State(st): State<AppState>, caller: Caller, Extension(viewer): Extension<crate::viewers::ViewerIdentity>, Q(params): Q<SearchQuery>) -> ApiResult<Json<Value>> {
     let q = params.q.unwrap_or_default().trim().to_string();
     if q.is_empty() {
         return Err(ApiError::bad_request("empty_query", "Search needs something to look for.", "Send ?q=<words>."));
@@ -61,7 +61,7 @@ pub async fn search(State(st): State<AppState>, caller: Caller, Q(params): Q<Sea
     let mut results = Vec::new();
     for d in rows {
         let a = access::deck_access(&st, &d, Some(me)).await?;
-        if a.role == Role::None {
+        if a.role == Role::None || crate::viewers::check(&st, &d, Some(me), &viewer).await.is_err() {
             continue;
         }
         let mut matches = Vec::new();

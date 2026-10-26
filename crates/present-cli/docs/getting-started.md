@@ -10,7 +10,7 @@ Silicon you can do everything the web editor can, from here.
 
 The short-lived token works once and lasts 2 minutes, so mint it and use it in one line. Carbons
 run `present login` and approve the code it shows. The sign-in is kept in `{home}/.present/`
-(`{home}` = `$SILICON_HOME`, else `$HOME`) and refreshes by itself.
+(`{home}` = `$SILICON_HOME`, then `$HOME`, then Windows' `$USERPROFILE`) and refreshes by itself.
 
 ## 2. Make a deck
 

@@ -4,7 +4,7 @@
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -24,7 +24,7 @@ pub struct ListQuery {
     folder: Option<String>,
 }
 
-pub async fn list(State(st): State<AppState>, caller: Caller, Q(q): Q<ListQuery>) -> ApiResult<Json<Value>> {
+pub async fn list(State(st): State<AppState>, caller: Caller, Extension(viewer): Extension<crate::viewers::ViewerIdentity>, Q(q): Q<ListQuery>) -> ApiResult<Json<Value>> {
     let me = caller.uuid;
     let rows: Vec<DeckRow> = if let Some(folder) = q.folder.as_deref().filter(|f| *f != "root") {
         access::folder_for(&st, folder, Some(me), Need::View).await?;
@@ -75,7 +75,7 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Q(q): Q<ListQuery>
     let mut visible = Vec::new();
     for d in rows {
         let a = access::deck_access(&st, &d, Some(me)).await?;
-        if a.role > Role::None {
+        if a.role > Role::None && crate::viewers::check(&st, &d, Some(me), &viewer).await.is_ok() {
             visible.push((d, a.role));
         }
     }
@@ -119,11 +119,11 @@ pub fn clean_title(t: Option<&str>, default: &str) -> ApiResult<String> {
     Ok(t.to_string())
 }
 
-pub async fn create(State(st): State<AppState>, caller: Caller, JsonBody(body): JsonBody<CreateBody>) -> ApiResult<Response> {
+pub async fn create(State(st): State<AppState>, caller: Caller, Extension(viewer): Extension<crate::viewers::ViewerIdentity>, JsonBody(body): JsonBody<CreateBody>) -> ApiResult<Response> {
     let me = caller.uuid;
     let (owner, folder) = placement(&st, me, body.folder.as_deref()).await?;
     let deck = if let Some(from) = &body.from {
-        let (src, _) = access::deck_for(&st, &from.deck, Some(me), Need::Edit).await?;
+        let (src, _) = crate::viewers::deck_for(&st, &from.deck, Some(me), Need::Edit, &viewer).await?;
         let version = from.version.unwrap_or(src.seq);
         let (live, _) = rooms::current_json(&st, &src.id).await?;
         let json = store::json_at(&st, &DeckRow { seq: live, ..src.clone() }, version).await?;
@@ -324,7 +324,7 @@ pub async fn edits(State(st): State<AppState>, caller: Caller, Path(id): Path<St
     }
     let (live_seq, _) = rooms::current_json(&st, &id).await?;
     let base_doc = match body.base {
-        Some(b) if b != live_seq => {
+        Some(b) => {
             store::check_version(&DeckRow { seq: live_seq, ..deck.clone() }, b)?;
             Some(store::doc_at(&st, &id, b).await?)
         }
@@ -332,8 +332,10 @@ pub async fn edits(State(st): State<AppState>, caller: Caller, Path(id): Path<St
     };
     let info = CommitInfo { author: me, origin: "ops", summary: body.summary.clone(), session: None };
     let (commit, outcome) = rooms::commit_with(&st, &id, info, move |live| {
-        let doc = base_doc.as_ref().unwrap_or(live);
-        let (update, outcome) = present_deck::apply_ops_update(doc, &ops)?;
+        let (update, outcome) = match base_doc.as_ref() {
+            Some(base) => present_deck::apply_ops_update_with_live(base, live, &ops)?,
+            None => present_deck::apply_ops_update(live, &ops)?,
+        };
         Ok((update, outcome))
     })
     .await?;

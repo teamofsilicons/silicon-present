@@ -4,5 +4,6 @@ pub mod auth;
 pub mod collab;
 pub mod decks;
 pub mod edit;
+pub mod layers;
 pub mod live;
 pub mod sync;

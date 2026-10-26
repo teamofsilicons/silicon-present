@@ -1,0 +1,81 @@
+{
+  "name": "numeric-size-strings",
+  "description": "numeric size strings",
+  "findings": [],
+  "input": {
+    "size": {
+      "width": " 1e3 ",
+      "height": "720.0"
+    },
+    "theme": {
+      "name": "Paper",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": []
+      }
+    ]
+  },
+  "expect": {
+    "size": {
+      "width": 1000,
+      "height": 720
+    },
+    "theme": {
+      "name": "Paper",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": []
+      }
+    ]
+  }
+}

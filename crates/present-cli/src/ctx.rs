@@ -8,6 +8,8 @@ use silicon_present_client::{Client, DEFAULT_API_URL, Scope, deck};
 
 /// Settings and helpers for one run.
 pub struct Ctx {
+    /// Explicit override, scoped to this process rather than saved sign-in state.
+    pub dangerously_use_em_dash: bool,
     /// Print JSON.
     pub json: bool,
     /// The API base.
@@ -42,6 +44,7 @@ impl Ctx {
             },
         };
         Ok(Self {
+            dangerously_use_em_dash: false,
             json,
             api_url: api_url.trim().trim_end_matches('/').to_owned(),
             api_source,
@@ -123,7 +126,8 @@ impl Ctx {
     /// A client signed in as the saved account; fails with what to do when nobody is.
     pub async fn authed(&self) -> R<Client> {
         match self.session().await? {
-            Some(s) => Ok(self.client()?.with_token(s.access_token)),
+            Some(s) => Ok(self.client()?.with_token(s.access_token)
+                .with_em_dash_replacement(s.account.kind == "silicon" && !self.dangerously_use_em_dash)),
             None => {
                 let state = self.home.read()?;
                 let other = state.sign_ins.keys().next().cloned();
@@ -146,7 +150,8 @@ impl Ctx {
     /// Signed in when possible, else anonymous (reading public decks needs no sign-in).
     pub async fn maybe_authed(&self) -> R<Client> {
         match self.session().await {
-            Ok(Some(s)) => Ok(self.client()?.with_token(s.access_token)),
+            Ok(Some(s)) => Ok(self.client()?.with_token(s.access_token)
+                .with_em_dash_replacement(s.account.kind == "silicon" && !self.dangerously_use_em_dash)),
             _ => self.client(),
         }
     }

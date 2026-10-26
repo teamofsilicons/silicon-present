@@ -1,0 +1,91 @@
+{
+  "name": "partial-theme-replaces",
+  "description": "partial theme replaces",
+  "findings": [],
+  "start": {
+    "size": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "Paper",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": []
+      }
+    ]
+  },
+  "ops": [
+    {
+      "op": "update_deck",
+      "set": {
+        "theme": {
+          "name": "New"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "size": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "New",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter"
+      },
+      "colors": {
+        "background": "#ffffff",
+        "text": "#1b1b1f",
+        "accent": "#2f5bea",
+        "accent2": "#e5484d",
+        "accent3": "#12a594",
+        "muted": "#6f6f78"
+      },
+      "customFonts": []
+    },
+    "master": {
+      "elements": []
+    },
+    "slides": [
+      {
+        "id": "s_000001",
+        "layout": "blank",
+        "background": null,
+        "skipped": false,
+        "section": null,
+        "hideMaster": false,
+        "transition": null,
+        "notes": "",
+        "elements": []
+      }
+    ]
+  }
+}

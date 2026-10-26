@@ -9,7 +9,7 @@
 //! ```no_run
 //! # async fn demo() -> silicon_present_client::Result<()> {
 //! use silicon_present_client::{Client, Secret, ops::{EditRequest, Op}, deck};
-//! let client = Client::new("https://present.teamofsilicons.com/api")?.with_token(Secret::new("eyJ…"));
+//! let client = Client::new("https://backend.present.teamofsilicons.com")?.with_token(Secret::new("eyJ…"));
 //! let d = client.create_deck(&Default::default()).await?;
 //! client.edit(&d.id, &EditRequest::new(vec![Op::AddSlide {
 //!     after: None,
@@ -47,3 +47,5 @@ pub use error::{Error, Result};
 pub use models::*;
 pub use reqwest::Method;
 pub use secret::Secret;
+
+mod writing;

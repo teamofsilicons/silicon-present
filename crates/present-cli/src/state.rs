@@ -1,6 +1,6 @@
 //! Local state under `{home}/.present/`.
 //!
-//! - `{home}` is `$SILICON_HOME` when set, otherwise `$HOME`. `present config home <dir>` writes
+//! - `{home}` is `$SILICON_HOME`, then `$HOME`, then Windows' `$USERPROFILE`. `present config home <dir>` writes
 //!   a pointer file (`{default home}/.present/home`) that moves it elsewhere.
 //! - The directory is mode 0700 and every file in it 0600 (Unix).
 //! - `state.json` is replaced atomically (temporary file, fsync, rename).
@@ -84,7 +84,7 @@ pub struct Home {
     pub home: PathBuf,
     /// `{home}/.present`.
     pub dir: PathBuf,
-    /// Why this home: `SILICON_HOME`, `HOME`, or the pointer file.
+    /// Why this home: `SILICON_HOME`, `HOME`, `USERPROFILE`, or the pointer file.
     pub source: String,
 }
 
@@ -95,10 +95,13 @@ fn default_home() -> R<(PathBuf, String)> {
     if let Some(h) = std::env::var_os("HOME").filter(|v| !v.is_empty()) {
         return Ok((PathBuf::from(h), "HOME".into()));
     }
+    if let Some(h) = std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()) {
+        return Ok((PathBuf::from(h), "USERPROFILE".into()));
+    }
     Err(Fail::new(
         "no_home",
-        "Neither SILICON_HOME nor HOME is set, so there is nowhere to keep the sign-in.",
-        "Set SILICON_HOME (or HOME) to a directory.",
+        "SILICON_HOME, HOME and USERPROFILE are unset, so there is nowhere to keep the sign-in.",
+        "Set SILICON_HOME to a directory, or restore your normal HOME or Windows USERPROFILE setting.",
     ))
 }
 

@@ -6,3 +6,5 @@ test-results/
 playwright-report/
 .env.local
 *.log
+__pycache__/
+*.pyc

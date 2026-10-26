@@ -40,13 +40,19 @@ async fn exports_renders_and_imports_through_the_real_converter() {
     assert_eq!(r.status().as_u16(), 200, "{}", r.text().await.unwrap_or_default());
     let img = r.bytes().await.unwrap();
     assert_eq!(&img[..4], &[0x89, b'P', b'N', b'G']);
-    for (format, magic) in [("pdf", b"%PDF".to_vec()), ("pptx", b"PK".to_vec()), ("html", b"<".to_vec())] {
+    for (format, magic) in [("pdf", b"%PDF".to_vec()), ("pptx", b"PK".to_vec()), ("txt", Vec::new())] {
         let r = get(format!("/v1/decks/{id}/export?format={format}")).await.unwrap();
         let status = r.status().as_u16();
         let body = r.bytes().await.unwrap();
         assert_eq!(status, 200, "{format}: {}", String::from_utf8_lossy(&body[..body.len().min(400)]));
         let start = String::from_utf8_lossy(&body[..20.min(body.len())]).trim_start().as_bytes().to_vec();
         assert!(start.starts_with(&magic), "{format} starts with {:?}", &body[..8.min(body.len())]);
+    }
+    // Formats Present no longer downloads are refused before the converter is asked.
+    for format in ["ppt", "key", "html"] {
+        let r = get(format!("/v1/decks/{id}/export?format={format}")).await.unwrap();
+        assert_eq!(r.status().as_u16(), 400, "{format}");
+        assert!(r.text().await.unwrap().contains("invalid_format"), "{format}");
     }
     // One slide as an image is the image itself (not a zip of one).
     let r = get(format!("/v1/decks/{id}/export?format=png&slide=s_second")).await.unwrap();

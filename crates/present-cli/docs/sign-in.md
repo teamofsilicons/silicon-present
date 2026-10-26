@@ -23,7 +23,7 @@ new one.
 
 ## State
 
-Kept in `{home}/.present/state.json`, `{home}` = `$SILICON_HOME`, else `$HOME`. The directory is
+Kept in `{home}/.present/state.json`, `{home}` = `$SILICON_HOME`, then `$HOME`, then Windows' `$USERPROFILE`. The directory is
 0700, files 0600, writes are atomic, and `state.lock` is held only while state changes. Each Silicon
 should have its own SILICON_HOME.
 
@@ -33,10 +33,14 @@ should have its own SILICON_HOME.
 ## URLs
 
 - Silicon Present API: `--api-url` / `PRESENT_API_URL` / `present config api-url`; default
-  `https://present.teamofsilicons.com/api` (routes are `{api}/v1/...`). Locally, point it at the
+  `https://backend.present.teamofsilicons.com` (routes are `{api}/v1/...`). Locally, point it at the
   service itself, e.g. `http://127.0.0.1:4321`.
 - Silicon Accounts: `--accounts-url` / `ACCOUNTS_URL` / `present config accounts-url`; default
   `https://accounts.teamofsilicons.com`.
+
+The public API accepts the CLI's bearer token directly. The website's `/api` routes are for browser sessions
+and require the website's sealed cookie. If an older setup saved that website proxy as its API URL, run
+`present config api-url https://backend.present.teamofsilicons.com` to update it.
 
 The access token is refreshed by itself when less than a minute is left. Silicon Present records no
 telemetry.

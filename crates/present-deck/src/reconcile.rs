@@ -6,15 +6,20 @@ use std::collections::HashSet;
 
 use serde_json::{Map, Value};
 use yrs::updates::decoder::Decode;
-use yrs::{Any, ArrayRef, Doc, Map as YMap, MapRef, Out, ReadTxn, Transact, TransactionMut, Update};
+use yrs::{
+    Any, Array, ArrayRef, Doc, Map as YMap, MapRef, Out, ReadTxn, Transact, TransactionMut, Update,
+};
 
-use crate::convert::{element_ids, put_plain, read_id_list, roots, slide_ids, write_element, write_slide, Roots, MASTER_KEY};
+use crate::convert::{
+    MASTER_KEY, Roots, element_ids, put_plain, read_id_list, roots, slide_ids, write_element,
+    write_slide,
+};
 use crate::error::DeckError;
 use crate::normalize::{normalize_deck, y_fields};
 use crate::ops::{
     child_array, child_map, child_text, insert_after, plain_differs, remove_all, set_cells,
 };
-use crate::richtext::{normalize_rich, set_plain, set_rich};
+use crate::richtext::{normalize_rich, set_rich, set_unformatted};
 
 /// How much of the deck to reconcile.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,11 +34,20 @@ pub enum Scope {
 }
 
 pub(crate) fn apply_update_bytes(doc: &Doc, update: &[u8]) -> Result<(), DeckError> {
-    let u = Update::decode_v1(update)
-        .map_err(|e| DeckError::new("invalid_update", format!("A Yjs update could not be decoded: {e}."), "Resend the update."))?;
-    doc.transact_mut()
-        .apply_update(u)
-        .map_err(|e| DeckError::new("invalid_update", format!("A Yjs update could not be applied: {e}."), "Resend the update."))
+    let u = Update::decode_v1(update).map_err(|e| {
+        DeckError::new(
+            "invalid_update",
+            format!("A Yjs update could not be decoded: {e}."),
+            "Resend the update.",
+        )
+    })?;
+    doc.transact_mut().apply_update(u).map_err(|e| {
+        DeckError::new(
+            "invalid_update",
+            format!("A Yjs update could not be applied: {e}."),
+            "Resend the update.",
+        )
+    })
 }
 
 /// Reconciles a copy of `doc` and returns the Yjs update that does it, without changing `doc`.
@@ -46,6 +60,7 @@ pub fn reconcile_update(doc: &Doc, target: &Value, scope: &Scope) -> Result<Vec<
 
 /// Makes `doc` equal `target` (deck JSON) within `scope`, in one transaction.
 pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckError> {
+    crate::validate::deck(target)?;
     let target = normalize_deck(target)?;
     let r = roots(doc);
     let mut txn = doc.transact_mut();
@@ -53,21 +68,43 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
         if id == MASTER_KEY {
             return target.get("master");
         }
-        target["slides"].as_array().into_iter().flatten().find(|s| s["id"].as_str() == Some(id))
+        target["slides"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|s| s["id"].as_str() == Some(id))
     };
     match scope {
         Scope::Deck => {
+            let stale: Vec<String> = r
+                .deck
+                .keys(&txn)
+                .filter(|key| !["size", "theme", "version"].contains(key))
+                .map(String::from)
+                .collect();
+            for key in stale {
+                r.deck.remove(&mut txn, &key);
+            }
+            let schema_version = serde_json::json!(1);
+            if plain_differs(&txn, &r.deck, "version", &schema_version) {
+                put_plain(&mut txn, &r.deck, "version", &schema_version);
+            }
             for key in ["size", "theme"] {
                 if plain_differs(&txn, &r.deck, key, &target[key]) {
                     put_plain(&mut txn, &r.deck, key, &target[key]);
                 }
             }
             reconcile_slide_by_id(&mut txn, &r, MASTER_KEY, &target["master"], &target)?;
-            let target_ids: Vec<String> =
-                target["slides"].as_array().into_iter().flatten().filter_map(|s| s["id"].as_str().map(String::from)).collect();
+            let target_ids: Vec<String> = target["slides"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s["id"].as_str().map(String::from))
+                .collect();
             let wanted: HashSet<&String> = target_ids.iter().collect();
-            for id in slide_ids(&txn, &r) {
-                if !wanted.contains(&id) {
+            let stored_ids: Vec<String> = r.slides.keys(&txn).map(String::from).collect();
+            for id in stored_ids {
+                if id != MASTER_KEY && !wanted.contains(&id) {
                     remove_all(&mut txn, &r.order, &id);
                     r.slides.remove(&mut txn, &id);
                 }
@@ -94,7 +131,9 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
                 (None, false) => {
                     return Err(DeckError::new(
                         "slide_not_found",
-                        format!("Slide `{id}` exists neither now nor in the version to restore from."),
+                        format!(
+                            "Slide `{id}` exists neither now nor in the version to restore from."
+                        ),
                         "List the slide ids with `present read --version N`.",
                     ));
                 }
@@ -103,7 +142,11 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
         Scope::Element { slide, element } => {
             let target_slide = find_slide(slide);
             let target_el = target_slide.and_then(|s| {
-                s["elements"].as_array().into_iter().flatten().find(|e| e["id"].as_str() == Some(element.as_str()))
+                s["elements"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|e| e["id"].as_str() == Some(element.as_str()))
             });
             let live_slide = if slide == MASTER_KEY || slide_ids(&txn, &r).contains(slide) {
                 match r.slides.get(&txn, slide) {
@@ -116,12 +159,20 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
             match (live_slide, target_el) {
                 (None, Some(_)) => {
                     // Decision: the element's slide is gone too, so the slide comes back as it was in the target.
-                    reconcile_slide_by_id(&mut txn, &r, slide, target_slide.unwrap_or(&Value::Null), &target)?;
+                    reconcile_slide_by_id(
+                        &mut txn,
+                        &r,
+                        slide,
+                        target_slide.unwrap_or(&Value::Null),
+                        &target,
+                    )?;
                 }
                 (None, None) => {
                     return Err(DeckError::new(
                         "element_not_found",
-                        format!("Element `{element}` on slide `{slide}` exists neither now nor in the version to restore from."),
+                        format!(
+                            "Element `{element}` on slide `{slide}` exists neither now nor in the version to restore from."
+                        ),
                         "List the element ids with `present read --version N`.",
                     ));
                 }
@@ -133,7 +184,14 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
                     } else {
                         write_element(&mut txn, &elements, t);
                         let target_order: Vec<String> = target_slide
-                            .map(|s| s["elements"].as_array().into_iter().flatten().filter_map(|e| e["id"].as_str().map(String::from)).collect())
+                            .map(|s| {
+                                s["elements"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter_map(|e| e["id"].as_str().map(String::from))
+                                    .collect()
+                            })
                             .unwrap_or_default();
                         let live = element_ids(&txn, &m);
                         let order = child_array(&mut txn, &m, "elementOrder");
@@ -159,10 +217,20 @@ pub fn reconcile(doc: &Doc, target: &Value, scope: &Scope) -> Result<(), DeckErr
 /// The id before `id` in `target_order` that also exists in `live`, walking back.
 fn previous_present(target_order: &[String], id: &str, live: &[String]) -> Option<String> {
     let pos = target_order.iter().position(|x| x == id)?;
-    target_order[..pos].iter().rev().find(|x| live.contains(x)).cloned()
+    target_order[..pos]
+        .iter()
+        .rev()
+        .find(|x| live.contains(x))
+        .cloned()
 }
 
-fn reconcile_slide_by_id(txn: &mut TransactionMut, r: &Roots, id: &str, target: &Value, deck: &Value) -> Result<(), DeckError> {
+fn reconcile_slide_by_id(
+    txn: &mut TransactionMut,
+    r: &Roots,
+    id: &str,
+    target: &Value,
+    deck: &Value,
+) -> Result<(), DeckError> {
     let master = id == MASTER_KEY;
     let live_ids = slide_ids(txn, r);
     let exists = master || live_ids.iter().any(|s| s == id);
@@ -171,8 +239,12 @@ fn reconcile_slide_by_id(txn: &mut TransactionMut, r: &Roots, id: &str, target: 
         _ => {
             write_slide(txn, &r.slides, id, target, master);
             if !master {
-                let target_order: Vec<String> =
-                    deck["slides"].as_array().into_iter().flatten().filter_map(|s| s["id"].as_str().map(String::from)).collect();
+                let target_order: Vec<String> = deck["slides"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|s| s["id"].as_str().map(String::from))
+                    .collect();
                 remove_all(txn, &r.order, id);
                 let prev = previous_present(&target_order, id, &live_ids);
                 insert_after(txn, &r.order, prev.as_deref(), id);
@@ -184,15 +256,15 @@ fn reconcile_slide_by_id(txn: &mut TransactionMut, r: &Roots, id: &str, target: 
 
 const SLIDE_Y_KEYS: [&str; 4] = ["notes", "elements", "elementOrder", "id"];
 
-fn reconcile_slide(txn: &mut TransactionMut, m: &MapRef, target: &Value, master: bool) {
+pub(crate) fn reconcile_slide(txn: &mut TransactionMut, m: &MapRef, target: &Value, master: bool) {
     if !master {
         let t = target.as_object().cloned().unwrap_or_default();
         for (k, v) in &t {
             match k.as_str() {
-                "id" | "elements" => {}
+                "elements" => {}
                 "notes" => {
                     let text = child_text(txn, m, "notes");
-                    set_plain(txn, &text, v.as_str().unwrap_or(""));
+                    set_unformatted(txn, &text, v.as_str().unwrap_or(""));
                 }
                 _ => {
                     if plain_differs(txn, m, k, v) {
@@ -201,15 +273,37 @@ fn reconcile_slide(txn: &mut TransactionMut, m: &MapRef, target: &Value, master:
                 }
             }
         }
-        let stale: Vec<String> =
-            m.keys(txn).filter(|k| !t.contains_key(*k) && !SLIDE_Y_KEYS.contains(k)).map(String::from).collect();
+        let stale: Vec<String> = m
+            .keys(txn)
+            .filter(|k| !t.contains_key(*k) && !SLIDE_Y_KEYS.contains(k))
+            .map(String::from)
+            .collect();
         for k in stale {
             m.remove(txn, &k);
         }
+    } else {
+        if plain_differs(txn, m, "id", &serde_json::json!(MASTER_KEY)) {
+            put_plain(txn, m, "id", &serde_json::json!(MASTER_KEY));
+        }
+        let stale: Vec<String> = m
+            .keys(txn)
+            .filter(|k| !["id", "elements", "elementOrder"].contains(k))
+            .map(String::from)
+            .collect();
+        for key in stale {
+            m.remove(txn, &key);
+        }
     }
     let elements = child_map(txn, m, "elements");
-    let target_els: Vec<&Value> = target["elements"].as_array().into_iter().flatten().collect();
-    let target_ids: Vec<String> = target_els.iter().filter_map(|e| e["id"].as_str().map(String::from)).collect();
+    let target_els: Vec<&Value> = target["elements"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .collect();
+    let target_ids: Vec<String> = target_els
+        .iter()
+        .filter_map(|e| e["id"].as_str().map(String::from))
+        .collect();
     let wanted: HashSet<&String> = target_ids.iter().collect();
     let live: Vec<String> = elements.keys(txn).map(String::from).collect();
     for id in &live {
@@ -251,10 +345,20 @@ fn reconcile_element_in(txn: &mut TransactionMut, elements: &MapRef, target: &Va
             return;
         }
     };
-    reconcile_element(txn, &el, kind, target.as_object().cloned().unwrap_or_default());
+    reconcile_element(
+        txn,
+        &el,
+        kind,
+        target.as_object().cloned().unwrap_or_default(),
+    );
 }
 
-fn reconcile_element(txn: &mut TransactionMut, el: &MapRef, kind: &str, t: Map<String, Value>) {
+pub(crate) fn reconcile_element(
+    txn: &mut TransactionMut,
+    el: &MapRef,
+    kind: &str,
+    t: Map<String, Value>,
+) {
     for (k, v) in &t {
         if y_fields(kind).contains(&k.as_str()) {
             match k.as_str() {
@@ -265,14 +369,18 @@ fn reconcile_element(txn: &mut TransactionMut, el: &MapRef, kind: &str, t: Map<S
                 "cells" => set_cells(txn, el, v),
                 _ => {
                     let text = child_text(txn, el, k);
-                    set_plain(txn, &text, v.as_str().unwrap_or(""));
+                    set_unformatted(txn, &text, v.as_str().unwrap_or(""));
                 }
             }
         } else if plain_differs(txn, el, k, v) {
             put_plain(txn, el, k, v);
         }
     }
-    let stale: Vec<String> = el.keys(txn).filter(|k| !t.contains_key(*k)).map(String::from).collect();
+    let stale: Vec<String> = el
+        .keys(txn)
+        .filter(|k| !t.contains_key(*k))
+        .map(String::from)
+        .collect();
     for k in stale {
         el.remove(txn, &k);
     }
@@ -281,7 +389,28 @@ fn reconcile_element(txn: &mut TransactionMut, el: &MapRef, kind: &str, t: Map<S
 /// Makes an id array read as `target` (ids not in `target` must already be gone), moving as few ids as possible:
 /// the longest common subsequence stays put and everything else is re-inserted after its target predecessor.
 pub(crate) fn reorder_ids(txn: &mut TransactionMut, arr: &ArrayRef, target: &[String]) {
-    let current: Vec<String> = read_id_list(txn, arr).into_iter().filter(|id| target.contains(id)).collect();
+    // A rewritten array must contain exactly one occurrence of each target id, with no stale or malformed entries.
+    let mut seen = HashSet::new();
+    let stale: Vec<u32> = arr
+        .iter(txn)
+        .enumerate()
+        .filter_map(|(index, value)| {
+            let keep = match value {
+                Out::Any(Any::String(id)) => {
+                    target.iter().any(|wanted| wanted == id.as_ref()) && seen.insert(id.to_string())
+                }
+                _ => false,
+            };
+            (!keep).then_some(index as u32)
+        })
+        .collect();
+    for index in stale.into_iter().rev() {
+        arr.remove(txn, index);
+    }
+    let current: Vec<String> = read_id_list(txn, arr)
+        .into_iter()
+        .filter(|id| target.contains(id))
+        .collect();
     if current == target {
         return;
     }
@@ -306,7 +435,11 @@ fn lcs(a: &[String], b: &[String]) -> HashSet<String> {
     let mut dp = vec![vec![0u32; m + 1]; n + 1];
     for i in (0..n).rev() {
         for j in (0..m).rev() {
-            dp[i][j] = if a[i] == b[j] { dp[i + 1][j + 1] + 1 } else { dp[i + 1][j].max(dp[i][j + 1]) };
+            dp[i][j] = if a[i] == b[j] {
+                dp[i + 1][j + 1] + 1
+            } else {
+                dp[i + 1][j].max(dp[i][j + 1])
+            };
         }
     }
     let (mut i, mut j) = (0, 0);

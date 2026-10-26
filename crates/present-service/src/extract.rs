@@ -14,7 +14,7 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for JsonBody<T> {
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let bytes = axum::body::Bytes::from_request(req, state).await.map_err(|e| {
-            ApiError::bad_request("body_unreadable", format!("The request body couldn't be read: {e}."), "Send a JSON body.")
+            ApiError::new(e.status(), "body_unreadable", format!("The request body couldn't be read: {e}."), "Send a JSON body within this endpoint's size limit.")
         })?;
         let slice: &[u8] = if bytes.iter().all(|b| b.is_ascii_whitespace()) { b"{}" } else { &bytes };
         serde_json::from_slice(slice).map(JsonBody).map_err(ApiError::invalid_json)

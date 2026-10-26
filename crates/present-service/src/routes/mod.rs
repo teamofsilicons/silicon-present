@@ -45,6 +45,7 @@ async fn idempotency(State(st): State<AppState>, req: Request, next: Next) -> Re
     if key.len() > 200 {
         return ApiError::bad_request("idempotency_key_too_long", "An Idempotency-Key can be at most 200 characters.", "Use a shorter key, e.g. a uuid.").into_response();
     }
+    use sha2::{Digest, Sha256};
     let (mut parts, body) = req.into_parts();
     let caller = match crate::auth::caller_from_parts(&parts, &st).await {
         Ok(Some(c)) => c,
@@ -54,52 +55,66 @@ async fn idempotency(State(st): State<AppState>, req: Request, next: Next) -> Re
     parts.extensions.insert(caller.clone());
     let method = parts.method.to_string();
     let path = parts.uri.path_and_query().map(|p| p.to_string()).unwrap_or_default();
-    let stored: Option<(String, String, i32, Vec<u8>, String)> =
-        sqlx::query_as("select method, path, status, body, content_type from idempotency_keys where account = $1 and key = $2")
-            .bind(caller.uuid)
-            .bind(&key)
-            .fetch_optional(&st.pool)
-            .await
-            .unwrap_or(None);
-    if let Some((m, p, status, bytes, ctype)) = stored {
-        if m != method || p != path {
-            return ApiError::conflict(
-                "idempotency_key_reused",
-                format!("This Idempotency-Key was already used for {m} {p}."),
-                "Use a new key for every different request; reuse a key only to retry the same request.",
-            )
-            .into_response();
+    let limit = request_body_limit(parts.uri.path());
+    let bytes = match axum::body::to_bytes(body, limit).await {
+        Ok(bytes) => bytes,
+        Err(_) => return ApiError::new(axum::http::StatusCode::PAYLOAD_TOO_LARGE, "body_too_large",
+            "The request body is too large.", "Send a smaller request.").into_response(),
+    };
+    let mut hash = Sha256::new();
+    for h in ["content-type", "x-filename"] {
+        hash.update(parts.headers.get(h).map(|h| h.as_bytes()).unwrap_or_default());
+        hash.update([0]);
+    }
+    hash.update(&bytes);
+    let fingerprint = format!("{:x}", hash.finalize());
+    // A durable claim prevents concurrent requests (and process restarts) from executing the same key twice.
+    // A crash after a mutation but before its response is stored leaves a pending claim, never a replayed mutation.
+    let claimed = match sqlx::query("insert into idempotency_keys (account, key, method, path, status, body, content_type, request_hash) values ($1,$2,$3,$4,0,$5,'application/json',$6) on conflict do nothing")
+        .bind(caller.uuid).bind(&key).bind(&method).bind(&path).bind(Vec::<u8>::new()).bind(&fingerprint).execute(&st.pool).await {
+        Ok(r) => r.rows_affected() == 1,
+        Err(e) => return ApiError::internal(e).into_response(),
+    };
+    if !claimed {
+        let stored: Result<Option<(String, String, i32, Vec<u8>, String, String)>, _> =
+            sqlx::query_as("select method, path, status, body, content_type, request_hash from idempotency_keys where account=$1 and key=$2")
+                .bind(caller.uuid).bind(&key).fetch_optional(&st.pool).await;
+        let (m, p, status, body, ctype, saved_hash) = match stored {
+            Ok(Some(row)) => row,
+            Ok(None) => return ApiError::unavailable("idempotency_retry", "The earlier request was refused.", "Retry the same request and key.").into_response(),
+            Err(e) => return ApiError::internal(e).into_response(),
+        };
+        if m != method || p != path || saved_hash != fingerprint {
+            return ApiError::conflict("idempotency_key_reused", "This key was already used for a different request.",
+                "Use a new key for a different request; retry the original request with its original key.").into_response();
         }
-        let mut resp = Response::new(Body::from(bytes));
+        if status == 0 {
+            return ApiError::unavailable("idempotency_pending", "The earlier request is still running or its outcome needs checking.",
+                "Retry this same request and key after it finishes. If this persists, inspect the deck before making another edit.").into_response();
+        }
+        let mut resp = Response::new(Body::from(body));
         *resp.status_mut() = axum::http::StatusCode::from_u16(status as u16).unwrap_or(axum::http::StatusCode::OK);
-        if let Ok(v) = HeaderValue::from_str(&ctype) {
-            resp.headers_mut().insert(axum::http::header::CONTENT_TYPE, v);
-        }
+        if let Ok(v) = HeaderValue::from_str(&ctype) { resp.headers_mut().insert(axum::http::header::CONTENT_TYPE, v); }
         resp.headers_mut().insert("idempotent-replayed", HeaderValue::from_static("true"));
         return resp;
     }
-    let resp = next.run(Request::from_parts(parts, body)).await;
-    if resp.status().is_server_error() {
+    let resp = next.run(Request::from_parts(parts, Body::from(bytes))).await;
+    if resp.status().is_client_error() {
+        if let Err(e) = sqlx::query("delete from idempotency_keys where account=$1 and key=$2 and status=0")
+            .bind(caller.uuid).bind(&key).execute(&st.pool).await { return ApiError::internal(e).into_response(); }
         return resp;
     }
+    if resp.status().is_server_error() { return resp; }
     let (rparts, rbody) = resp.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(rbody, 16 * 1024 * 1024).await else {
-        return ApiError::internal("the response was too large to keep for its Idempotency-Key").into_response();
+    let bytes = match axum::body::to_bytes(rbody, 16 * 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(_) => return ApiError::internal("the response was too large to keep for its Idempotency-Key").into_response(),
     };
-    let ctype = rparts.headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("application/json").to_string();
-    let _ = sqlx::query(
-        "insert into idempotency_keys (account, key, method, path, status, body, content_type) values ($1, $2, $3, $4, $5, $6, $7)
-         on conflict do nothing",
-    )
-    .bind(caller.uuid)
-    .bind(&key)
-    .bind(&method)
-    .bind(&path)
-    .bind(rparts.status.as_u16() as i32)
-    .bind(bytes.to_vec())
-    .bind(&ctype)
-    .execute(&st.pool)
-    .await;
+    let ctype = rparts.headers.get(axum::http::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("application/json");
+    if let Err(e) = sqlx::query("update idempotency_keys set status=$3, body=$4, content_type=$5 where account=$1 and key=$2")
+        .bind(caller.uuid).bind(&key).bind(rparts.status.as_u16() as i32).bind(bytes.to_vec()).bind(ctype).execute(&st.pool).await {
+        return ApiError::internal(e).into_response();
+    }
     Response::from_parts(rparts, Body::from(bytes))
 }
 
@@ -132,6 +147,12 @@ macro_rules! both {
     };
 }
 
+fn request_body_limit(path: &str) -> usize {
+    if path == "/v1/imports" || (path.starts_with("/v1/decks/") && (path.ends_with("/imports") || path.ends_with("/assets"))) {
+        files::MAX_UPLOAD
+    } else if path.ends_with("/presence") { 16 * 1024 } else { 4 * 1024 * 1024 }
+}
+
 pub fn router(st: AppState) -> Router {
     let r = Router::new()
         .route("/health", get(search::health))
@@ -144,10 +165,11 @@ pub fn router(st: AppState) -> Router {
         .route("/v1/decks/{id}", get(decks::get).patch(decks::patch).delete(decks::delete))
         .route("/v1/decks/{id}/untrash", post(decks::untrash))
         .route("/v1/decks/{id}/content", get(decks::content))
+        .route("/v1/decks/{id}/viewers", get(crate::viewers::list))
         .route("/v1/decks/{id}/edits", post(decks::edits))
         .route("/v1/decks/{id}/live", get(live::live))
         .route("/v1/decks/{id}/updates", post(live::post_update))
-        .route("/v1/decks/{id}/presence", post(live::presence))
+        .route("/v1/decks/{id}/presence", post(live::presence).layer(DefaultBodyLimit::max(16 * 1024)))
         .route("/v1/decks/{id}/versions", get(versions::list))
         .route("/v1/decks/{id}/versions/{version}/name", post(versions::name))
         .route("/v1/decks/{id}/compare", get(versions::compare))
@@ -165,11 +187,11 @@ pub fn router(st: AppState) -> Router {
         .route("/v1/folders", get(folders::list).post(folders::create))
         .route("/v1/folders/{id}", get(folders::get).patch(folders::patch).delete(folders::delete))
         .route("/v1/folders/{id}/untrash", post(folders::untrash))
-        .route("/v1/imports", post(files::import_new))
-        .route("/v1/decks/{id}/imports", post(files::import_onto))
+        .route("/v1/imports", post(files::import_new).layer(DefaultBodyLimit::max(files::MAX_UPLOAD)))
+        .route("/v1/decks/{id}/imports", post(files::import_onto).layer(DefaultBodyLimit::max(files::MAX_UPLOAD)))
         .route("/v1/decks/{id}/export", get(files::export))
         .route("/v1/decks/{id}/slides/{slide}/render", get(files::render))
-        .route("/v1/decks/{id}/assets", post(files::upload))
+        .route("/v1/decks/{id}/assets", post(files::upload).layer(DefaultBodyLimit::max(files::MAX_UPLOAD)))
         .route("/v1/assets/{id}", get(files::get_asset))
         .route("/v1/signed/{deck}/{exp}/{sig}/assets/{id}", get(files::get_signed_asset))
         .route("/v1/decks/{id}/presentations", post(presentations::start).get(presentations::list_for_deck))
@@ -180,7 +202,8 @@ pub fn router(st: AppState) -> Router {
     r.fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn_with_state(st.clone(), idempotency))
-        .layer(DefaultBodyLimit::max(files::MAX_UPLOAD))
+        .layer(middleware::from_fn_with_state(st.clone(), crate::viewers::middleware))
+        .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         .with_state(st)
 }
 

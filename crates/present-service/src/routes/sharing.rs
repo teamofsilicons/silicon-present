@@ -27,6 +27,7 @@ pub struct Resource {
     /// The folder it sits in (a deck's folder, a folder's parent).
     pub parent: Option<String>,
     pub public_mode: String,
+    pub require_email: bool,
     pub access: Access,
 }
 
@@ -39,10 +40,10 @@ impl Resource {
 pub async fn load(st: &AppState, kind: &str, id: &str, caller: Uuid, need: Need) -> ApiResult<Resource> {
     if kind == "deck" {
         let (d, a) = access::deck_for(st, id, Some(caller), need).await?;
-        Ok(Resource { kind: "deck", id: d.id, name: d.title, owner: d.owner, parent: d.folder, public_mode: d.public_mode, access: a })
+        Ok(Resource { kind: "deck", id: d.id, name: d.title, owner: d.owner, parent: d.folder, public_mode: d.public_mode, require_email: d.public_require_email, access: a })
     } else {
         let (f, a) = access::folder_for(st, id, Some(caller), need).await?;
-        Ok(Resource { kind: "folder", id: f.id, name: f.name, owner: f.owner, parent: f.parent, public_mode: f.public_mode, access: a })
+        Ok(Resource { kind: "folder", id: f.id, name: f.name, owner: f.owner, parent: f.parent, public_mode: f.public_mode, require_email: false, access: a })
     }
 }
 
@@ -115,6 +116,7 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Path((plural, id))
     Ok(Json(json!({
         "owner": accounts::account_json(&st, res.owner).await,
         "publicMode": res.public_mode,
+        "requireEmail": res.require_email,
         "role": res.access.role.as_str(),
         "members": members,
     })))
@@ -303,8 +305,10 @@ pub async fn remove(State(st): State<AppState>, caller: Caller, Path((plural, id
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PublicBody {
     mode: String,
+    require_email: Option<bool>,
 }
 
 pub async fn set_public(State(st): State<AppState>, caller: Caller, Path((plural, id)): Path<(String, String)>, JsonBody(body): JsonBody<PublicBody>) -> ApiResult<Json<Value>> {
@@ -313,16 +317,26 @@ pub async fn set_public(State(st): State<AppState>, caller: Caller, Path((plural
     if !["off", "view", "comment", "edit"].contains(&body.mode.as_str()) {
         return Err(ApiError::bad_request("invalid_mode", format!("`{}` isn't a public mode.", body.mode), "Use off, view, comment or edit."));
     }
-    let table = if kind == "deck" { "decks" } else { "folders" };
-    sqlx::query(sql!("update {table} set public_mode = $2, updated_at = now() where id = $1")).bind(&id).bind(&body.mode).execute(&st.pool).await?;
+    if kind != "deck" && body.require_email.is_some() {
+        return Err(ApiError::bad_request("unsupported_option", "Email collection is available on decks, not folders.", "Set requireEmail on the deck's public settings."));
+    }
+    let require_email = body.require_email.unwrap_or(res.require_email);
+    if kind == "deck" {
+        sqlx::query("update decks set public_mode = $2, public_require_email = $3, updated_at = now() where id = $1")
+            .bind(&id).bind(&body.mode).bind(require_email).execute(&st.pool).await?;
+    } else {
+        sqlx::query("update folders set public_mode = $2, updated_at = now() where id = $1")
+            .bind(&id).bind(&body.mode).execute(&st.pool).await?;
+    }
     let (d, f) = if kind == "deck" { (Some(id.as_str()), None) } else { (None, Some(id.as_str())) };
-    store::event(&st, d, f, caller.uuid, "public_changed", json!({ "from": res.public_mode, "to": body.mode })).await?;
+    store::event(&st, d, f, caller.uuid, "public_changed", json!({ "from": res.public_mode, "to": body.mode,
+        "requireEmailFrom": res.require_email, "requireEmail": require_email })).await?;
     if kind == "deck"
         && let Some(room) = st.rooms.loaded(&id).await
     {
-        room.send("deck", json!({ "publicMode": body.mode }));
+        room.send("deck", json!({ "publicMode": body.mode, "requireEmail": require_email }));
     }
-    Ok(Json(json!({ "publicMode": body.mode, "link": res.link(&st) })))
+    Ok(Json(json!({ "publicMode": body.mode, "requireEmail": require_email, "link": res.link(&st) })))
 }
 
 // ---------------------------------------------------------------- transfers

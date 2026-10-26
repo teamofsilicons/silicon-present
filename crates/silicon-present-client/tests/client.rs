@@ -128,6 +128,21 @@ async fn edits_send_ops_with_base_and_read_the_outcome() {
 }
 
 #[tokio::test]
+async fn retryable_edits_send_the_supplied_key_with_the_exact_body() {
+    let (server, c) = setup().await;
+    let request = EditRequest::new(vec![Op::DeleteSlide { slide: "s_aaaaaa".into() }]).on(4);
+    Mock::given(method("POST"))
+        .and(path("/v1/decks/dk7Hq2mP9xRt/edits"))
+        .and(header("idempotency-key", "push:stable"))
+        .and(body_json(serde_json::to_value(&request).unwrap()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"version":5,"changed":true})))
+        .expect(2).mount(&server).await;
+    for _ in 0..2 {
+        assert_eq!(c.edit_idempotent("dk7Hq2mP9xRt", &request, "push:stable").await.unwrap().version, 5);
+    }
+}
+
+#[tokio::test]
 async fn uploads_send_raw_bytes_with_type_and_name() {
     let (server, c) = setup().await;
     Mock::given(method("POST"))

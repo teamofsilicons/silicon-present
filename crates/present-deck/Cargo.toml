@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 yrs.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 dissimilar.workspace = true
 thiserror.workspace = true
 rand.workspace = true

@@ -18,13 +18,14 @@ pub struct DeckRow {
     pub title: String,
     pub folder: Option<String>,
     pub public_mode: String,
+    pub public_require_email: bool,
     pub trashed_at: Option<OffsetDateTime>,
     pub seq: i64,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
 
-pub const DECK_COLUMNS: &str = "id, owner, creator, title, folder, public_mode, trashed_at, seq, created_at, updated_at";
+pub const DECK_COLUMNS: &str = "id, owner, creator, title, folder, public_mode, public_require_email, trashed_at, seq, created_at, updated_at";
 
 #[derive(Debug, Clone, FromRow)]
 pub struct FolderRow {

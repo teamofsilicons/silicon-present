@@ -17,6 +17,7 @@ pub fn deck_json(st: &AppState, d: &DeckRow, role: Role, accounts: &HashMap<Uuid
         "creator": accounts.get(&d.creator).cloned().unwrap_or(Value::Null),
         "folder": d.folder,
         "publicMode": d.public_mode,
+        "requireEmail": d.public_require_email,
         "role": role.as_str(),
         "version": d.seq,
         "trashedAt": ts_opt(d.trashed_at),

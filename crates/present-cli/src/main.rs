@@ -5,14 +5,30 @@
 // so their size does not matter.
 #![allow(clippy::result_large_err)]
 
+// Remote deck content is untrusted terminal text, including errors and live events.
+macro_rules! println {
+    () => { std::println!() };
+    ($($arg:tt)*) => { std::println!("{}", crate::terminal::safe(&format!($($arg)*))) };
+}
+macro_rules! print {
+    ($($arg:tt)*) => { std::print!("{}", crate::terminal::safe(&format!($($arg)*))) };
+}
+macro_rules! eprintln {
+    ($($arg:tt)*) => { std::eprintln!("{}", crate::terminal::safe(&format!($($arg)*))) };
+}
+macro_rules! eprint {
+    ($($arg:tt)*) => { std::eprint!("{}", crate::terminal::safe(&format!($($arg)*))) };
+}
+
 mod args;
 mod cmd;
 mod ctx;
 mod docs;
 mod fail;
 mod state;
+mod terminal;
 
-use args::{Cli, Command, LoginSub, ShowCmd, SlideArgs, VersionCmd};
+use args::{Cli, Command, LayerDirection, LoginSub, ShowCmd, SlideArgs, VersionCmd};
 use clap::Parser as _;
 use ctx::Ctx;
 use fail::{Fail, R};
@@ -23,7 +39,10 @@ async fn main() {
     let cli = Cli::parse();
     let json = cli.json;
     let result = match Ctx::new(cli.json, cli.api_url.clone(), cli.accounts_url.clone()) {
-        Ok(ctx) => run(&ctx, cli.command).await,
+        Ok(mut ctx) => {
+            ctx.dangerously_use_em_dash = cli.dangerously_use_em_dash;
+            run(&ctx, cli.command).await
+        },
         Err(f) => Err(f),
     };
     if let Err(f) = result {
@@ -37,7 +56,7 @@ async fn main() {
 }
 
 async fn run(ctx: &Ctx, command: Command) -> R<()> {
-    use cmd::{auth, collab, decks, edit, live, sync};
+    use cmd::{auth, collab, decks, edit, layers, live, sync};
     match command {
         Command::Login(a) => match a.sub {
             Some(LoginSub::Status { offline }) => auth::status(ctx, offline).await,
@@ -84,6 +103,7 @@ async fn run(ctx: &Ctx, command: Command) -> R<()> {
             Some(s) => edit::slide_cmd(ctx, &s).await,
             None => edit::slide_show(ctx, &deck.unwrap_or_default(), &slide.unwrap_or_default()).await,
         },
+        Command::Layers(args) => layers::run(ctx, &args).await,
         Command::Render { deck, slide, all, output, width, at, format, version } => {
             let opts = RenderOptions { format: Some(format), width, version, at };
             edit::render(ctx, &deck, slide.as_deref(), all, output.as_deref(), opts).await
@@ -96,8 +116,8 @@ async fn run(ctx: &Ctx, command: Command) -> R<()> {
         Command::Replace { deck, slide, element, find, replace, all, field } => {
             edit::replace(ctx, &deck, &slide, element.as_deref(), &find, &replace, all, field.as_deref()).await
         }
-        Command::Front { deck, slide, element, step } => edit::reorder(ctx, &deck, &slide, &element, if step { "forward" } else { "front" }).await,
-        Command::Back { deck, slide, element, step } => edit::reorder(ctx, &deck, &slide, &element, if step { "backward" } else { "back" }).await,
+        Command::Front { deck, slide, element, step } => layers::move_layers(ctx, &deck, &slide, &[element], layers::Destination::Direction(if step { LayerDirection::Forward } else { LayerDirection::Front })).await,
+        Command::Back { deck, slide, element, step } => layers::move_layers(ctx, &deck, &slide, &[element], layers::Destination::Direction(if step { LayerDirection::Backward } else { LayerDirection::Back })).await,
         Command::Theme { deck, name, heading, body, color, list } => {
             edit::theme(ctx, deck.as_deref(), name.as_deref(), heading.as_deref(), body.as_deref(), &color, list).await
         }

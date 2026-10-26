@@ -21,6 +21,7 @@ pub mod state;
 pub mod store;
 pub mod tings;
 pub mod views;
+pub mod viewers;
 
 use std::sync::Arc;
 use std::time::Duration;

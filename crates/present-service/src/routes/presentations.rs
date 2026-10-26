@@ -8,7 +8,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{Extension, Json};
 use futures::stream::{self, Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -165,7 +165,7 @@ pub async fn stop(State(st): State<AppState>, caller: Caller, Path(pid): Path<St
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-pub async fn live(State(st): State<AppState>, caller: MaybeCaller, Path(pid): Path<String>) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+pub async fn live(State(st): State<AppState>, caller: MaybeCaller, Extension(viewer): Extension<crate::viewers::ViewerIdentity>, Path(pid): Path<String>) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
     let p = load(&st, &pid).await?;
     access::deck_for(&st, &p.deck, caller.uuid(), Need::View).await?;
     let ended = p.ended_at.is_some();
@@ -175,13 +175,29 @@ pub async fn live(State(st): State<AppState>, caller: MaybeCaller, Path(pid): Pa
         first.push(LiveMsg { event: "ended", data: json!({ "id": pid }) });
     }
     let updates = BroadcastStream::new(rx).take_while(|m| futures::future::ready(m.is_ok())).filter_map(|m| futures::future::ready(m.ok()));
-    let pings = IntervalStream::new(tokio::time::interval_at(tokio::time::Instant::now() + Duration::from_secs(20), Duration::from_secs(20)))
+    let pings = IntervalStream::new(tokio::time::interval_at(tokio::time::Instant::now() + Duration::from_secs(2), Duration::from_secs(2)))
         .map(|_| LiveMsg { event: "ping", data: json!({}) });
     let rest: std::pin::Pin<Box<dyn Stream<Item = LiveMsg> + Send>> =
         if ended { Box::pin(stream::empty()) } else { Box::pin(stream::select(updates, pings)) };
-    // The stream ends right after `ended`.
+    // The stream ends right after `ended`, including loss of access to its deck.
+    let account = caller.uuid();
+    let deck = p.deck.clone();
+    let mut saw_initial_state = false;
     let stream = stream::iter(first)
         .chain(rest)
+        .then(move |m| {
+            let st = st.clone();
+            let deck = deck.clone();
+            let viewer = viewer.clone();
+            let record = m.event == "state" && !saw_initial_state;
+            if record { saw_initial_state = true; }
+            async move {
+                if crate::viewers::deck_for(&st, &deck, account, Need::View, &viewer).await.is_err()
+                    || (record && crate::viewers::record(&st, &deck, account, &viewer).await.is_err()) {
+                    LiveMsg { event: "ended", data: json!({ "role": null }) }
+                } else { m }
+            }
+        })
         .scan(false, |done, m| {
             if *done {
                 return futures::future::ready(None);
@@ -191,6 +207,7 @@ pub async fn live(State(st): State<AppState>, caller: MaybeCaller, Path(pid): Pa
             }
             futures::future::ready(Some(m))
         })
-        .map(|m| Ok::<_, Infallible>(Event::default().event(m.event).data(m.data.to_string())));
+        .map(|m| Ok::<_, Infallible>(Event::default().event(m.event).data(m.data.to_string())))
+        .take_until(tokio::time::sleep(Duration::from_secs(300)));
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(60))))
 }

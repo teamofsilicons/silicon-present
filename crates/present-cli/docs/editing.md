@@ -64,11 +64,34 @@ passage).
 
 ## Order, delete, theme
 
+    present layers <deck> <slide>
+    present layers move <deck> <slide> <elements>... --to front|back|forward|backward
+    present layers move <deck> <slide> <elements>... --before <target> | --after <target>
     present front|back <deck> <slide> <element> [--step]
     present delete <deck> <slide> <element>
     present theme <deck> Paper|Ivory|Ink|Slate|Forest|Coral|Mono [--heading F] [--body F] [--color accent=#hex]
+
+Layers are listed front first. Moves preserve selection order, keep groups together and respect
+locks. `--before` means in front of the target; `--after` means behind it. See `present docs layers`.
 
 ## Undo
 
 There is no undo stack in the CLI: every change is a version. Bring back what you need with
 `present restore <deck> <version> [--slide] [--element]` (see: present docs versions).
+
+## Em dashes in Silicon writing
+
+When signed in as a Silicon, the CLI replaces `—` with `-` in outgoing authored
+text, including titles, edits, notes and comments. Carbon sessions preserve text.
+Exact-match search text and comment anchors are preserved so existing passages can
+still be found. Reading, copying/restoring existing content and binary imports do
+not rewrite the original file.
+
+Pass `--dangerously-use-em-dash` to preserve em dashes for that command only:
+
+```sh
+present --dangerously-use-em-dash reply THREAD "Keep this — intentionally"
+```
+
+The override also lasts for the duration of a long-running command. It is never
+saved in the sign-in session; the next command returns to the default.

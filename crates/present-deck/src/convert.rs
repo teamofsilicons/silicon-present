@@ -1,14 +1,13 @@
 //! Deck JSON ⇄ the deck's Yjs document, laid out exactly as `docs/architecture.md` says.
 
 use serde_json::{Map, Value, json};
-use yrs::types::ToJson;
 use yrs::updates::decoder::Decode;
 use yrs::{
-    Any, Array, ArrayPrelim, ArrayRef, Doc, In, Map as YMap, MapPrelim, MapRef, OffsetKind, Options, Out, ReadTxn,
-    StateVector, TextPrelim, TextRef, Transact, TransactionMut, Update,
+    Any, Array, ArrayPrelim, ArrayRef, Doc, In, Map as YMap, MapPrelim, MapRef, OffsetKind,
+    Options, Out, ReadTxn, StateVector, TextPrelim, TextRef, Transact, TransactionMut, Update,
 };
 
-use crate::anyconv::{any_to_json, canon, json_to_any};
+use crate::anyconv::{any_to_json, json_to_any};
 use crate::error::DeckError;
 use crate::normalize::{normalize_deck, normalize_element, normalize_slide, y_fields};
 use crate::richtext::{read_rich, write_rich};
@@ -39,7 +38,10 @@ impl DeckMeta {
 
 /// A new, empty document using UTF-16 offsets (like Yjs in the browser) and a random client id.
 pub fn new_doc() -> Doc {
-    Doc::with_options(Options { offset_kind: OffsetKind::Utf16, ..Options::default() })
+    Doc::with_options(Options {
+        offset_kind: OffsetKind::Utf16,
+        ..Options::default()
+    })
 }
 
 pub(crate) struct Roots {
@@ -58,7 +60,8 @@ pub(crate) fn roots(doc: &Doc) -> Roots {
 
 /// Full state of a document as one Yjs v1 update.
 pub fn encode_doc(doc: &Doc) -> Vec<u8> {
-    doc.transact().encode_state_as_update_v1(&StateVector::default())
+    doc.transact()
+        .encode_state_as_update_v1(&StateVector::default())
 }
 
 /// A document from one Yjs v1 update (e.g. a snapshot).
@@ -67,7 +70,9 @@ pub fn decode_doc(bytes: &[u8]) -> Result<Doc, DeckError> {
 }
 
 /// A document from a series of Yjs v1 updates, applied in order.
-pub fn doc_from_updates<'a, I: IntoIterator<Item = &'a [u8]>>(updates: I) -> Result<Doc, DeckError> {
+pub fn doc_from_updates<'a, I: IntoIterator<Item = &'a [u8]>>(
+    updates: I,
+) -> Result<Doc, DeckError> {
     let doc = new_doc();
     let _ = roots(&doc);
     {
@@ -81,7 +86,11 @@ pub fn doc_from_updates<'a, I: IntoIterator<Item = &'a [u8]>>(updates: I) -> Res
                 )
             })?;
             txn.apply_update(update).map_err(|e| {
-                DeckError::new("invalid_update", format!("A Yjs update could not be applied: {e}."), "Resend the update.")
+                DeckError::new(
+                    "invalid_update",
+                    format!("A Yjs update could not be applied: {e}."),
+                    "Resend the update.",
+                )
             })?;
         }
     }
@@ -141,7 +150,13 @@ pub(crate) fn write_element(txn: &mut TransactionMut, elements: &MapRef, el: &Va
 }
 
 /// Writes a canonical slide into `slides` under `key` (its id, or `master`).
-pub(crate) fn write_slide(txn: &mut TransactionMut, slides: &MapRef, key: &str, slide: &Value, master: bool) -> MapRef {
+pub(crate) fn write_slide(
+    txn: &mut TransactionMut,
+    slides: &MapRef,
+    key: &str,
+    slide: &Value,
+    master: bool,
+) -> MapRef {
     let m: MapRef = slides.insert(txn, key, MapPrelim::default());
     if master {
         put_plain(txn, &m, "id", &json!(MASTER_KEY));
@@ -167,6 +182,7 @@ pub(crate) fn write_slide(txn: &mut TransactionMut, slides: &MapRef, key: &str, 
 
 /// Writes a whole canonical deck into an empty document.
 pub fn write_deck(doc: &Doc, deck: &Value) -> Result<(), DeckError> {
+    crate::validate::deck(deck)?;
     let deck = normalize_deck(deck)?;
     let r = roots(doc);
     let mut txn = doc.transact_mut();
@@ -192,7 +208,7 @@ pub fn json_to_doc(deck: &Value) -> Result<Doc, DeckError> {
 pub(crate) fn read_text_plain<T: ReadTxn>(txn: &T, out: &Out) -> String {
     match out {
         Out::YText(t) => yrs::GetString::get_string(t, txn),
-        Out::Any(Any::String(s)) => s.to_string(),
+        Out::Any(a) => crate::normalize::string_value(&any_to_json(a)).unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -206,7 +222,9 @@ pub(crate) fn read_cells<T: ReadTxn>(txn: &T, cells: &MapRef, rows: usize, cols:
                 Some(Out::YMap(m)) => {
                     let text = match m.get(txn, "text") {
                         Some(Out::YText(t)) => read_rich(txn, &t),
-                        Some(Out::Any(Any::String(s))) => crate::richtext::rich_from_plain(&s),
+                        Some(Out::Any(a @ (Any::String(_) | Any::Number(_)))) => {
+                            crate::richtext::normalize_rich(&any_to_json(&a))
+                        }
                         _ => json!({ "paragraphs": [] }),
                     };
                     let fill = match m.get(txn, "fill") {
@@ -231,32 +249,58 @@ pub(crate) fn read_element<T: ReadTxn>(txn: &T, id: &str, m: &MapRef) -> Value {
     for (k, v) in m.iter(txn) {
         match (k, v) {
             ("cells", Out::YMap(cm)) => cells = Some(cm),
+            ("cells", _) => {}
             ("text", Out::YText(t)) => {
                 out.insert("text".into(), read_rich(txn, &t));
             }
-            (k, Out::YText(t)) => {
-                out.insert(k.to_string(), Value::String(yrs::GetString::get_string(&t, txn)));
+            (k @ ("html" | "css" | "js"), Out::YText(t)) => {
+                out.insert(
+                    k.to_string(),
+                    Value::String(yrs::GetString::get_string(&t, txn)),
+                );
+            }
+            ("text", Out::Any(a)) => {
+                let v = any_to_json(&a);
+                out.insert(
+                    "text".into(),
+                    if v.is_string() || v.is_number() {
+                        crate::richtext::normalize_rich(&v)
+                    } else {
+                        json!({"paragraphs":[]})
+                    },
+                );
             }
             (k, Out::Any(a)) => {
                 out.insert(k.to_string(), any_to_json(&a));
-            }
-            (k, Out::YMap(other)) => {
-                out.insert(k.to_string(), any_to_json(&other.to_json(txn)));
-            }
-            (k, Out::YArray(other)) => {
-                out.insert(k.to_string(), any_to_json(&other.to_json(txn)));
             }
             _ => {}
         }
     }
     out.insert("id".into(), Value::String(id.to_string()));
     if let Some(cm) = cells {
-        let rows = out.get("rows").and_then(Value::as_u64).unwrap_or(1) as usize;
-        let cols = out.get("cols").and_then(Value::as_u64).unwrap_or(1) as usize;
+        let dimension = |name: &str, index: usize| {
+            out.get(name)
+                .and_then(crate::normalize::number)
+                .filter(|n| n.fract() == 0.0 && (1.0..=100.0).contains(n))
+                .map(|n| n as usize)
+                .unwrap_or_else(|| {
+                    cm.keys(txn)
+                        .filter_map(|k| {
+                            cell_coordinates(k).map(|p| if index == 0 { p.0 } else { p.1 })
+                        })
+                        .max()
+                        .map(|n| n.saturating_add(1).min(100))
+                        .unwrap_or(2)
+                })
+        };
+        let rows = dimension("rows", 0);
+        let cols = dimension("cols", 1);
+        out.insert("rows".into(), json!(rows));
+        out.insert("cols".into(), json!(cols));
         out.insert("cells".into(), read_cells(txn, &cm, rows, cols));
     }
     let v = Value::Object(out);
-    normalize_element(&v).unwrap_or(v)
+    normalize_element(&v).unwrap_or(Value::Null)
 }
 
 /// The ordered ids of an array of strings, without duplicates (concurrent moves can leave one).
@@ -284,7 +328,7 @@ pub(crate) fn element_ids<T: ReadTxn>(txn: &T, slide: &MapRef) -> Vec<String> {
         Some(Out::YArray(a)) => read_id_list(txn, &a),
         _ => Vec::new(),
     };
-    ids.retain(|id| elements.contains_key(txn, id));
+    ids.retain(|id| matches!(elements.get(txn,id),Some(Out::YMap(ref m)) if matches!(m.get(txn,"kind"),Some(Out::Any(Any::String(ref s))) if crate::normalize::KINDS.contains(&s.as_ref()))));
     ids
 }
 
@@ -325,7 +369,7 @@ pub(crate) fn read_slide<T: ReadTxn>(txn: &T, id: &str, m: &MapRef, master: bool
 /// The slide ids in `order` that exist in `slides`, without duplicates.
 pub(crate) fn slide_ids<T: ReadTxn>(txn: &T, r: &Roots) -> Vec<String> {
     let mut ids = read_id_list(txn, &r.order);
-    ids.retain(|id| id != MASTER_KEY && r.slides.contains_key(txn, id));
+    ids.retain(|id| id != MASTER_KEY && matches!(r.slides.get(txn, id), Some(Out::YMap(_))));
     ids
 }
 
@@ -333,29 +377,61 @@ pub(crate) fn slide_ids<T: ReadTxn>(txn: &T, r: &Roots) -> Vec<String> {
 ///
 /// Slides that are in `slides` but not in `order` are not part of the deck and are left out.
 pub fn doc_to_json(doc: &Doc) -> Value {
-    let r = roots(doc);
     let txn = doc.transact();
-    read_deck(&txn, &r)
-}
-
-pub(crate) fn read_deck<T: ReadTxn>(txn: &T, r: &Roots) -> Value {
-    let size = match r.deck.get(txn, "size") {
-        Some(Out::Any(a)) => any_to_json(&a),
-        _ => json!({ "width": 1920, "height": 1080 }),
+    let deck = txn.get_map("deck");
+    let slides_map = txn.get_map("slides");
+    let order = txn.get_array("order");
+    let plain = |key: &str| {
+        deck.as_ref()
+            .and_then(|d| d.get(&txn, key))
+            .and_then(|v| {
+                if let Out::Any(a) = v {
+                    Some(any_to_json(&a))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(Value::Null)
     };
-    let theme = match r.deck.get(txn, "theme") {
-        Some(Out::Any(a)) => any_to_json(&a),
-        _ => crate::normalize::default_theme(),
-    };
-    let master = match r.slides.get(txn, MASTER_KEY) {
-        Some(Out::YMap(m)) => read_slide(txn, MASTER_KEY, &m, true),
-        _ => json!({ "elements": [] }),
-    };
+    let master = slides_map
+        .as_ref()
+        .and_then(|m| m.get(&txn, MASTER_KEY))
+        .and_then(|v| {
+            if let Out::YMap(m) = v {
+                Some(read_slide(&txn, MASTER_KEY, &m, true))
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| json!({"elements":[]}));
     let mut slides = Vec::new();
-    for id in slide_ids(txn, r) {
-        if let Some(Out::YMap(m)) = r.slides.get(txn, &id) {
-            slides.push(read_slide(txn, &id, &m, false));
+    if let (Some(sm), Some(order)) = (slides_map, order) {
+        for id in read_id_list(&txn, &order) {
+            if id != MASTER_KEY {
+                if let Some(Out::YMap(m)) = sm.get(&txn, &id) {
+                    slides.push(read_slide(&txn, &id, &m, false));
+                }
+            }
         }
     }
-    canon(json!({ "size": size, "theme": theme, "master": master, "slides": slides }))
+    normalize_deck(
+        &json!({"size":plain("size"),"theme":plain("theme"),"master":master,"slides":slides}),
+    )
+    .expect("reader normalization cannot fail")
+}
+
+/// Canonical zero-based cell coordinates (no leading zeroes).
+pub(crate) fn cell_coordinates(key: &str) -> Option<(usize, usize)> {
+    let (r, c) = key.split_once(':')?;
+    let parse = |s: &str| -> Option<usize> {
+        if s.is_empty()
+            || (s.len() > 1 && s.starts_with('0'))
+            || !s.bytes().all(|b| b.is_ascii_digit())
+        {
+            None
+        } else {
+            s.parse().ok()
+        }
+    };
+    Some((parse(r)?, parse(c)?))
 }
