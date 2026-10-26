@@ -50,6 +50,13 @@ test("relayed: the allowlist, never Set-Cookie or framing, always private and no
   assert.equal(relayResponseHeaders(upstream, ["set-cookie"]).get("set-cookie"), null);
 });
 
+test("asset sandbox policy survives the same-origin API proxy", () => {
+  const policy = "sandbox; default-src 'none'; script-src 'none'; object-src 'none'";
+  const headers = relayResponseHeaders(new Headers({ "content-type": "image/svg+xml", "content-security-policy": policy, "content-disposition": "inline" }), []);
+  assert.equal(headers.get("content-security-policy"), policy);
+  assert.equal(headers.get("x-content-type-options"), "nosniff");
+});
+
 test("paths are passed on exactly, except ones that could climb out of the service's path", () => {
   assert.equal(upstreamPath("v1/items"), "v1/items");
   assert.equal(upstreamPath("v1/accounts/by-id/c%3Aada"), "v1/accounts/by-id/c%3Aada");

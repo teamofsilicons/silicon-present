@@ -10,6 +10,7 @@ import {
   addElement as addElementHelper,
   addSlide as addSlideHelper,
   alignElements,
+  applyOps,
   deckMap,
   deleteElements,
   deleteSlide,
@@ -17,14 +18,15 @@ import {
   docToJson,
   duplicateElements,
   duplicateSlide,
+  getSlide,
   getTextField,
   groupElements,
   groupMembers,
   moveSlide,
   newGroupId,
   orderArray,
-  reorderElement,
   replaceInDeck,
+  setPlainText,
   setTheme,
   slidesMap,
   ungroup,
@@ -34,6 +36,7 @@ import {
   type DeckJson,
   type Element,
   type ElementInput,
+  type ShapeName,
   type Slide,
   type Theme,
 } from "@silicon-present/deck";
@@ -48,6 +51,8 @@ import type { Guide } from "./geometry";
 import type { DeckMeta, Me, Thread } from "./types";
 import { readThread, readThreads } from "./normalize-api";
 import type { Anchor } from "./types";
+import { layerOrderOps, moveLayersOps, type LayerDirection, type LayerDropEdge } from "./layer-order";
+import { applyPartChange, type PartChange } from "./html-inside";
 
 export type RightPanel = "design" | "animate" | "theme" | "comments";
 
@@ -55,6 +60,25 @@ export interface Composer {
   anchor: Anchor;
   /** Where to open the box, in slide px (null for deck/slide comments opened from the list). */
   at: { x: number; y: number } | null;
+}
+
+/** What the edit-inside frame says about the part a Carbon selected (computed styles, untrusted: display only). */
+export interface HtmlPartInfo {
+  tag: string;
+  /** Only text and inline markup inside: it can be typed into. */
+  text: boolean;
+  color: string | null;
+  background: string | null;
+  fontSize: number | null;
+  bold: boolean;
+  italic: boolean;
+}
+
+/** Editing the inside of an HTML element: which one, and which of its parts is selected (lib/editor/html-inside.ts). */
+export interface HtmlInside {
+  elementId: string;
+  part: number | null;
+  info: HtmlPartInfo | null;
 }
 
 export interface UiState {
@@ -68,12 +92,18 @@ export interface UiState {
   panel: RightPanel;
   panelOpen: boolean;
   commentMode: boolean;
+  handMode: boolean;
+  /** The shape tool remembers its last choice without inserting anything until a drag commits. */
+  shape: ShapeName;
+  shapeArmed: boolean;
+  overview: boolean;
   composer: Composer | null;
   activeThread: string | null;
   showResolved: boolean;
   findOpen: boolean;
   shortcutsOpen: boolean;
   codeElement: string | null;
+  htmlInside: HtmlInside | null;
   guides: Guide[];
   snap: boolean;
   grid: boolean;
@@ -143,12 +173,17 @@ export class Editor {
       panel: "design",
       panelOpen: true,
       commentMode: false,
+      handMode: false,
+      shape: "rect",
+      shapeArmed: false,
+      overview: false,
       composer: null,
       activeThread: null,
       showResolved: false,
       findOpen: false,
       shortcutsOpen: false,
       codeElement: null,
+      htmlInside: null,
       guides: [],
       snap: true,
       grid: false,
@@ -294,10 +329,11 @@ export class Editor {
     const slide = this.currentSlide();
     if (!slide) return;
     const ids = new Set(slide.elements.map(element => element.id));
-    const { selection, editing } = this.ui.get();
+    const { selection, editing, htmlInside } = this.ui.get();
     const kept = selection.filter(id => ids.has(id));
     if (kept.length !== selection.length) this.ui.set({ selection: kept });
     if (editing && !ids.has(editing.elementId)) this.ui.set({ editing: null });
+    if (htmlInside && !ids.has(htmlInside.elementId)) this.ui.set({ htmlInside: null });
   }
 
   // ---- transactions ----
@@ -338,8 +374,32 @@ export class Editor {
 
   // ---- navigation and selection ----
 
+  /** Switching tools never edits the document. Commenting suspends object selection. */
+  setTool(tool: "select" | "hand" | "comment") {
+    const comment = tool === "comment";
+    this.stopEditing();
+    this.exitHtmlInside();
+    if (comment) this.clearSelection();
+    this.ui.set({
+      commentMode: comment, handMode: tool === "hand", shapeArmed: false, composer: null, activeThread: null,
+      preview: null, guides: [],
+      ...(comment ? { panel: "comments", panelOpen: true, overview: false } :
+        this.ui.get().panel === "comments" && this.canEdit ? { panel: "design" } : {}),
+    });
+  }
+
+  /** Choose a shape, then drag on the canvas. Tool selection never changes the document. */
+  armShape(shape: ShapeName = this.ui.get().shape) {
+    if (!this.canEdit) return;
+    this.stopEditing();
+    this.exitHtmlInside();
+    this.clearSelection();
+    this.ui.set({ shape, shapeArmed: true, commentMode: false, handMode: false, overview: false,
+      composer: null, activeThread: null, codeElement: null, preview: null, guides: [] });
+  }
+
   goToSlide(slideId: string) {
-    this.ui.set({ slideId, master: false, selection: [], editing: null, codeElement: null });
+    this.ui.set({ slideId, master: false, overview: false, selection: [], editing: null, codeElement: null, htmlInside: null, shapeArmed: false });
     this.provider.setPresence({ slide: slideId, selection: [] });
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -356,7 +416,7 @@ export class Editor {
   }
 
   setMaster(master: boolean) {
-    this.ui.set({ master, selection: [], editing: null });
+    this.ui.set({ master, selection: [], editing: null, htmlInside: null, shapeArmed: false });
     this.provider.setPresence({ slide: master ? MASTER : this.ui.get().slideId, selection: [] });
   }
 
@@ -382,8 +442,12 @@ export class Editor {
       }
       next = [...current];
     }
-    const editing = this.ui.get().editing;
-    this.ui.set({ selection: next, editing: editing && next.includes(editing.elementId) ? editing : null });
+    const { editing, htmlInside } = this.ui.get();
+    this.ui.set({
+      selection: next,
+      editing: editing && next.includes(editing.elementId) ? editing : null,
+      htmlInside: htmlInside && next.length === 1 && next[0] === htmlInside.elementId ? htmlInside : null,
+    });
     this.provider.setPresence({ selection: next });
   }
 
@@ -394,7 +458,7 @@ export class Editor {
   }
 
   clearSelection() {
-    this.ui.set({ selection: [], editing: null });
+    this.ui.set({ selection: [], editing: null, htmlInside: null });
     this.provider.setPresence({ selection: [] });
   }
 
@@ -408,6 +472,69 @@ export class Editor {
     const element = this.currentSlide()?.elements.find(e => e.id === elementId);
     if (!element || element.locked) return;
     this.ui.set({ editing: { elementId, field }, selection: [elementId] });
+  }
+
+  /** One formatting action, for a passage with a caret or for entire selected text boxes. */
+  setTextFormat(name: string, value: unknown) {
+    if (!this.canEdit) return;
+    const handle = this.textUi.get().quill;
+    if (this.ui.get().editing && handle) {
+      this.stopCapturing();
+      handle.format(name, value ?? false);
+      this.stopCapturing();
+      return;
+    }
+    const slide = this.currentSlideId();
+    if (!slide) return;
+    const boxes = this.selectedElements().filter(element => !element.locked && (element.kind === "text" || element.kind === "shape"));
+    this.stopCapturing();
+    this.change(() => {
+      for (const element of boxes) {
+        const text = this.textField(slide, element.id, "text");
+        if (text?.length) text.format(0, text.length, { [name]: value || null });
+      }
+    }, "Formatting text");
+    this.stopCapturing();
+  }
+
+  /** Starts editing the inside of an HTML element (its parts, in its source): canvas double-click, the design panel. */
+  enterHtmlInside(elementId: string) {
+    if (!this.canEdit) return;
+    const element = this.currentSlide()?.elements.find(e => e.id === elementId);
+    if (!element || element.kind !== "html" || element.locked) return;
+    this.stopEditing();
+    this.ui.set({ htmlInside: { elementId, part: null, info: null }, selection: [elementId], shapeArmed: false, commentMode: false, handMode: false });
+    this.provider.setPresence({ selection: [elementId] });
+  }
+
+  exitHtmlInside() {
+    if (!this.ui.get().htmlInside) return;
+    this.ui.set({ htmlInside: null });
+    this.stopCapturing();
+  }
+
+  /**
+   * One change to a part of the HTML element being edited inside, written into its `html` (a minimal text diff, so it
+   * merges with others' typing) as one undo step. False when nothing could be changed.
+   */
+  changeHtmlInside(change: PartChange): boolean {
+    const inside = this.ui.get().htmlInside;
+    const slideId = this.currentSlideId();
+    if (!inside || !slideId || !this.canEdit) return false;
+    const element = this.currentSlide()?.elements.find(e => e.id === inside.elementId);
+    if (!element || element.kind !== "html" || element.locked) return false;
+    const text = this.textField(slideId, element.id, "html");
+    if (!text) return false;
+    const next = applyPartChange(text.toString(), change);
+    if (next === null) return false;
+    this.stopCapturing();
+    const done = this.change(() => {
+      setPlainText(text, next);
+      return true;
+    }, "Changing the HTML element");
+    this.stopCapturing();
+    if (done && change.kind === "delete") this.ui.set({ htmlInside: { ...inside, part: null, info: null } });
+    return Boolean(done);
   }
 
   stopEditing() {
@@ -461,10 +588,11 @@ export class Editor {
   addElement(input: ElementInput, opts: { select?: boolean; edit?: boolean } = {}): string | undefined {
     const slideId = this.currentSlideId();
     if (!slideId) return undefined;
+    this.stopCapturing();
     const id = this.change(() => addElementHelper(this.doc, slideId, input, undefined, LOCAL_ORIGIN), "Adding the element");
     this.stopCapturing();
     if (id && opts.select !== false) {
-      this.ui.set({ selection: [id], panelOpen: true, panel: "design" });
+      this.ui.set({ selection: [id], panelOpen: true, panel: "design", commentMode: false, handMode: false, shapeArmed: false, overview: false });
       this.provider.setPresence({ selection: [id] });
       if (opts.edit) queueMicrotask(() => this.startEditing(id));
     }
@@ -530,14 +658,28 @@ export class Editor {
     this.updateElements(selected.map(element => ({ id: element.id, set: { locked: lock } })));
   }
 
-  reorder(to: "front" | "back" | "forward" | "backward") {
-    const slide = this.currentSlide();
-    if (!slide) return;
-    const ids = this.ui.get().selection;
-    const ordered = slide.elements.map(element => element.id).filter(id => ids.includes(id));
-    // Keep the selection's own order: bring forward/front from the top down, backward/back from the bottom up.
-    const sequence = to === "front" || to === "backward" ? ordered : [...ordered].reverse();
-    this.change(() => sequence.forEach(id => reorderElement(this.doc, slide.id, id, to, LOCAL_ORIGIN)), "Reordering");
+  reorder(to: LayerDirection) {
+    const slideId = this.currentSlideId();
+    if (!this.canEdit || !slideId) return;
+    this.stopCapturing();
+    this.change(() => {
+      const slide = getSlide(this.doc, slideId);
+      applyOps(this.doc, layerOrderOps(slide, this.ui.get().selection, to), LOCAL_ORIGIN, { atomic: false });
+    }, "Changing the layer order");
+    this.stopCapturing();
+  }
+
+  /** Drop the selected layers before/after a row in the front-to-back Layers list. */
+  moveLayers(targetId: string, edge: LayerDropEdge) {
+    const slideId = this.currentSlideId();
+    if (!this.canEdit || !slideId) return;
+    this.stopCapturing();
+    this.change(() => {
+      const slide = getSlide(this.doc, slideId);
+      const ops = moveLayersOps(slide, this.ui.get().selection, targetId, edge);
+      if (ops.length) applyOps(this.doc, ops, LOCAL_ORIGIN, { atomic: false });
+    }, "Moving the layers");
+    this.stopCapturing();
   }
 
   align(mode: AlignMode) {

@@ -1,5 +1,6 @@
 /* The Share dialog: an invite line, one quiet list of people, the link. Hairlines between parts, no boxes inside. */
 .dialog { width: min(600px, calc(100vw - 24px)); }
+.ownerDialog { width: min(720px, calc(100vw - 24px)); }
 
 .invite { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; align-items: end; gap: var(--space-3); }
 .inviteField, .inviteRole { min-width: 0; }
@@ -40,6 +41,19 @@
 .linkRow { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--border-subtle); padding-top: 12px; }
 .linkIcon { flex: none; color: var(--text-muted); }
 .link { min-width: 0; flex: 1; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
+
+.viewerHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.viewerHelp { margin: 0; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.viewerScroll { max-height: 320px; overflow: auto; overscroll-behavior: contain; }
+.viewerScroll:focus-visible { outline: none; background: var(--surface-muted); }
+.viewerTable { width: 100%; min-width: 660px; border-collapse: collapse; font-size: var(--text-xs); text-align: left; }
+.viewerTable th, .viewerTable td { padding: 10px 8px 10px 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.viewerTable thead th { color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+.viewerTable thead th:last-child, .viewerTable td:last-child { padding-right: 0; text-align: right; }
+.viewerEmail { min-width: 200px; white-space: nowrap; color: var(--foreground); font-weight: 500; }
+.viewerTime { display: grid; gap: 3px; white-space: nowrap; color: var(--text-secondary); }
+.viewCount { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.empty > p { margin: 0 0 var(--space-2); }
 
 @media (max-width: 559px) {
   .invite { grid-template-columns: minmax(0, 1fr) auto; }

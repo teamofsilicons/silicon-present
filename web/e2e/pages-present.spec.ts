@@ -67,6 +67,65 @@ test("keys step through animations, skip the skipped slide, and reach the end", 
   await expect(page.getByRole("toolbar", { name: "Presentation" }).getByText("1 / 3")).toBeAttached();
 });
 
+test("normal presentation keeps its title and Exit visible without advancing from the bars", async () => {
+  const { page } = me;
+  await page.goto(`/decks/${deck}/present`);
+  const stage = page.getByTestId("present-stage");
+  const top = page.getByTestId("present-top-bar");
+  await expect(top.getByRole("heading", { name: `Talk ${run}` })).toBeVisible();
+  await top.getByRole("heading").click();
+  await page.getByRole("toolbar", { name: "Presentation", exact: true }).getByText("1 / 3").click();
+  await expect(stage).toHaveAttribute("data-step", "0");
+  // The old 2.5-second idle timer must not hide the normal presentation chrome.
+  await expect(page.locator("[data-idle]")).toBeAttached({ timeout: 5_000 });
+  await expect(top).toHaveCSS("opacity", "1");
+  await expect(top.getByRole("button", { name: "Exit presentation" })).toBeVisible();
+});
+
+test("full screen reveals each edge independently and leaves control activation to the focused button", async () => {
+  const { page } = me;
+  await page.goto(`/decks/${deck}/present`);
+  const stage = page.getByTestId("present-stage");
+  const top = page.getByTestId("present-top-bar");
+  const bottom = page.getByRole("toolbar", { name: "Presentation", exact: true });
+  await bottom.getByRole("button", { name: "Full screen", exact: true }).click();
+  await expect(page.locator("[data-fullscreen]")).toBeAttached();
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  await expect(top).toHaveCSS("opacity", "0");
+  await expect(bottom).toHaveCSS("opacity", "0");
+  await page.mouse.move(viewport.width / 2, 2);
+  await expect(top).toHaveCSS("opacity", "1");
+  await expect(bottom).toHaveCSS("opacity", "0");
+  await page.mouse.move(viewport.width / 2, viewport.height - 2);
+  await expect(top).toHaveCSS("opacity", "0");
+  await expect(bottom).toHaveCSS("opacity", "1");
+  await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  await top.getByRole("button", { name: "Exit presentation" }).focus();
+  await expect(top).toHaveCSS("opacity", "1");
+  await expect(bottom).toHaveCSS("opacity", "0");
+  await bottom.getByRole("button", { name: "Leave full screen" }).focus();
+  await expect(bottom).toHaveCSS("opacity", "1");
+  await expect(top).toHaveCSS("opacity", "0");
+  await page.keyboard.press("Space");
+  await expect(page.locator("[data-fullscreen]")).toHaveCount(0);
+  await expect(stage).toHaveAttribute("data-step", "0");
+  await expect(top).toHaveCSS("opacity", "1");
+  await expect(page).toHaveURL(new RegExp(`/decks/${deck}/present$`));
+});
+
+test("Escape leaves full screen first and Exit returns to the deck", async () => {
+  const { page } = me;
+  await page.goto(`/decks/${deck}/present`);
+  await page.getByRole("button", { name: "Full screen", exact: true }).click();
+  await expect(page.locator("[data-fullscreen]")).toBeAttached();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-fullscreen]")).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/decks/${deck}/present$`));
+  await page.getByRole("button", { name: "Exit presentation" }).click();
+  await expect(page).toHaveURL(new RegExp(`/decks/${deck}(\\?.*)?$`));
+});
+
 test("the presenter view shows notes and the next slide, and moves present mode with it", async () => {
   const { context, page } = me;
   await page.goto(`/decks/${deck}/present`);
@@ -77,6 +136,9 @@ test("the presenter view shows notes and the next slide, and moves present mode 
   await expect(presenter.getByRole("timer")).toBeVisible();
 
   await presenter.getByRole("button", { name: "Next", exact: true }).click();
+  const upcoming = presenter.getByRole("img", { name: "Next slide", exact: true });
+  await expect(upcoming.frameLocator("iframe").locator("#out")).toHaveText("HTML ran 2");
+  await expect(upcoming.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts");
   await presenter.getByRole("button", { name: "Next", exact: true }).click();
   await expect(presenter.getByTestId("speaker-notes")).toHaveText("This one runs code");
   await expect(page.getByTestId("present-stage")).toHaveAttribute("data-slide", "s_pre003");

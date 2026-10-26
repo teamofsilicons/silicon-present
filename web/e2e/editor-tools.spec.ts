@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { call, createDeck, edit, eventually, signedIn } from "./pages-support";
-import { deckJson, openDeck, plain, settled } from "./editor-support";
+import { deckJson, drawArmedShape, openDeck, plain, settled } from "./editor-support";
 
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -30,6 +30,150 @@ async function pagePoint(page: Page, x: number, y: number) {
   return { x: box.x + (x / 1920) * box.width, y: box.y + (y / 1080) * box.height };
 }
 
+test("shape tools arm without inserting, draw in either direction, and cancel without an orphan", async ({ browser }) => {
+  const { context, page, errors } = await signedIn(browser, "carbon");
+  const deck = await createDeck(context, "Drawing shapes");
+  await openDeck(page, deck);
+  const original = await elements(page);
+  const canvas = page.getByTestId("slide-canvas");
+  const tool = page.getByTestId("insert-shape");
+  await expect(tool).toHaveAttribute("aria-label", "Rectangle");
+  await tool.click();
+  await expect(canvas).toHaveAttribute("data-mode", "draw");
+  expect(await elements(page)).toEqual(original);
+  const at = await pagePoint(page, 1700, 900);
+  await page.mouse.click(at.x, at.y);
+  expect(await elements(page), "a click does not create a default object").toEqual(original);
+  await drawArmedShape(page, { x: 0.7, y: 0.7 }, { x: 0.5, y: 0.5 });
+  const drawn = (await elements(page)).find(item => !original.some(old => old.id === item.id))!;
+  expect(drawn.x).toBeCloseTo(960, 0); expect(drawn.y).toBeCloseTo(540, 0);
+  expect(drawn.w).toBeCloseTo(384, 0); expect(drawn.h).toBeCloseTo(216, 0);
+  await expect(page.getByTestId("select-tool")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("undo").click();
+  expect(await elements(page), "one undo removes the entire draw").toEqual(original);
+
+  await page.keyboard.press("o");
+  await expect(tool).toHaveAttribute("aria-label", "Ellipse");
+  await page.keyboard.down("Shift");
+  await drawArmedShape(page);
+  await page.keyboard.up("Shift");
+  const circle = (await elements(page)).find(item => !original.some(old => old.id === item.id))!;
+  expect(circle.w).toBeCloseTo(circle.h, 5);
+  await page.getByTestId("undo").click();
+
+  await tool.click();
+  await page.mouse.move(at.x, at.y); await page.mouse.down();
+  await page.mouse.move(at.x - 70, at.y - 50, { steps: 4 });
+  await expect(page.getByTestId("shape-draw-preview")).toBeVisible();
+  expect(await elements(page), "the preview does not edit the document").toEqual(original);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.getByTestId("shape-draw-preview")).toHaveCount(0);
+  await expect(canvas).toHaveAttribute("data-mode", "edit");
+  expect(await elements(page)).toEqual(original);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("dock controls, panning and grid view preserve the slide and keyboard activation", async ({ browser }) => {
+  const { context, page, errors } = await signedIn(browser, "carbon");
+  const deck = await createDeck(context, "Tools and views");
+  const first = (await deckJson(context, deck)).slides[0]!.id;
+  await edit(context, deck, [
+    { op: "add_slide", after: first, slide: { id: "s_view02", layout: "blank", elements: [] } },
+    { op: "add_slide", after: "s_view02", slide: { id: "s_view03", layout: "blank", elements: [] } },
+  ]);
+  await openDeck(page, deck);
+  const original = await elements(page);
+  const text = original[0]!;
+  const at = await pagePoint(page, text.x + text.w / 2, text.y + text.h / 2);
+  await page.mouse.click(at.x, at.y);
+  await expect.poll(() => selection(page)).toEqual([text.id]);
+
+  const notes = page.getByRole("button", { name: "Speaker notes", exact: true });
+  await notes.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("speaker-notes")).toBeHidden();
+  await expect(page.getByTestId("text-editor")).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("speaker-notes")).toBeVisible();
+  await page.getByTestId("more-tools").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("insert-chart")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const canvas = page.getByTestId("slide-canvas");
+  const before = (await canvas.boundingBox())!;
+  await page.getByTestId("hand-tool").click();
+  await page.mouse.move(before.x + 100, before.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(before.x + 180, before.y + 140, { steps: 5 });
+  await page.mouse.up();
+  const moved = (await canvas.boundingBox())!;
+  expect(moved.x - before.x).toBeCloseTo(80, 0);
+  expect(moved.y - before.y).toBeCloseTo(40, 0);
+  expect(await elements(page)).toEqual(original);
+  await page.getByRole("button", { name: /Zoom .*Fit to the window/ }).click();
+  const fitted = (await canvas.boundingBox())!;
+  expect(fitted.x).toBeCloseTo(before.x, 0);
+  expect(fitted.y).toBeCloseTo(before.y, 0);
+
+  await page.getByRole("button", { name: "Grid view", exact: true }).click();
+  const overview = page.getByTestId("slide-overview");
+  await expect(overview).toBeVisible();
+  // Grid view unmounts Canvas; both thumbnail surfaces must retain the shared slide styles.
+  await expect(overview.locator(".sp-el").first()).toHaveCSS("position", "absolute");
+  await expect(page.getByTestId("slide-thumb").first().locator(".sp-el").first()).toHaveCSS("position", "absolute");
+  await overview.getByRole("button", { name: /^Open slide / }).first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(overview).toBeVisible();
+  await overview.getByRole("button", { name: /^Open slide / }).first().dragTo(overview.getByRole("button", { name: /^Open slide / }).last(), { targetPosition: { x: 210, y: 50 } });
+  await settled(page);
+  await expect.poll(async () => (await deckJson(context, deck)).slides.map(s => s.id)).toEqual(["s_view02", "s_view03", first]);
+  await overview.getByRole("button", { name: /^Open slide / }).first().click();
+  await expect(canvas).toHaveAttribute("data-slide-id", "s_view02");
+  await expect(page.getByTestId("select-tool")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("hand-tool")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("comment-mode")).toHaveAttribute("aria-pressed", "false");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("new-slide tiles match thumbnail sizes and append after the last slide", async ({ browser }) => {
+  const { context, page, errors } = await signedIn(browser, "carbon");
+  const deck = await createDeck(context, "Append from the end tile");
+  const first = (await deckJson(context, deck)).slides[0]!.id;
+  await edit(context, deck, [{ op: "add_slide", after: first, slide: { id: "s_tilelast", layout: "blank", elements: [] } }]);
+  await openDeck(page, deck);
+  await page.getByTestId("slide-thumb").first().click();
+  const thumbnail = (await page.getByTestId("slide-thumb").last().locator(".sp-slide").boundingBox())!;
+  const tile = page.getByTestId("new-slide-tile");
+  const bounds = (await tile.boundingBox())!;
+  expect(bounds.width).toBeCloseTo(thumbnail.width, 0);
+  expect(bounds.height).toBeCloseTo(thumbnail.height, 0);
+  expect(bounds.y).toBeGreaterThan(thumbnail.y);
+  await page.getByTestId("new-slide").click();
+  await settled(page);
+  const afterList = (await deckJson(context, deck)).slides.map(slide => slide.id);
+  expect(afterList).toHaveLength(3);
+  expect(afterList.slice(0, 2)).toEqual([first, "s_tilelast"]);
+
+  await page.getByTestId("slide-thumb").first().click();
+  await page.getByRole("button", { name: "Grid view", exact: true }).click();
+  const overview = page.getByTestId("slide-overview");
+  const gridThumb = (await overview.getByRole("button", { name: /^Open slide / }).first().locator(".sp-slide").boundingBox())!;
+  const gridTile = (await page.getByTestId("new-slide-overview-tile").boundingBox())!;
+  expect(gridTile.width).toBeCloseTo(gridThumb.width, 0);
+  expect(gridTile.height).toBeCloseTo(gridThumb.height, 0);
+  await page.getByTestId("new-slide-overview").click();
+  await settled(page);
+  const afterGrid = (await deckJson(context, deck)).slides.map(slide => slide.id);
+  expect(afterGrid).toHaveLength(4);
+  expect(afterGrid.slice(0, 3)).toEqual(afterList);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("undo and redo, find and replace", async ({ browser }) => {
   const { context, page, errors } = await signedIn(browser, "carbon");
   const deck = await createDeck(context, "Tools");
@@ -42,8 +186,10 @@ test("undo and redo, find and replace", async ({ browser }) => {
   await openDeck(page, deck);
 
   // Undo and redo an insert.
-  await page.getByTestId("insert-shape").click();
+  await page.getByTestId("choose-shape").click();
+  await page.getByRole("menuitem", { name: "More shapes", exact: true }).click();
   await page.locator('[data-shape="diamond"]').click();
+  await drawArmedShape(page);
   await expect(page.locator('[data-kind="shape"]')).toHaveCount(1);
   await page.mouse.click(5, 300);
   await page.keyboard.press(`${MOD}+z`);
@@ -188,12 +334,12 @@ test("the master: what is put there shows under every slide that shows it", asyn
   const { context, page, errors } = await signedIn(browser, "carbon");
   const deck = await createDeck(context, "Master");
   await openDeck(page, deck);
-  await page.getByTestId("new-slide").click();
+  await page.getByTestId("new-slide-layout").click();
   await page.getByRole("dialog").getByRole("button", { name: "Blank" }).click();
   await page.getByTestId("edit-master").click();
   await expect(page.getByRole("button", { name: "Editing the master · Done" })).toBeVisible();
   await page.getByTestId("insert-shape").click();
-  await page.locator('[data-shape="rect"]').click();
+  await drawArmedShape(page);
   for (const [label, value] of [["X", "40"], ["Y", "1000"], ["W", "1840"], ["H", "40"]] as const) {
     await page.getByLabel(label, { exact: true }).fill(value);
     await page.getByLabel(label, { exact: true }).press("Enter");

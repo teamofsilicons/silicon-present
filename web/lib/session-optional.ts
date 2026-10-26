@@ -24,6 +24,7 @@ import { ApiError, errorFromResponse, networkError, type ApiErrorInit } from "./
 import { serverEnv } from "./server/env";
 import { getSession, type PublicSession } from "./server/rsc";
 import { clientHeaders, sessionCookieName, sessionFromCookie } from "./server/session";
+import { viewerEmailCookieName, viewerEmailHeaders } from "./server/viewer-email";
 
 export type { PublicSession };
 
@@ -60,7 +61,7 @@ export async function optionalApiFetch<T>(path: string, init: { query?: Record<s
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(init.query ?? {})) if (value !== undefined && value !== "") params.set(key, String(value));
   const url = `${env.appApiUrl}${path}${params.size ? `?${params.toString()}` : ""}`;
-  const outgoing: Record<string, string> = { Accept: "application/json", ...clientHeaders({ headers: await headers() }) };
+  const outgoing: Record<string, string> = { Accept: "application/json", ...clientHeaders({ headers: await headers() }), ...viewerEmailHeaders(store.get(viewerEmailCookieName())?.value) };
   if (signedIn) outgoing.Authorization = `Bearer ${session!.at}`;
   let response: Response;
   try {

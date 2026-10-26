@@ -41,6 +41,15 @@ export function FollowView({ presentation, deck: initialDeck, title }: { present
   useEffect(() => {
     if (presentation.endedAt) return;
     const source = new EventSource(presentationLiveUrl(presentation.id));
+    let disposed = false;
+    const checkEmailRequirement = () => {
+      void fetch(`/api/v1/presentations/${encodeURIComponent(presentation.id)}`, { cache: "no-store" })
+        .then(async response => {
+          if (response.status !== 403) return;
+          const body = await response.json().catch(() => null);
+          if (!disposed && body?.error?.code === "email_required") { source.close(); window.location.reload(); }
+        }).catch(() => { /* EventSource retries ordinary network failures. */ });
+    };
     const apply = async (raw: string) => {
       const state = readState(raw);
       if (!state) return;
@@ -64,13 +73,20 @@ export function FollowView({ presentation, deck: initialDeck, title }: { present
     };
     source.addEventListener("state", event => void apply((event as MessageEvent<string>).data));
     source.addEventListener("message", event => void apply((event as MessageEvent<string>).data));
-    source.addEventListener("ended", () => {
+    source.addEventListener("ended", event => {
       setLive("ended");
       source.close();
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data);
+        if (payload.role === null) checkEmailRequirement();
+      } catch { /* A normal end needs no further request. */ }
     });
     source.onopen = () => setLive(current => (current === "ended" ? current : "live"));
-    source.onerror = () => setLive(current => (current === "ended" ? current : "waiting"));
-    return () => source.close();
+    source.onerror = () => {
+      setLive(current => (current === "ended" ? current : "waiting"));
+      checkEmailRequirement();
+    };
+    return () => { disposed = true; source.close(); };
   }, [presentation.id, presentation.deck, presentation.endedAt]);
 
   const index = deck.slides.filter(slide => !slide.skipped).findIndex(slide => slide.id === move.to.slide);

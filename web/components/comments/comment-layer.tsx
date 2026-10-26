@@ -7,45 +7,17 @@
  * zoom.
  */
 import type { Element, Slide } from "@silicon-present/deck";
-import { fromElementFraction } from "@/lib/editor/geometry";
+import { Plus } from "lucide-react";
+import { placeAnchor, type PlacedAnchor } from "@/lib/editor/comment-anchors";
 import { useStore } from "@/lib/editor/store";
-import type { Anchor, Thread } from "@/lib/editor/types";
+import type { Thread } from "@/lib/editor/types";
 import { useAbilities, useEditor, useUi } from "@/components/editor/editor-context";
 import { CommentComposer } from "./comment-composer";
 import { ThreadView } from "./thread-view";
 import styles from "./comments.module.css";
 
-interface Placed {
+interface Placed extends PlacedAnchor {
   thread: Thread;
-  pin: { x: number; y: number };
-  area: { x: number; y: number; w: number; h: number } | null;
-}
-
-/** Where an anchor is on the slide right now (null for slide and deck comments, which live in the list). */
-export function placeAnchor(anchor: Anchor, elements: Element[]): Omit<Placed, "thread"> | null {
-  const element = "element" in anchor && anchor.element ? elements.find(e => e.id === anchor.element) : undefined;
-  switch (anchor.kind) {
-    case "point": {
-      if (element && typeof anchor.ex === "number" && typeof anchor.ey === "number") return { pin: fromElementFraction(element, anchor.ex, anchor.ey), area: null };
-      return { pin: { x: anchor.x, y: anchor.y }, area: null };
-    }
-    case "area": {
-      if (element && typeof anchor.ex === "number" && typeof anchor.ey === "number") {
-        const w = (anchor.ew ?? anchor.w / Math.max(1, element.w)) * element.w;
-        const h = (anchor.eh ?? anchor.h / Math.max(1, element.h)) * element.h;
-        const p = fromElementFraction({ ...element, rotation: 0 }, anchor.ex, anchor.ey);
-        return { pin: { x: p.x + w, y: p.y }, area: { x: p.x, y: p.y, w, h } };
-      }
-      return { pin: { x: anchor.x + anchor.w, y: anchor.y }, area: { x: anchor.x, y: anchor.y, w: anchor.w, h: anchor.h } };
-    }
-    case "element":
-    case "text": {
-      if (!element) return null;
-      return { pin: { x: element.x + element.w, y: element.y }, area: { x: element.x, y: element.y, w: element.w, h: element.h } };
-    }
-    default:
-      return null;
-  }
 }
 
 export function CommentLayer({ slide, elements, scale, phone = false }: { slide: Slide; elements: Element[]; scale: number; phone?: boolean }) {
@@ -66,11 +38,22 @@ export function CommentLayer({ slide, elements, scale, phone = false }: { slide:
   }
   const active = placed.find(p => p.thread.id === activeThread);
   const at = (x: number, y: number) => ({ left: x * scale, top: y * scale });
-  const floating = composer && composer.at ? composer : null;
+  const areaStyle = (area: NonNullable<PlacedAnchor["area"]>) => ({ ...at(area.x, area.y), width: area.w * scale, height: area.h * scale, transform: area.rotation ? `rotate(${area.rotation}deg)` : undefined });
+  // The draft belongs to its slide, and follows its target just like a posted thread.
+  const currentComposer = composer && composer.anchor.kind !== "deck" && composer.anchor.slide === slide.id ? composer : null;
+  const draft = currentComposer ? placeAnchor(currentComposer.anchor, elements) : null;
+  const floating = currentComposer?.at ? currentComposer : null;
+  const floatingAt = draft?.pin ?? floating?.at;
 
   return (
     <div className="comment-layer" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      {active?.area ? <div className={styles.area} style={{ ...at(active.area.x, active.area.y), width: active.area.w * scale, height: active.area.h * scale }} /> : null}
+      {active?.area ? <div className={styles.area} style={areaStyle(active.area)} /> : null}
+      {draft ? (
+        <div className={styles.draftMarker} data-testid="comment-draft-anchor" data-anchor-kind={currentComposer!.anchor.kind} role="img" aria-label="New comment placement">
+          {draft.area ? <div className={`${styles.area} ${styles.draftArea}`} data-testid="comment-draft-area" style={areaStyle(draft.area)} /> : null}
+          <span className={`${styles.pin} ${styles.draftPin}`} data-testid="comment-draft-pin" style={at(draft.pin.x, draft.pin.y)} aria-hidden="true"><Plus size={16} strokeWidth={2} /></span>
+        </div>
+      ) : null}
       {placed.map(({ thread, pin }, index) => (
         <button
           key={thread.id}
@@ -95,8 +78,8 @@ export function CommentLayer({ slide, elements, scale, phone = false }: { slide:
           {thread.comments.length}
         </button>
       ))}
-      {floating ? (
-        <div className={styles.floating} data-no-canvas="" style={clampedAt(floating.at!.x * scale + 12, floating.at!.y * scale)} onPointerDown={event => event.stopPropagation()}>
+      {floating && floatingAt ? (
+        <div className={styles.floating} data-no-canvas="" style={clampedAt(floatingAt.x * scale + 12, floatingAt.y * scale)} onPointerDown={event => event.stopPropagation()}>
           <CommentComposer editor={editor} anchor={floating.anchor} onDone={() => editor.ui.set({ composer: null })} />
         </div>
       ) : null}

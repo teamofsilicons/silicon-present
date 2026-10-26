@@ -16,7 +16,7 @@ export type DeckLoad = { deck: Deck; content: DeckJson; signedIn: boolean; error
 export async function loadDeckForViewing(id: string, returnTo: string): Promise<DeckLoad> {
   const meta = await optionalApiFetch<unknown>(`/v1/decks/${encodeURIComponent(id)}`);
   if (meta.error) {
-    if (!meta.signedIn && [401, 403, 404].includes(meta.error.status)) redirect(signInHref(returnTo));
+    if (meta.error.code !== "email_required" && !meta.signedIn && [401, 403, 404].includes(meta.error.status)) redirect(signInHref(returnTo));
     return { deck: null, content: null, signedIn: meta.signedIn, error: meta.error };
   }
   const content = await optionalApiFetch<DeckJson>(`/v1/decks/${encodeURIComponent(id)}/content`, { query: { format: "json" } });

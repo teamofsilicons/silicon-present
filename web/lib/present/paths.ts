@@ -15,9 +15,19 @@ export interface Listing {
  * for `folder=root` / `parent=root` (without it, scope=mine lists every deck and folder the caller owns).
  */
 export const listPaths = {
-  decks: (scope: Scope, folder?: string | null) => ({ path: "/v1/decks", query: { scope, folder: folder ?? (scope === "mine" ? "root" : undefined) } }),
-  folders: (scope: Scope, parent?: string | null) => ({ path: "/v1/folders", query: { scope, parent: parent ?? (scope === "mine" ? "root" : undefined) } }),
+  decks: (scope: Exclude<Scope, "all">, folder?: string | null) => ({ path: "/v1/decks", query: { scope, folder: folder ?? (scope === "mine" ? "root" : undefined) } }),
+  folders: (scope: Exclude<Scope, "all">, parent?: string | null) => ({ path: "/v1/folders", query: { scope, parent: parent ?? (scope === "mine" ? "root" : undefined) } }),
 };
+
+/** Home combines the two top-level listings, preserving roles and showing each item once. */
+export function homeListing(mine: Listing, shared: Listing): Listing {
+  const unique = <T extends { id: string }>(items: T[]): T[] => [...new Map(items.map(item => [item.id, item])).values()];
+  const editedAt = (deck: Deck) => Date.parse(deck.updatedAt ?? deck.createdAt ?? "") || 0;
+  return {
+    decks: unique([...mine.decks, ...shared.decks]).sort((a, b) => editedAt(b) - editedAt(a) || a.id.localeCompare(b.id)),
+    folders: unique([...mine.folders, ...shared.folders]).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+  };
+}
 
 /**
  * At the top of Shared with me the service lists every deck shared with the caller, also those inside shared folders;

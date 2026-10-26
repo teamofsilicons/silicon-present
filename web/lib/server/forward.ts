@@ -27,6 +27,7 @@ export const FORWARD_REQUEST_HEADERS = [
 export const RELAY_RESPONSE_HEADERS = [
   "content-type",
   "content-disposition",
+  "content-security-policy",
   "content-language",
   "content-range",
   "accept-ranges",
@@ -47,7 +48,7 @@ const lower = (names: readonly string[] | undefined) => (names ?? []).map(name =
 export function forwardRequestHeaders(incoming: Headers, token: string | null, client: Record<string, string>, extra: readonly string[] = appConfig.api?.forwardHeaders ?? []): Headers {
   const out = new Headers();
   for (const name of [...FORWARD_REQUEST_HEADERS, ...lower(extra)]) {
-    if (name === "authorization" || name === "cookie" || name === "host") continue;
+    if (name === "authorization" || name === "cookie" || name === "host" || name === "x-present-viewer-email") continue;
     const value = incoming.get(name);
     if (value !== null) out.set(name, value);
   }

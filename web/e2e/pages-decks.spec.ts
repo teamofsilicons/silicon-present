@@ -43,14 +43,14 @@ test("a new folder, a deck inside it, and breadcrumbs back up", async () => {
   await expect(page).toHaveURL(/\/decks\/[A-Za-z0-9]+(\?.*)?$/);
 
   await page.goBack();
-  await expect(page.getByRole("link", { name: `Roadmap ${run}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Roadmap ${run}`, exact: true })).toBeVisible();
   const crumbs = page.getByRole("navigation", { name: "Folder path" });
   await expect(crumbs.getByText(`Plans ${run}`)).toHaveAttribute("aria-current", "page");
-  await crumbs.getByRole("link", { name: "My decks" }).click();
+  await crumbs.getByRole("link", { name: "All decks" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Decks" })).toBeVisible();
-  // At the top of My decks the deck is inside its folder, not beside it.
+  // On home the deck is inside its folder, not beside it.
   await expect(page.getByRole("link", { name: `Plans ${run}`, exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: `Roadmap ${run}` })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: `Roadmap ${run}`, exact: true })).toHaveCount(0);
 });
 
 test("rename and move from a row's menu", async () => {
@@ -62,7 +62,7 @@ test("rename and move from a row's menu", async () => {
   const rename = page.getByRole("dialog", { name: "Rename deck" });
   await rename.getByLabel("Title").fill(`Roadmap 2027 ${run}`);
   await rename.getByRole("button", { name: "Rename" }).click();
-  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}`, exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: `More actions for Roadmap 2027 ${run}` }).click();
   await page.getByRole("menuitem", { name: "Move", exact: true }).click();
@@ -71,7 +71,7 @@ test("rename and move from a row's menu", async () => {
   await expect(move).toBeHidden();
   await expect(page.getByText("This folder is empty")).toBeVisible();
   await page.goto("/decks");
-  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}`, exact: true })).toBeVisible();
 
   // Rename the folder too.
   await page.getByRole("button", { name: `More actions for Plans ${run}` }).click();
@@ -88,11 +88,11 @@ test("search finds a deck by the words on its slides", async () => {
   await deckWithSlides(context, id, [{ id: "s_srch01", title: `Pelican migration ${run}` }]);
   await page.goto("/decks");
   await page.getByRole("searchbox", { name: "Search decks" }).fill(`Pelican migration ${run}`);
-  await expect(page.getByRole("region", { name: "Search results" }).getByRole("link", { name: `Search target ${run}` })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Search results" }).getByRole("link", { name: `Search target ${run}`, exact: true })).toBeVisible();
   await page.getByRole("searchbox", { name: "Search decks" }).fill(`nothing-like-this-${run}`);
   await expect(page.getByText(`No deck matches “nothing-like-this-${run}”`)).toBeVisible();
   await page.getByRole("button", { name: "Clear the search" }).click();
-  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Roadmap 2027 ${run}`, exact: true })).toBeVisible();
 });
 
 test("trash, restore, and delete for good after typing the name", async () => {
@@ -102,14 +102,14 @@ test("trash, restore, and delete for good after typing the name", async () => {
   await page.goto("/decks");
   await page.getByRole("button", { name: `More actions for ${title}` }).click();
   await page.getByRole("menuitem", { name: "Move to trash" }).click();
-  await expect(page.getByRole("link", { name: title })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: title, exact: true })).toHaveCount(0);
 
   await page.getByRole("navigation", { name: "Present" }).getByRole("link", { name: "Trash" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Trash" })).toBeVisible();
   await page.getByRole("button", { name: `Restore ${title}` }).click();
   await expect(page.getByRole("button", { name: `Restore ${title}` })).toHaveCount(0);
   await page.goto("/decks");
-  await expect(page.getByRole("link", { name: title })).toBeVisible();
+  await expect(page.getByRole("link", { name: title, exact: true })).toBeVisible();
 
   await call(context, "DELETE", `/v1/decks/${id}`);
   await page.goto("/trash");

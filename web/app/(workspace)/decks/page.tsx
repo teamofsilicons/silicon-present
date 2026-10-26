@@ -1,6 +1,6 @@
 /**
- * /decks: My decks and Shared with me, folders inside them with breadcrumbs (`?folder=<id>`), search, a new deck, a new
- * folder and opening a file. `?scope=shared` is Shared with me. The first paint comes from the service here; the list
+ * /decks: owned and shared decks together, folders with breadcrumbs (`?folder=<id>`), search, a new deck, a new
+ * folder and opening a file. `?scope=mine` and `?scope=shared` filter the home list. The first paint comes from the service here; the list
  * then lives in DecksView (components/decks).
  */
 import type { Metadata } from "next";
@@ -15,18 +15,18 @@ export const metadata: Metadata = { title: "Decks" };
 
 export default async function DecksPage({ searchParams }: PageProps<"/decks">) {
   const params = await searchParams;
-  const scope: Scope = params.scope === "shared" ? "shared" : "mine";
+  const scope: Scope = params.scope === "shared" ? "shared" : params.scope === "mine" ? "mine" : "all";
   const folder = typeof params.folder === "string" && params.folder ? params.folder : null;
   const [session, listing, path] = await Promise.all([requireSession(), loadPlace(scope, folder), folder ? loadFolderPath(folder) : Promise.resolve(null)]);
   return (
-    <Page width="reading">
+    <Page>
       {listing.error ? (
         <>
           <PageHeader title={scope === "shared" ? "Shared with me" : "Decks"} />
           <ErrorAlert error={listing.error} title="Your decks could not be loaded" />
         </>
       ) : (
-        <DecksView key={`${scope}:${folder ?? ""}`} scope={scope} folder={folder} path={path && !path.error ? path.data : null} initial={listing.data} me={{ uuid: session.account.uuid, id: session.account.id }} />
+        <DecksView key={`${session.account.uuid}:${scope}:${folder ?? ""}`} scope={scope} folder={folder} path={path && !path.error ? path.data : null} initial={listing.data} me={{ uuid: session.account.uuid, id: session.account.id }} />
       )}
     </Page>
   );

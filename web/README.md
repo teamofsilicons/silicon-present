@@ -47,7 +47,7 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
 | Address | What |
 | --- | --- |
 | `/` | the landing page (signed out); signed in it goes to `/decks` |
-| `/decks` | My decks; `?scope=shared` Shared with me; `?folder=<id>` one folder, with breadcrumbs. New deck, new folder, open a file (import with progress), search, and per row rename, share, move, transfer, move to trash |
+| `/decks` | All decks (owned and shared); `?scope=mine` My decks; `?scope=shared` Shared with me; `?folder=<id>` one folder, with breadcrumbs. New deck, new folder, open a file (import with progress), search, and per row rename, share, move, transfer, move to trash |
 | `/trash` | restore, or delete for good (asks to type the name) |
 | `/transfers` | accept or decline what was offered to you, cancel what you offered |
 | `/decks/[id]` | the editor (and its view and comment mode); owned by the editor (`app/(editor)`) |
@@ -56,6 +56,7 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
 | `/decks/[id]/presenter` | presenter view: notes, current and next slide, timer, follow link; in step with present mode over a BroadcastChannel |
 | `/p/[presentation]` | follow a presentation live (SSE through the proxy; public decks signed out) |
 | `/sandbox/html` | the page every HTML element of a slide runs in (see below) |
+| `/sandbox/html-edit` | the page an HTML element is edited inside in the editor: its html/css without its JS (see below) |
 
 ## For the editor: what to import
 
@@ -67,7 +68,8 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
   `<ShareDialog ... open={open} onOpenChange={setOpen} onChanged={access => ...} />`. It reads and writes the service
   itself (no query client needed) and needs the kit's toast stack (`Providers`).
 - **Export menu**: `import { ExportMenu } from "@/components/export"`. `<ExportMenu deck={id} />` gives the whole
-  deck in every format; `version` downloads the deck as it was; `slide` adds "This slide" as one PNG or JPG. Plain
+  deck as PowerPoint, ODP, PDF or plain text; `version` downloads the deck as it was; `slide` enables JPEG, PNG and SVG
+  downloads of the current slide. Image choices are disabled without a current slide. Plain
   download links through the proxy (works for public visitors too).
 - **Public decks signed out**: `lib/session-optional.ts`.
   - `proxy.ts` lets `/decks/[id]`, `/decks/[id]/present` and `/p/[id]` render without a session (`isPublicPage`).
@@ -80,11 +82,21 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
   - A layout for those pages must not call `requireSession()`; mount
     `<Providers session={sessionView(session)}>` (see `app/(present)/layout.tsx`).
 - **Slides on a page**: `components/slides/slide-view.tsx` (`SlideStyles` once per page, `SlideView` per slide, scaled
-  to its box) wraps `@silicon-present/render`.
+  to its box) wraps `@silicon-present/render`. Thumbnails use `html="preview"`: HTML/CSS/JS render in the same
+  opaque-origin sandbox as the main slide, with an inert content layer so preview clicks select/open the slide.
+  Frames exist only near the visible viewport; scrolling away stops their scripts. `html="static"` remains the
+  explicit code-placeholder mode for paused content.
 - **HTML elements must run through `/sandbox/html`**: a `srcdoc` iframe inherits this site's CSP (scripts by nonce
   only), so an element's JS would never run in place. After putting `renderSlideHtml(...)` markup in the page, call
   `liveHtmlElements(container)` from `lib/slides/sandbox.ts` (it returns a cleanup). The frames stay
   `sandbox="allow-scripts"` with an opaque origin. Images, video, audio and Google fonts load from anywhere (CSP).
+- **Editing inside an HTML element** (double-click it, or Edit inside in the design panel): `components/editor/html-inside.tsx`
+  draws the element's own html and css in a `/sandbox/html-edit` frame (same sandbox; its policy runs only that page's
+  script, so the element's JS and inline handlers never run there). A click selects a part, a drag moves it (a
+  `translate` on that part), a double-click on text types into it; the toolbar restyles or deletes the part. Every
+  change is spliced into the element's `html` source (`lib/editor/html-inside.ts`: parts are numbered by start tag,
+  each splice is checked against DOMParser), one undo step, live for everyone. Messages from the frame are untrusted:
+  checked by source, origin, revision and shape, and never put into the page as HTML.
 
 ## The web kit
 

@@ -290,7 +290,7 @@ function VersionPanel({ deck, version, number, latest, canEdit, onRestore, onCha
           <MetaLine className={styles.versionMeta} parts={[version ? who(version.author) : null, version?.endedAt ? <LocalTime value={version.endedAt} format="datetime" /> : null, json ? `${json.slides.length} ${json.slides.length === 1 ? "slide" : "slides"}` : null]} />
         </div>
         <div className={styles.panelActions}>
-          <ExportMenu deck={deck.id} version={number} />
+          <ExportMenu deck={deck.id} version={number} slide={slide?.id} />
           {canEdit && !isCurrent && version ? <Button size="sm" onClick={() => onRestore(version)}><RotateCcw size={16} strokeWidth={1.75} aria-hidden="true" />Restore this version</Button> : null}
         </div>
       </div>
@@ -315,7 +315,7 @@ function VersionPanel({ deck, version, number, latest, canEdit, onRestore, onCha
                 {json.slides.map((item, index) => (
                   <li key={item.id}>
                     <button type="button" className={styles.thumb} data-sq="clip" aria-current={item.id === slide.id ? "true" : undefined} onClick={() => { setSlideId(item.id); setElement(null); }}>
-                      <span aria-hidden="true" className={styles.thumbPicture}><SlideView deck={json} slide={item.id} html="static" media="static" links={false} /></span>
+                      <span aria-hidden="true" className={styles.thumbPicture}><SlideView deck={json} slide={item.id} html="preview" media="static" links={false} /></span>
                       <span className={styles.thumbNumber}><span className="sr-only">Slide </span>{index + 1}{item.skipped ? <span className="sr-only"> (skipped)</span> : null}</span>
                     </button>
                   </li>
@@ -381,11 +381,11 @@ function CompareRow({ slide, before, after }: { slide: Comparison["slides"][numb
       <div className={styles.pair}>
         <figure className={styles.side}>
           <figcaption>Before</figcaption>
-          {before && inBefore ? <div data-sq="clip" className={styles.small}><SlideView deck={before} slide={inBefore.id} html="static" media="static" links={false} /></div> : <div className={styles.none}>Not there</div>}
+          {before && inBefore ? <div data-sq="clip" className={styles.small}><SlideView deck={before} slide={inBefore.id} html="preview" media="static" links={false} /></div> : <div className={styles.none}>Not there</div>}
         </figure>
         <figure className={styles.side}>
           <figcaption>After</figcaption>
-          {after && inAfter ? <div data-sq="clip" className={styles.small}><SlideView deck={after} slide={inAfter.id} html="static" media="static" links={false} /></div> : <div className={styles.none}>Removed</div>}
+          {after && inAfter ? <div data-sq="clip" className={styles.small}><SlideView deck={after} slide={inAfter.id} html="preview" media="static" links={false} /></div> : <div className={styles.none}>Removed</div>}
         </figure>
       </div>
       {slide.elements.length ? (

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * One place of decks: the top of My decks or Shared with me, or one folder (with its breadcrumbs). One quiet list,
- * folders first, then decks; each row has a "More actions" menu (open, rename, share, move, transfer, move to trash) as
+ * One place of decks: All decks (owned and shared), My decks, Shared with me, or one folder with its breadcrumbs. Folders followed
+ * by first-slide cards; each card has a Present shortcut and a "More actions" menu as
  * the caller's role allows. Above it: New deck (the one primary action), New folder, Open a file (a new deck from any
  * supported file, with progress), and search across every deck the caller can open.
  */
@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, ChevronRight, ExternalLink, Folder as FolderIcon, FolderInput, FolderPlus, History as HistoryIcon, MonitorPlay, Pencil, Plus, Presentation, Trash2, Upload, UserPlus } from "lucide-react";
+import { ArrowRightLeft, ChevronRight, ExternalLink, Folder as FolderIcon, FolderInput, FolderPlus, History as HistoryIcon, MonitorPlay, Pencil, Plus, Trash2, Upload, UserPlus } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { Progress } from "@/components/arc/progress/progress";
 import { SearchField } from "@/components/arc/search-field/search-field";
@@ -28,6 +28,7 @@ import { ALWAYS_FRESH } from "@/lib/present/fresh";
 import { startTransfer } from "@/lib/present/transfers";
 import { can, IMPORT_ACCEPT, type Deck, type Folder, type FolderPath, type ResourceKind, type Scope, type SearchHit } from "@/lib/present/types";
 import { MoveDialog, NameDialog, TransferDialog } from "./dialogs";
+import { DeckThumbnail } from "./deck-thumbnail";
 import styles from "./decks.module.css";
 
 export interface DecksViewProps {
@@ -53,7 +54,7 @@ const nameOf = (entry: Item) => (entry.kind === "deck" ? entry.item.title || "Un
 /** Where a listing lives on this site. */
 export function placeHref(scope: Scope, folder?: string | null): string {
   const query = new URLSearchParams();
-  if (scope === "shared") query.set("scope", "shared");
+  if (scope !== "all") query.set("scope", scope);
   if (folder) query.set("folder", folder);
   const text = query.toString();
   return `/decks${text ? `?${text}` : ""}`;
@@ -68,7 +69,7 @@ function roleOf(entry: Item, me: DecksViewProps["me"]) {
 export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const queryKey = ["place", scope, folder ?? ""] as const;
+  const queryKey = ["place", scope, folder ?? "", me.uuid] as const;
   const listing = useQuery({ queryKey, queryFn: ({ signal }) => listPlace(scope, folder, signal), initialData: initial, ...ALWAYS_FRESH });
   const [dialog, setDialog] = useState<Dialog>(null);
   const [q, setQ] = useState("");
@@ -144,8 +145,8 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
     ...listing.data.decks.map(item => ({ kind: "deck" as const, item })),
   ];
   const here = path?.folder ?? null;
-  const hereRole = here ? roleOf({ kind: "folder", item: here }, me) : scope === "mine" ? "owner" : null;
-  const canAddHere = scope === "mine" || can.edit(hereRole);
+  const hereRole = here ? roleOf({ kind: "folder", item: here }, me) : !folder && (scope === "all" || scope === "mine") ? "owner" : null;
+  const canAddHere = can.edit(hereRole);
   const title = here ? here.name || "Untitled folder" : scope === "shared" ? "Shared with me" : "Decks";
 
   function menuFor(entry: Item): ActionMenuItem[] {
@@ -168,6 +169,41 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
 
   const target = dialog && "target" in dialog ? dialog.target : null;
 
+  function deckCard(deck: Deck, hit?: SearchHit) {
+    const entry: Item = { kind: "deck", item: deck };
+    const name = nameOf(entry);
+    const href = `/decks/${encodeURIComponent(deck.id)}`;
+    const when = deck.updatedAt ?? deck.createdAt;
+    const mine = deck.owner?.uuid === me.uuid || deck.owner?.id === me.id;
+    return (
+      <li key={deck.id} className={styles.deckCard} data-sq="surface" data-kind="deck">
+        <Link className={styles.previewLink} href={href} prefetch={false} aria-label={`Open ${name}`} tabIndex={-1}>
+          <DeckThumbnail deck={deck} accountId={me.uuid} />
+        </Link>
+        <div className={styles.cardBody}>
+          <Link className={styles.cardTitle} href={href} prefetch={false} title={name}>{name}</Link>
+          <div className={styles.cardMeta}>
+            <MetaLine parts={[
+              deck.slideCount !== null ? `${deck.slideCount} ${deck.slideCount === 1 ? "slide" : "slides"}` : null,
+              deck.public !== "off" ? "Public" : null,
+              when ? <LocalTime value={when} prefix="Edited " /> : null,
+            ]} />
+            {deck.owner && !mine ? <span>Owner {deck.owner.id}</span> : null}
+            {deck.creator && deck.owner && deck.creator.uuid !== deck.owner.uuid ? <span>Made by {deck.creator.id}</span> : null}
+            {hit?.where ? <span>In {hit.where}</span> : null}
+          </div>
+          {hit?.excerpt ? <p className={styles.cardExcerpt}>{hit.excerpt}</p> : null}
+          <div className={styles.cardActions}>
+            <Link href={`${href}/present`} prefetch={false} className={styles.presentLink} data-sq="surface" aria-label={`Present ${name}`}>
+              <MonitorPlay size={16} strokeWidth={1.75} aria-hidden="true" />Present
+            </Link>
+            <ActionMenu label={`More actions for ${name}`} iconOnly icon={<MoreIcon />} items={menuFor(entry)} />
+          </div>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <div className={styles.view}>
       <p className="sr-only" role="status" aria-live="polite">{notice}</p>
@@ -175,7 +211,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
         {path ? (
           <nav aria-label="Folder path" className={styles.crumbs}>
             <ol role="list">
-              <li><Link href={placeHref(scope)}>{scope === "shared" ? "Shared with me" : "My decks"}</Link></li>
+              <li><Link href={placeHref(scope)}>{scope === "shared" ? "Shared with me" : scope === "mine" ? "My decks" : "All decks"}</Link></li>
               {path.ancestors.map(ancestor => (
                 <li key={ancestor.id}><ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" /><Link href={placeHref(scope, ancestor.id)}>{ancestor.name || "Untitled folder"}</Link></li>
               ))}
@@ -212,7 +248,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
             label="Which decks"
             value={scope}
             onValueChange={value => router.push(placeHref(value as Scope))}
-            options={[{ value: "mine", label: "My decks" }, { value: "shared", label: "Shared with me" }]}
+            options={[{ value: "all", label: "All decks" }, { value: "mine", label: "My decks" }, { value: "shared", label: "Shared with me" }]}
           />
         )}
         <div className={styles.search}>
@@ -232,16 +268,8 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
         <section aria-label="Search results">
           {searchError ? <ErrorAlert error={searchError} title="Search did not work" /> : null}
           {hits && hits.length ? (
-            <ul role="list" className={styles.list}>
-              {hits.map(hit => (
-                <li key={hit.deck.id} className={styles.row}>
-                  <Presentation size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />
-                  <span className={styles.main}>
-                    <Link className={styles.name} href={`/decks/${encodeURIComponent(hit.deck.id)}`}>{hit.deck.title || "Untitled deck"}</Link>
-                    <MetaLine parts={[hit.deck.owner?.id ? `Owner ${hit.deck.owner.id}` : null, hit.where ? `In ${hit.where}` : null, hit.excerpt]} />
-                  </span>
-                </li>
-              ))}
+            <ul role="list" className={styles.cardGrid} aria-label="Search results">
+              {hits.map(hit => deckCard(hit.deck, hit))}
             </ul>
           ) : hits && current ? (
             <div className={styles.empty}>
@@ -254,32 +282,41 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
       ) : listing.error && !listing.data ? (
         <ErrorAlert error={listing.error} title="This list could not be loaded" />
       ) : items.length ? (
-        <ul role="list" className={styles.list} aria-label={title}>
-          {items.map(entry => {
-            const href = entry.kind === "deck" ? `/decks/${encodeURIComponent(entry.item.id)}` : placeHref(scope, entry.item.id);
-            const owner = entry.item.owner;
-            const creator = entry.item.creator;
-            const when = entry.kind === "deck" ? entry.item.updatedAt ?? entry.item.createdAt : entry.item.updatedAt ?? entry.item.createdAt;
-            const mine = owner?.uuid === me.uuid;
-            return (
-              <li key={`${entry.kind}:${entry.item.id}`} className={styles.row} data-kind={entry.kind}>
-                {entry.kind === "folder" ? <FolderIcon size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} /> : <Presentation size={18} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />}
-                <span className={styles.main}>
-                  <Link className={styles.name} href={href}>{nameOf(entry)}</Link>
-                  <MetaLine
-                    parts={[
-                      entry.kind === "folder" ? "Folder" : entry.item.public !== "off" ? "Public deck" : "Deck",
-                      owner && !mine ? `Owner ${owner.id}` : null,
-                      creator && owner && creator.uuid !== owner.uuid ? `Made by ${creator.id}` : null,
-                      when ? <LocalTime value={when} prefix={entry.kind === "deck" ? "Edited " : "Changed "} /> : null,
-                    ]}
-                  />
-                </span>
-                <ActionMenu label={`More actions for ${nameOf(entry)}`} iconOnly icon={<MoreIcon />} items={menuFor(entry)} />
-              </li>
-            );
-          })}
-        </ul>
+        <div className={styles.collections}>
+          {listing.data.folders.length ? (
+            <section className={styles.collection} aria-label="Folders">
+              <h2 className={styles.sectionTitle}>Folders</h2>
+              <ul role="list" className={styles.folderGrid}>
+                {listing.data.folders.map(item => {
+                  const entry: Item = { kind: "folder", item };
+                  const when = item.updatedAt ?? item.createdAt;
+                  return (
+                    <li key={item.id} className={styles.folderCard} data-sq="surface" data-kind="folder">
+                      <FolderIcon size={24} strokeWidth={1.75} aria-hidden="true" className={styles.icon} />
+                      <span className={styles.main}>
+                        <Link className={styles.name} href={placeHref(scope, item.id)}>{nameOf(entry)}</Link>
+                        <MetaLine parts={[
+                          item.owner && item.owner.uuid !== me.uuid ? `Owner ${item.owner.id}` : null,
+                          item.creator && item.owner && item.creator.uuid !== item.owner.uuid ? `Made by ${item.creator.id}` : null,
+                          when ? <LocalTime value={when} prefix="Changed " /> : null,
+                        ]} />
+                      </span>
+                      <ActionMenu label={`More actions for ${nameOf(entry)}`} iconOnly icon={<MoreIcon />} items={menuFor(entry)} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+          {listing.data.decks.length ? (
+            <section className={styles.collection} aria-label={title}>
+              {listing.data.folders.length ? <h2 className={styles.sectionTitle}>Presentations</h2> : null}
+              <ul role="list" className={styles.cardGrid} aria-label={title}>
+                {listing.data.decks.map(deck => deckCard(deck))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
       ) : (
         <div className={styles.empty}>
           <p className={styles.emptyTitle}>{here ? "This folder is empty" : scope === "shared" ? "Nothing is shared with you yet" : "No decks yet"}</p>

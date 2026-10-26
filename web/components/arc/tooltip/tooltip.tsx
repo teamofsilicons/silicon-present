@@ -11,6 +11,8 @@ export interface TooltipProps {
   content: ReactNode;
   children: ReactElement;
   side?: "top" | "bottom";
+  /** A short hint for a dense toolbar, kept close to its icon. */
+  compact?: boolean;
 }
 
 const DELAY = 250;
@@ -56,7 +58,7 @@ function TooltipText({ text }: { text: string }) {
   </motion.span>;
 }
 
-export function Tooltip({ content, children, side = "top" }: TooltipProps) {
+export function Tooltip({ content, children, side = "top", compact = false }: TooltipProps) {
   const isWarm = useSyncExternalStore(warmth.subscribe, warmth.get, () => false);
   // Controlled so the instant flag lands in the same render that mounts the content (Radix reports uncontrolled changes a frame late).
   const [open, setOpen] = useState(false);
@@ -70,7 +72,7 @@ export function Tooltip({ content, children, side = "top" }: TooltipProps) {
     <TooltipPrimitive.Root open={open} delayDuration={isWarm ? 0 : DELAY} onOpenChange={next => { if (next) setInstant(warmth.get()); setOpen(next); }}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Content className={styles.tooltip} data-sq="surface" data-instant={instant || undefined} side={side} sideOffset={8} collisionPadding={12}>
+        <TooltipPrimitive.Content className={styles.tooltip} data-sq="surface" data-compact={compact || undefined} data-instant={instant || undefined} side={side} sideOffset={compact ? 6 : 8} collisionPadding={12}>
           {typeof content === "string" || typeof content === "number" ? <TooltipText text={String(content)}/> : content}
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>

@@ -14,6 +14,7 @@ import { luminance, type Element, type Theme } from "@silicon-present/deck";
 import type * as Y from "yjs";
 import type Quill from "quill/core";
 import { QuillBinding } from "@/lib/editor/quill-binding";
+import { applySavedTextFormat, SavedTextSelection } from "@/lib/editor/text-selection";
 import { encodeRelative } from "@/lib/editor/comments";
 import type { Anchor } from "@/lib/editor/types";
 import { useEditor } from "./editor-context";
@@ -97,6 +98,7 @@ export function TextEditor({ element, field, theme, readOnly, onPickText, onClos
     if (!text) return;
     let quill: Quill | null = null;
     let binding: QuillBinding | null = null;
+    let unobserveText: (() => void) | null = null;
     let disposed = false;
     const target = document.createElement("div");
     node.appendChild(target);
@@ -145,32 +147,48 @@ export function TextEditor({ element, field, theme, readOnly, onPickText, onClos
         },
       });
       binding = new QuillBinding(text, quill, !readOnly);
+      const selection = new SavedTextSelection(text);
       const publish = () => {
         if (!quill) return;
-        const range = quill.getSelection();
-        editor.textUi.set({ formats: range ? quill.getFormat(range) : {} });
+        const range = selection.resolve();
+        if (range) editor.textUi.set({ formats: quill.getFormat(range) });
       };
       if (!readOnly) {
         editor.textUi.set({
           quill: {
             format: (name, value) => {
               if (!quill) return;
-              const range = quill.getSelection(true);
-              if (range.length === 0 && ["align", "list", "indent", "heading", "lineHeight"].indexOf(name) < 0) {
-                // Nothing selected: format the whole text, as slide editors do for a text box.
-                quill.formatText(0, quill.getLength(), name, value, "user");
-              } else quill.format(name, value, "user");
+              applySavedTextFormat(quill, selection, name, value);
               publish();
             },
-            getFormat: () => (quill ? quill.getFormat() : {}),
+            getFormat: () => {
+              const range = selection.resolve();
+              return quill && range ? quill.getFormat(range) : {};
+            },
             focus: () => quill?.focus(),
             selectionAnchor,
           },
         });
-        quill.on("selection-change", publish);
-        quill.on("text-change", publish);
+        quill.on("selection-change", range => {
+          // Blur is not a new caret; keep both endpoints while a colour input has focus.
+          selection.remember(range);
+          publish();
+        });
+        quill.on("text-change", (_delta, _old, source) => {
+          if (source !== "user") return;
+          // Quill updates its caret after text-change. Capture local typing once that update has finished.
+          queueMicrotask(() => {
+            if (disposed || !quill) return;
+            selection.remember(quill.getSelection());
+            publish();
+          });
+        });
+        // QuillBinding applies Yjs changes silently before this observer. Refresh formats even while blurred.
+        text.observe(publish);
+        unobserveText = () => text.unobserve(publish);
         quill.focus();
         quill.setSelection(quill.getLength() - 1, 0, "silent");
+        selection.remember(quill.getSelection());
         publish();
       } else {
         // Picking a passage to comment on: the box opens as soon as the mouse lets go of a selection.
@@ -187,6 +205,7 @@ export function TextEditor({ element, field, theme, readOnly, onPickText, onClos
 
     return () => {
       disposed = true;
+      unobserveText?.();
       binding?.destroy();
       if (!readOnly) editor.textUi.set({ quill: null, formats: {} });
       target.remove();

@@ -64,5 +64,7 @@ Promise.all([
   // The page around it is untouched, and the element's frame is sandboxed without same-origin.
   await expect(ada.page.locator('[data-element-id="e_sandbx"] iframe')).toHaveAttribute("sandbox", "allow-scripts");
   expect(await ada.page.evaluate(() => localStorage.getItem("secret"))).toBe("the-viewers-secret");
+  // Home now renders HTML previews, so this intentional CORS/popup probe must not run in later page tests.
+  await call(ada.context, "DELETE", `/v1/decks/${deck}`);
   await ada.context.close();
 });

@@ -71,6 +71,7 @@ for (const [width, height, tag] of [[1440, 900, "desktop"], [390, 844, "phone"]]
       ["decks-folder", `/decks?folder=${folder}`],
       ["trash", "/trash"],
       ["transfers", "/transfers"],
+      ["editor", `/decks/${deck}`],
       ["history", `/decks/${deck}/history`],
       ["presenter", `/decks/${deck}/presenter`],
       ["present", `/decks/${deck}/present`],

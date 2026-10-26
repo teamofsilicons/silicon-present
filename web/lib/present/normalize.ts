@@ -5,7 +5,7 @@
  */
 import type { AccountKind } from "../format";
 import type {
-  Access, Account, Comparison, Deck, ElementChange, Folder, HistoryEvent, Member, MyRole, Presentation, PublicMode, Role,
+  Access, Account, Comparison, Deck, DeckViewer, ElementChange, Folder, HistoryEvent, Member, MyRole, Presentation, PublicMode, Role,
   SearchHit, SlideChange, Transfer, TransferState, Version,
 } from "./types";
 
@@ -81,6 +81,7 @@ export function toDeck(value: unknown): Deck {
     creator: toAccount(pick(deck, "creator", "createdBy")),
     folder: idOf(pick(deck, "folder", "folderId", "parent")),
     public: toMode(pick(deck, "public", "publicMode")),
+    requireEmail: pick(deck, "requireEmail") === true,
     role: toMyRole(pick(deck, "role", "myRole")),
     trashedAt: str(pick(deck, "trashedAt")),
     createdAt: str(pick(deck, "createdAt")),
@@ -124,8 +125,23 @@ export function toAccess(value: unknown): Access {
     owner: toAccount(pick(access, "owner")),
     members: listOf(pick(access, "members") ?? [], "members").map(toMember),
     public: toMode(pick(access, "public", "publicMode")),
+    requireEmail: pick(access, "requireEmail") === true,
     role: toMyRole(pick(access, "role", "myRole")),
   };
+}
+
+export function toDeckViewers(value: unknown): DeckViewer[] {
+  return listOf(value, "viewers").flatMap(item => {
+    if (!isObject(item) || typeof item.email !== "string" || !item.email.trim()) return [];
+    return [{
+      email: item.email.trim(),
+      // Unknown provenance must never be presented as an account email.
+      source: item.source === "account" ? "account" as const : "entered" as const,
+      firstViewedAt: str(pick(item, "firstViewedAt")),
+      lastViewedAt: str(pick(item, "lastViewedAt")),
+      views: Math.max(0, Math.floor(num(pick(item, "views")) ?? 0)),
+    }];
+  }).sort((a, b) => (Date.parse(b.lastViewedAt ?? "") || 0) - (Date.parse(a.lastViewedAt ?? "") || 0));
 }
 
 const transferStates = new Set(["pending", "accepted", "declined", "cancelled"]);

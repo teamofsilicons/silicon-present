@@ -7,7 +7,7 @@
  *   <SlideStyles deck={deck} />                                  once per page: the slide CSS and the deck's fonts
  *   <SlideView deck={deck} slide={id} />                          fills the width of its box, keeps the deck's ratio
  *   <SlideView deck={deck} slide={id} step={2} animate />         present mode: step 2 of the click animations, playing
- *   <SlideView deck={deck} slide={id} html="static" media="static" />   a cheap thumbnail
+ *   <SlideView deck={deck} slide={id} html="preview" media="static" />   a noninteractive thumbnail
  *
  * HTML elements run live in sandboxed frames (lib/slides/sandbox.ts) unless `html="static"`.
  */
@@ -31,7 +31,8 @@ export interface SlideViewProps {
   slide: string;
   step?: number | "all";
   animate?: boolean;
-  html?: RenderOptions["html"];
+  /** "preview" renders HTML in the same sandbox while nearby, without pointer or keyboard interaction. */
+  html?: RenderOptions["html"] | "preview";
   media?: RenderOptions["media"];
   links?: boolean;
   /** "width": as wide as the box, the deck's ratio (default). "contain": inside the box's width and height. */
@@ -50,7 +51,24 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [nearby, setNearby] = useState(false);
   const { width: W, height: H } = deck.size;
+
+  // A long slide strip must not keep every HTML game, animation or chart running offscreen.
+  // Removing a preview's frame stops its scripts; returning to it renders its initial state again.
+  useEffect(() => {
+    if (html !== "preview" || !box.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      const frame = requestAnimationFrame(() => setNearby(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    const observer = new IntersectionObserver(entries => {
+      setNearby(entries.some(entry => entry.isIntersecting));
+    }, { rootMargin: "80px" });
+    observer.observe(box.current);
+    return () => observer.disconnect();
+  }, [html]);
+  const renderedHtml = html === "preview" ? nearby ? "live" : "static" : html;
 
   useIsoLayoutEffect(() => {
     const node = box.current;
@@ -66,11 +84,11 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
   // its root (below), so HTML elements keep running instead of reloading at every click.
   const markup = useMemo(() => {
     try {
-      return renderSlideHtml(deck, slide, { assetUrl, step: 0, animate: false, html, media, links, includeCss: false });
+      return renderSlideHtml(deck, slide, { assetUrl, step: 0, animate: false, html: renderedHtml, media, links, includeCss: false });
     } catch (error) {
       return `<div style="padding:40px;font:24px system-ui;color:#5c6370">${String((error as Error).message).replace(/</g, "&lt;")}</div>`;
     }
-  }, [deck, slide, html, media, links]);
+  }, [deck, slide, renderedHtml, media, links]);
 
   useIsoLayoutEffect(() => {
     const root = stage.current?.querySelector<HTMLElement>(".sp-slide");
@@ -82,9 +100,9 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
 
   // HTML elements run in sandbox frames; re-run after every new markup.
   useEffect(() => {
-    if (!stage.current || html === "static") return;
+    if (!stage.current || renderedHtml === "static") return;
     return liveHtmlElements(stage.current);
-  }, [markup, html]);
+  }, [markup, renderedHtml]);
 
   useEffect(() => {
     const node = stage.current;
@@ -101,6 +119,7 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
       ref={box}
       className={[styles.box, className].filter(Boolean).join(" ")}
       data-fit={fit}
+      data-html-preview={html === "preview" ? "" : undefined}
       style={{ ...(fit === "width" ? { aspectRatio: `${W} / ${H}` } : null), ...style }}
       role={label ? "img" : undefined}
       aria-label={label}
@@ -112,6 +131,7 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
       <div
         ref={stage}
         className={styles.stage}
+        inert={html === "preview" || undefined}
         style={{ width: W, height: H, transform: `translate(${(size.width - shownWidth) / 2}px, ${fit === "contain" ? (size.height - shownHeight) / 2 : 0}px) scale(${scale || 0.0001})` }}
         dangerouslySetInnerHTML={{ __html: markup }}
       />

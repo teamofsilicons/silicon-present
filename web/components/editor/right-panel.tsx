@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import { Play, Plus, Minus, Upload, X } from "lucide-react";
-import { LAYOUTS, SHAPES, THEMES, layoutElements, newElementId, type Animation, type ChartType, type Element, type Slide, type Theme, type Transition } from "@silicon-present/deck";
+import { MASTER, LAYOUTS, SHAPES, THEMES, applyOps, getSize, getSlide, getTheme, type Animation, type ChartType, type Element, type Slide, type Theme, type Transition } from "@silicon-present/deck";
 import { slideSteps, transitionCss } from "@silicon-present/render";
 import { ThreadsPanel } from "@/components/comments/threads-panel";
 import { useAbilities, useCurrentSlide, useDeck, useEditor, useUi } from "./editor-context";
@@ -14,6 +14,9 @@ import { ColorButton, MiniSelect, NumberField, PanelSection, Row, Toggle } from 
 import { LayoutGlyph, LAYOUT_NAMES } from "./slide-strip";
 import { SHAPE_NAMES, themeSwatches } from "./toolbar";
 import type { RightPanel as Tab } from "@/lib/editor/editor";
+import { colorKey, commonTextColor, elementFillColor, elementTextColor } from "@/lib/editor/colors";
+import { layoutChangeOps } from "@/lib/editor/layout-change";
+import { useStore } from "@/lib/editor/store";
 import styles from "./editor.module.css";
 
 const TABS: { value: Tab; label: string }[] = [
@@ -34,7 +37,10 @@ export function RightPanel() {
       {tabs.length > 1 ? (
         <div className={styles.tabs} role="tablist" aria-label="Panel">
           {tabs.map(tab => (
-            <button key={tab.value} type="button" role="tab" aria-selected={current === tab.value} className={styles.tab} data-active={current === tab.value || undefined} onClick={() => editor.ui.set({ panel: tab.value })} data-testid={`tab-${tab.value}`}>
+            <button key={tab.value} type="button" role="tab" aria-selected={current === tab.value} className={styles.tab} data-active={current === tab.value || undefined} onClick={() => {
+              if (tab.value !== "comments") editor.setTool("select");
+              editor.ui.set({ panel: tab.value });
+            }} data-testid={`tab-${tab.value}`}>
               {tab.label}
             </button>
           ))}
@@ -66,11 +72,16 @@ function MultiPanel({ elements }: { elements: Element[] }) {
   const editor = useEditor();
   const deck = useDeck();
   const swatches = themeSwatches(deck.theme.colors as unknown as Record<string, string>);
+  const fills = elements.map(element => elementFillColor(element, deck.theme));
   return (
     <>
       <PanelSection title={`${elements.length} elements`}>
+        <TextColorRow elements={elements} />
         <Row label="Fill">
-          <ColorButton label="Fill" value={elements[0]!.style.fill ?? null} swatches={swatches} allowNone onChange={fill => editor.setStyle({ fill: fill ?? undefined })} />
+          <ColorButton label="Fill" value={fills[0]} mixed={fills.some(fill => (fill ? colorKey(fill) : null) !== (fills[0] ? colorKey(fills[0]) : null))} swatches={swatches} allowNone showValue onChange={fill => editor.setStyle({ fill: fill ?? "transparent" })} />
+        </Row>
+        <Row label="Border">
+          <ColorButton label="Border colour" value={elements[0]!.style.stroke ?? null} mixed={elements.some(element => element.style.stroke !== elements[0]!.style.stroke)} swatches={swatches} allowNone showValue onChange={stroke => editor.setStyle({ stroke: stroke ?? undefined })} />
         </Row>
         <Row label="Opacity">
           <NumberField label="%" value={Math.round((elements[0]!.style.opacity ?? 1) * 100)} min={0} max={100} onChange={v => editor.setStyle({ opacity: v / 100 })} />
@@ -78,6 +89,23 @@ function MultiPanel({ elements }: { elements: Element[] }) {
       </PanelSection>
     </>
   );
+}
+
+/** Text colour is useful before entering the text editor as well as while editing a selection. */
+function TextColorRow({ elements }: { elements: Element[] }) {
+  const editor = useEditor();
+  const deck = useDeck();
+  const editing = useUi(state => state.editing);
+  const formats = useStore(editor.textUi, state => state.formats) as Record<string, unknown>;
+  const texts = elements.filter(element => element.kind === "text" || element.kind === "shape");
+  if (!texts.length) return null;
+  const active = editing && texts.some(element => element.id === editing.elementId);
+  const color = active ? typeof formats.color === "string" ? formats.color : Array.isArray(formats.color) ? undefined : null : commonTextColor(texts.map(element => element.text));
+  const defaults = texts.map(element => elementTextColor(element, deck.theme));
+  const sameDefault = defaults.every(value => colorKey(value) === colorKey(defaults[0]!));
+  return <Row label="Text colour">
+    <ColorButton label="Text colour" value={color} mixed={color === undefined || color === null && !sameDefault} swatches={themeSwatches(deck.theme.colors as unknown as Record<string, string>)} allowNone noneLabel="Automatic" defaultColor={sameDefault ? defaults[0] : undefined} showValue onChange={next => editor.setTextFormat("color", next ?? false)} />
+  </Row>;
 }
 
 function ElementPanel({ element }: { element: Element }) {
@@ -89,6 +117,24 @@ function ElementPanel({ element }: { element: Element }) {
   const KIND: Record<string, string> = { text: "Text", shape: "Shape", image: "Image", video: "Video", audio: "Audio", table: "Table", chart: "Chart", html: "HTML element" };
   return (
     <>
+      {element.kind !== "audio" ? (
+        <PanelSection title="Appearance">
+          <TextColorRow elements={[element]} />
+          <Row label="Fill">
+            <ColorButton label="Fill" value={elementFillColor(element, deck.theme)} swatches={swatches} allowNone showValue onChange={fill => editor.setStyle({ fill: fill ?? "transparent" })} />
+          </Row>
+          <Row label="Border">
+            <ColorButton label="Border colour" value={s.stroke ?? null} swatches={swatches} allowNone onChange={stroke => editor.setStyle({ stroke: stroke ?? undefined })} />
+            <NumberField label="Width" value={s.strokeWidth ?? (s.stroke ? 2 : 0)} min={0} max={80} onChange={strokeWidth => editor.setStyle({ strokeWidth })} />
+          </Row>
+          {element.kind !== "shape" ? (
+            <Row label="Corners">
+              <NumberField label="Radius" value={s.radius ?? 0} min={0} onChange={radius => editor.setStyle({ radius: radius || undefined })} width={96} />
+            </Row>
+          ) : null}
+          <Toggle label="Shadow" checked={Boolean(s.shadow)} onChange={shadow => editor.setStyle({ shadow: shadow || undefined })} />
+        </PanelSection>
+      ) : null}
       <PanelSection title={KIND[element.kind] ?? "Element"}>
         <div className={styles.grid2}>
           <NumberField label="X" value={element.x} onChange={x => set({ x })} disabled={element.locked} />
@@ -103,23 +149,6 @@ function ElementPanel({ element }: { element: Element }) {
       {element.kind === "shape" ? (
         <PanelSection title="Shape">
           <MiniSelect label="Shape" value={element.shape} width={200} options={SHAPES.map(shape => ({ value: shape, label: SHAPE_NAMES[shape] ?? shape }))} onChange={shape => set({ shape })} />
-        </PanelSection>
-      ) : null}
-      {element.kind !== "audio" ? (
-        <PanelSection title="Look">
-          <Row label="Fill">
-            <ColorButton label="Fill" value={s.fill ?? null} swatches={swatches} allowNone onChange={fill => editor.setStyle({ fill: fill ?? undefined })} />
-          </Row>
-          <Row label="Border">
-            <ColorButton label="Border colour" value={s.stroke ?? null} swatches={swatches} allowNone onChange={stroke => editor.setStyle({ stroke: stroke ?? undefined })} />
-            <NumberField label="Width" value={s.strokeWidth ?? (s.stroke ? 2 : 0)} min={0} max={80} onChange={strokeWidth => editor.setStyle({ strokeWidth })} />
-          </Row>
-          {element.kind !== "shape" ? (
-            <Row label="Corners">
-              <NumberField label="Radius" value={s.radius ?? 0} min={0} onChange={radius => editor.setStyle({ radius: radius || undefined })} width={96} />
-            </Row>
-          ) : null}
-          <Toggle label="Shadow" checked={Boolean(s.shadow)} onChange={shadow => editor.setStyle({ shadow: shadow || undefined })} />
         </PanelSection>
       ) : null}
       {element.kind === "text" || element.kind === "shape" ? (
@@ -320,8 +349,11 @@ function HtmlSection({ element }: { element: Element }) {
   const editor = useEditor();
   return (
     <PanelSection title="HTML element">
-      <p className={styles.hint}>It runs live in its own sandbox: it can load anything from the internet, and never sees this page or your account.</p>
+      <p className={styles.hint}>It runs live in its own sandbox: it can load anything from the internet, and never sees this page or your account. Double-click it to edit its text, colours and parts in place.</p>
       <div className={styles.buttonRow}>
+        <button type="button" className={styles.secondaryButton} data-sq="surface" disabled={element.locked} onClick={() => editor.enterHtmlInside(element.id)} data-testid="edit-inside">
+          Edit inside
+        </button>
         <button type="button" className={styles.secondaryButton} data-sq="surface" onClick={() => editor.ui.set({ codeElement: element.id })} data-testid="open-code">
           Edit code
         </button>
@@ -393,28 +425,18 @@ function SlidePanel() {
   const swatches = themeSwatches(deck.theme.colors as unknown as Record<string, string>);
   const bg = slide.background;
   const applyLayout = (layout: string) => {
-    const empty = slide.elements.length === 0;
+    editor.stopCapturing();
     editor.change(() => {
-      editor.updateSlide(slide.id, { layout });
-      if (empty) for (const input of layoutElements(layout, deck.theme, deck.size)) editor.addElement({ ...input, id: newElementId() }, { select: false });
+      const ops = layoutChangeOps(getSlide(editor.doc, slide.id), layout, getTheme(editor.doc), getSize(editor.doc));
+      applyOps(editor.doc, ops, undefined, { atomic: false });
     }, "Changing the layout");
+    editor.stopCapturing();
   };
   return (
     <>
-      <PanelSection title="Layout">
-        <div className={styles.layoutGridPanel}>
-          {LAYOUTS.map(layout => (
-            <button key={layout} type="button" className={styles.layoutOption} data-sq="surface" data-current={slide.layout === layout || undefined} onClick={() => applyLayout(layout)} title={LAYOUT_NAMES[layout]}>
-              <LayoutGlyph layout={layout} />
-              <span>{LAYOUT_NAMES[layout]}</span>
-            </button>
-          ))}
-        </div>
-        {slide.elements.length ? <p className={styles.hint}>A new layout adds its placeholders only to an empty slide.</p> : null}
-      </PanelSection>
       <PanelSection title="Background">
         <Row label="Colour">
-          <ColorButton label="Background colour" value={bg && "color" in bg ? bg.color : null} swatches={swatches} allowNone onChange={color => editor.updateSlide(slide.id, { background: color ? { color } : null })} />
+          <ColorButton label="Background colour" value={bg && "color" in bg ? bg.color : null} swatches={swatches} allowNone noneLabel="Theme default" defaultColor={bg && "image" in bg ? undefined : deck.theme.colors.background} showValue onChange={color => editor.updateSlide(slide.id, { background: color ? { color } : null })} />
         </Row>
         <ReplaceFile
           accept="image/*"
@@ -433,7 +455,18 @@ function SlidePanel() {
           </Row>
         ) : null}
       </PanelSection>
-      <TransitionSection slide={slide} />
+      <PanelSection title="Layout">
+        <div className={styles.layoutGridPanel}>
+          {LAYOUTS.map(layout => (
+            <button key={layout} type="button" className={styles.layoutOption} data-sq="surface" data-current={slide.layout === layout || undefined} onClick={() => applyLayout(layout)} title={LAYOUT_NAMES[layout]}>
+              <LayoutGlyph layout={layout} />
+              <span>{LAYOUT_NAMES[layout]}</span>
+            </button>
+          ))}
+        </div>
+        <p className={styles.hint}>Rearranges text and pictures. Extra content stays on the slide.</p>
+      </PanelSection>
+      {slide.id !== MASTER ? <TransitionSection slide={slide} /> : null}
       <PanelSection title="Slide">
         <Toggle label="Skip this slide when presenting" checked={slide.skipped} onChange={skipped => editor.updateSlide(slide.id, { skipped })} />
         <Toggle label="Show the master" checked={!slide.hideMaster} onChange={show => editor.updateSlide(slide.id, { hideMaster: !show })} />
@@ -520,7 +553,7 @@ function AnimatePanel() {
           <p className={styles.hint}>Nothing on this slide is animated.</p>
         )}
       </PanelSection>
-      <TransitionSection slide={slide} />
+      {slide.id !== MASTER ? <TransitionSection slide={slide} /> : null}
     </>
   );
 }
@@ -588,6 +621,13 @@ function ThemePanel() {
   const ratio = deck.size.width / deck.size.height;
   return (
     <>
+      <PanelSection title="Colours">
+        {(Object.keys(theme.colors) as (keyof Theme["colors"])[]).map(key => (
+          <Row key={key} label={key === "accent2" ? "Accent 2" : key === "accent3" ? "Accent 3" : key[0]!.toUpperCase() + key.slice(1)}>
+            <ColorButton label={`${key} colour`} value={theme.colors[key]} swatches={themeSwatches(theme.colors as unknown as Record<string, string>)} showValue onChange={color => { if (color) set({ colors: { ...theme.colors, [key]: color } }); }} />
+          </Row>
+        ))}
+      </PanelSection>
       <PanelSection title="Themes">
         <div className={styles.themeList}>
           {THEMES.map(t => (
@@ -603,16 +643,6 @@ function ThemePanel() {
             </button>
           ))}
         </div>
-      </PanelSection>
-      <PanelSection title="Colours">
-        {(Object.keys(theme.colors) as (keyof Theme["colors"])[]).map(key => (
-          <Row key={key} label={key === "accent2" ? "Accent 2" : key === "accent3" ? "Accent 3" : key[0]!.toUpperCase() + key.slice(1)}>
-            <label className={styles.colorInput}>
-              <input type="color" value={/^#[0-9a-f]{6}$/i.test(theme.colors[key]) ? theme.colors[key] : "#000000"} onChange={event => set({ colors: { ...theme.colors, [key]: event.target.value } })} aria-label={`${key} colour`} />
-              <span>{theme.colors[key]}</span>
-            </label>
-          </Row>
-        ))}
       </PanelSection>
       <PanelSection title="Fonts">
         <TextSetting label="Headings" value={theme.fonts.heading} onCommit={heading => set({ fonts: { ...theme.fonts, heading: heading || "Inter" } })} />

@@ -6,17 +6,19 @@
  * duplicate, delete, skip, section and move. ↑/↓ move between slides, Delete deletes one.
  */
 import { memo, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
-import { EyeOff, MessageSquare, Plus } from "lucide-react";
-import { renderSlideHtml } from "@silicon-present/render";
+import { ChevronDown, EyeOff, MessageSquare, Plus, LayoutGrid, PanelLeft } from "lucide-react";
 import { LAYOUTS, type DeckJson, type Slide } from "@silicon-present/deck";
 import { Avatar } from "@/components/arc/avatar/avatar";
+import { SlideStyles, SlideView } from "@/components/slides/slide-view";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/arc/popover/popover";
 import { useStore } from "@/lib/editor/store";
 import { nameOf } from "@/lib/editor/normalize-api";
 import { keyLabel } from "@/lib/editor/keys";
+import { slideDropAfter } from "@/lib/editor/slide-order";
 import { useAbilities, useDeck, useEditor, useUi } from "./editor-context";
 import { ContextMenu, type ContextItem } from "./context-menu";
 import styles from "./editor.module.css";
+import addStyles from "./slide-add-tile.module.css";
 
 export const LAYOUT_NAMES: Record<string, string> = {
   title: "Title",
@@ -31,8 +33,8 @@ export const LAYOUT_NAMES: Record<string, string> = {
 const THUMB_W = 176;
 
 const Thumb = memo(function Thumb({ deck, slide, width }: { deck: DeckJson; slide: Slide; width: number }) {
-  const html = useMemo(
-    () => renderSlideHtml({ ...deck, slides: [slide] }, slide.id, { html: "static", media: "static", links: false, includeCss: false, googleFonts: false, placeholders: false }),
+  const thumbnailDeck = useMemo(
+    () => ({ ...deck, slides: [slide] }),
     // Only what this slide shows: itself, the theme, the size, the master.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [slide, deck.theme, deck.size, deck.master],
@@ -40,7 +42,7 @@ const Thumb = memo(function Thumb({ deck, slide, width }: { deck: DeckJson; slid
   const scale = width / deck.size.width;
   return (
     <div className={styles.thumbBox} style={{ width, height: deck.size.height * scale }}>
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0", width: deck.size.width, height: deck.size.height, pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: html }} />
+      <SlideView deck={thumbnailDeck} slide={slide.id} html="preview" media="static" links={false} fit="contain" />
     </div>
   );
 });
@@ -92,10 +94,28 @@ export function LayoutGlyph({ layout }: { layout: string }) {
   );
 }
 
+/** The end tile uses the exact same dimensions as a slide's thumbnail. */
+function AddSlideTile({ deck, width, overview = false }: { deck: DeckJson; width: number; overview?: boolean }) {
+  const editor = useEditor();
+  // Read the latest order when clicked, including slides added by another collaborator.
+  const append = (layout: string) => editor.addSlide(layout, editor.deck().slides.at(-1)?.id ?? null);
+  const testId = overview ? "new-slide-overview" : "new-slide";
+  return <div className={addStyles.tile} data-slide-add data-testid={`${testId}-tile`} style={{ width, height: width * deck.size.height / deck.size.width }}>
+    <button type="button" className={addStyles.add} data-sq="surface" data-testid={testId} aria-label="New slide" onClick={() => append("title-body")}>
+      <Plus size={24} strokeWidth={1.5} aria-hidden="true" /><span>New slide</span>
+    </button>
+    <LayoutPicker onPick={append}>
+      <button type="button" className={addStyles.layouts} data-sq="surface" data-testid={`${testId}-layout`} aria-label="Choose new slide layout" title="Choose a layout">
+        <ChevronDown size={15} aria-hidden="true" />
+      </button>
+    </LayoutPicker>
+  </div>;
+}
+
 export function SlideStrip() {
   const editor = useEditor();
   const deck = useDeck();
-  const { slideId, master } = useUi(s => ({ slideId: s.slideId, master: s.master }));
+  const { slideId, master, overview } = useUi(s => ({ slideId: s.slideId, master: s.master, overview: s.overview }));
   const { canEdit } = useAbilities();
   const { others } = useStore(editor.presence, s => s);
   const { list: threads } = useStore(editor.threads, s => s);
@@ -153,7 +173,7 @@ export function SlideStrip() {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest("input")) return;
+    if ((event.target as HTMLElement).closest("input, [data-slide-add], [data-radix-popper-content-wrapper]")) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       event.stopPropagation();
@@ -172,6 +192,13 @@ export function SlideStrip() {
 
   return (
     <nav className={styles.strip} aria-label="Slides" onKeyDown={onKeyDown}>
+      <div className={styles.stripHeader}>
+        <span>Slides <span className={styles.slideTotal}>{deck.slides.length}</span></span>
+        <div role="group" aria-label="Slide view" className={styles.toolGroup}>
+          <button type="button" className={styles.tool} data-sq="surface" aria-label="Slide view" aria-pressed={!overview} data-active={!overview || undefined} onClick={() => editor.ui.set({ overview: false })}><PanelLeft size={16} aria-hidden="true" /></button>
+          <button type="button" className={styles.tool} data-sq="surface" aria-label="Grid view" aria-pressed={overview} data-active={overview || undefined} onClick={() => { editor.setTool("select"); editor.clearSelection(); if (master) editor.setMaster(false); editor.ui.set({ overview: true }); }}><LayoutGrid size={16} aria-hidden="true" /></button>
+        </div>
+      </div>
       <ol className={styles.stripList} onDragOver={event => dragging && event.preventDefault()} onDrop={onDrop}>
         {deck.slides.map((slide, index) => {
           const here = others.filter(o => o.slide === slide.id);
@@ -253,15 +280,44 @@ export function SlideStrip() {
           );
         })}
         {dropAt === deck.slides.length && dragging ? <div className={styles.dropLine} /> : null}
+        {canEdit ? <li className={addStyles.stripItem}><AddSlideTile deck={deck} width={THUMB_W} /></li> : null}
       </ol>
-      {canEdit ? (
-        <LayoutPicker onPick={layout => editor.addSlide(layout, deck.slides.at(-1)?.id ?? null)}>
-          <button type="button" className={styles.newSlide} data-sq="surface" data-testid="new-slide">
-            <Plus size={16} aria-hidden="true" /> New slide
-          </button>
-        </LayoutPicker>
-      ) : null}
       <ContextMenu at={menu?.at ?? null} items={menu ? items(menu.slide) : []} onClose={() => setMenu(null)} label="Slide actions" />
     </nav>
   );
+}
+
+/** A quiet overview for reading the story and moving between slides. */
+export function SlideOverview() {
+  const editor = useEditor();
+  const deck = useDeck();
+  const { canEdit } = useAbilities();
+  const current = useUi(s => s.slideId);
+  return <section className={styles.overview} aria-label="All slides" data-testid="slide-overview">
+    <SlideStyles deck={deck} />
+    <div className={styles.overviewHeading}><h2>Your slides</h2><p>{canEdit ? "Select a slide to keep editing. Drag to reorder." : "Select a slide to view it."}</p></div>
+    <div className={styles.overviewGrid}>
+      {deck.slides.map((slide, index) => <button key={slide.id} type="button" data-sq="surface" className={styles.overviewCard} data-current={current === slide.id || undefined}
+        aria-label={`Open slide ${index + 1}${slide.skipped ? ", skipped" : ""}`} draggable={canEdit}
+        onDragStart={event => { event.dataTransfer.setData("application/x-present-slide", slide.id); event.dataTransfer.effectAllowed = "move"; }}
+        onDragOver={event => { if (canEdit && event.dataTransfer.types.includes("application/x-present-slide")) event.preventDefault(); }}
+        onDrop={event => {
+          if (!canEdit) return;
+          const id = event.dataTransfer.getData("application/x-present-slide");
+          const rect = event.currentTarget.getBoundingClientRect();
+          const after = slideDropAfter(deck.slides.map(s => s.id), id, slide.id, event.clientX >= rect.left + rect.width / 2);
+          if (after === undefined) return;
+          event.preventDefault();
+          editor.moveSlide(id, after);
+        }}
+        onClick={() => editor.goToSlide(slide.id)}>
+        <Thumb deck={deck} slide={slide} width={208} />
+        <span className={styles.overviewCaption}><span>Slide {index + 1}</span>{slide.skipped ? <span><EyeOff size={13} aria-hidden="true" /> Skipped</span> : null}</span>
+      </button>)}
+      {canEdit ? <div className={styles.overviewCard} data-sq="surface">
+        <AddSlideTile deck={deck} width={208} overview />
+        <span className={styles.overviewCaption}>Add at the end</span>
+      </div> : null}
+    </div>
+  </section>;
 }

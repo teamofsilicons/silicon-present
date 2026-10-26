@@ -15,7 +15,7 @@
  * the role it reports).
  */
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
-import { Globe, Link2, Lock, Trash2, UserPlus } from "lucide-react";
+import { Globe, Link2, Lock, Mail, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { CopyButton } from "@/components/arc/copy-button/copy-button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
@@ -25,10 +25,11 @@ import { Switch } from "@/components/arc/switch/switch";
 import { AccountChip } from "@/components/foundation/account/account-chip";
 import { ErrorAlert } from "@/components/foundation/feedback/error-alert";
 import { ApiError } from "@/lib/errors";
+import { formatDate, formatDateTime, formatTime } from "@/lib/format";
 import { parseAccountId } from "@/lib/ids";
 import { notifyError } from "@/lib/notify";
-import { changeRole, deckLink, getAccess, invite, removeMember, setPublic } from "@/lib/present/sharing";
-import { can, ROLE_WORDS, type Access, type Member, type MyRole, type PublicMode, type ResourceKind, type Role } from "@/lib/present/types";
+import { changeRole, deckLink, getAccess, getDeckViewers, invite, removeMember, setPublic } from "@/lib/present/sharing";
+import { can, ROLE_WORDS, type Access, type DeckViewer, type Member, type MyRole, type PublicMode, type ResourceKind, type Role } from "@/lib/present/types";
 import styles from "./share.module.css";
 
 export interface ShareDialogProps {
@@ -68,7 +69,12 @@ function memberLabel(member: Member): string {
   return member.account?.id ?? member.email ?? member.key;
 }
 
-export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: knownRole, onChanged }: ShareDialogProps) {
+export function ShareDialog(props: ShareDialogProps) {
+  // Access and viewer data from one resource or signed-in account must never be reused for another.
+  return <ShareDialogBody key={`${props.kind}:${props.id}:${props.selfId ?? ""}`} {...props} />;
+}
+
+function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: knownRole, onChanged }: ShareDialogProps) {
   const [access, setAccess] = useState<Access | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [draft, setDraft] = useState("");
@@ -96,7 +102,7 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
     if (!open) return;
     const controller = new AbortController();
     getAccess(kind, id, controller.signal)
-      .then(next => { setAccess(next); setLoadError(null); })
+      .then(next => { if (!controller.signal.aborted) { setAccess(next); setLoadError(null); } })
       .catch(error => { const failure = ApiError.from(error); if (failure.code !== "aborted") setLoadError(failure); });
     return () => controller.abort();
   }, [open, kind, id]);
@@ -110,6 +116,8 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
   // The owner is the owner whatever the answer says; otherwise the access answer's role, then the page's.
   const myRole: MyRole | null = access?.owner && selfId && access.owner.id === selfId ? "owner" : access?.role ?? knownRole ?? null;
   const canShare = !!access && can.share(myRole);
+  // Sensitive viewer data requires the access answer to confirm ownership, not just a caller's cached role.
+  const confirmedOwner = !!access && (access.role === "owner" || !!selfId && access.owner?.id === selfId);
 
   async function submitInvite(event: FormEvent) {
     event.preventDefault();
@@ -168,13 +176,26 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
     }
   }
 
+  async function changeEmailRequirement(requireEmail: boolean) {
+    if (!confirmedOwner || !access || access.public === "off") return;
+    setBusy("public");
+    try {
+      await setPublic(id, access.public, requireEmail);
+      await after(requireEmail ? "Public visitors now provide an email before viewing." : "Public visitors can view without providing an email.");
+    } catch (error) {
+      notifyError(error, "Could not change the email requirement");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const link = deckLink(id);
   const publicMode = access?.public ?? "off";
   const what = kind === "deck" ? "deck" : "folder";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={`Share ${name ? `“${name}”` : `this ${what}`}`} description={kind === "folder" ? "Sharing a folder shares everything in it, including what is added later." : undefined} className={styles.dialog}>
+      <DialogContent title={`Share ${name ? `“${name}”` : `this ${what}`}`} description={kind === "folder" ? "Sharing a folder shares everything in it, including what is added later." : undefined} className={`${styles.dialog}${kind === "deck" && confirmedOwner ? ` ${styles.ownerDialog}` : ""}`}>
         <p className={`sr-only ${styles.status}`} role="status" aria-live="polite">{notice}</p>
         {loadError ? <ErrorAlert error={loadError} title="Who has access could not be loaded" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Try again</Button>} /> : null}
 
@@ -255,7 +276,7 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
               <span className={styles.publicText}>
                 <span className={styles.publicLabel} id={`${listId}-public`}>Anyone with the link</span>
                 <span className={styles.meta}>
-                  {publicMode === "off" ? "Off: only people with access can open it." : publicMode === "view" ? "Can open it without signing in. Nothing is listed anywhere." : "Can open it without signing in, and sign in to comment or edit."}
+                  {publicMode === "off" ? "Off: only people with access can open it." : access.requireEmail ? "An email is required to view. Sign in to comment or edit when allowed." : publicMode === "view" ? "Can open it without signing in. Nothing is listed anywhere." : "Can open it without signing in, and sign in to comment or edit."}
                 </span>
               </span>
               <Switch aria-labelledby={`${listId}-public`} checked={publicMode !== "off"} disabled={!can.own(myRole) || busy === "public"} onCheckedChange={next => void changePublic(next ? "view" : "off")} />
@@ -265,6 +286,16 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
                 <Select label="What anyone with the link can do" options={PUBLIC_OPTIONS} value={publicMode} disabled={!can.own(myRole) || busy === "public"} onValueChange={value => void changePublic(value as PublicMode)} />
               </div>
             ) : null}
+            {publicMode !== "off" && confirmedOwner ? (
+              <div className={styles.publicRow}>
+                <span className={styles.publicIcon} data-sq="surface" aria-hidden="true"><Mail size={16} strokeWidth={1.75} /></span>
+                <span className={styles.publicText}>
+                  <span className={styles.publicLabel} id={`${listId}-require-email`}>Require email to view</span>
+                  <span className={styles.meta} id={`${listId}-email-help`}>Public visitors provide an email before viewing. Signed-in visitors use their account email when available.</span>
+                </span>
+                <Switch aria-labelledby={`${listId}-require-email`} aria-describedby={`${listId}-email-help`} checked={access.requireEmail} disabled={busy === "public"} onCheckedChange={next => void changeEmailRequirement(next)} />
+              </div>
+            ) : null}
             <div className={styles.linkRow}>
               <Link2 size={16} strokeWidth={1.75} aria-hidden="true" className={styles.linkIcon} />
               <span className={styles.link} title={link}>{link}</span>
@@ -272,9 +303,72 @@ export function ShareDialog({ kind, id, name, open, onOpenChange, selfId, role: 
             </div>
           </section>
         ) : null}
+        {open && kind === "deck" && confirmedOwner ? <ViewerList key={id} id={id} requireEmail={access!.requireEmail} onAccessDenied={load} /> : null}
       </DialogContent>
     </Dialog>
   );
+}
+
+function ViewerTime({ value }: { value: string | null }) {
+  if (!value || Number.isNaN(Date.parse(value))) return <span className={styles.meta}>Not recorded</span>;
+  return <time dateTime={value} title={formatDateTime(value)} className={styles.viewerTime}>
+    <span>{formatDate(value)}</span>
+    <span className={styles.meta}>{formatTime(value)}</span>
+  </time>;
+}
+
+function ViewerList({ id, requireEmail, onAccessDenied }: { id: string; requireEmail: boolean; onAccessDenied: () => Promise<unknown> }) {
+  const [viewers, setViewers] = useState<DeckViewer[] | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(0);
+  const headingId = useId();
+  const reload = () => { setLoading(true); setRefresh(value => value + 1); };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getDeckViewers(id, controller.signal).then(next => {
+      if (controller.signal.aborted) return;
+      setViewers(next);
+      setError(null);
+    }).catch(failure => {
+      if (controller.signal.aborted) return;
+      const next = ApiError.from(failure);
+      setError(next);
+      setViewers(null);
+      if (next.status === 403 || next.status === 404) void onAccessDenied();
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [id, refresh, onAccessDenied]);
+
+  return <section className={styles.block} aria-labelledby={headingId}>
+    <div className={styles.viewerHeading}>
+      <h3 id={headingId} className={styles.heading}>Who viewed</h3>
+      <Button variant="ghost" size="sm" loading={loading} disabled={loading} aria-label="Refresh viewers" onClick={reload}>
+        <RefreshCw size={14} aria-hidden="true" /> Refresh
+      </Button>
+    </div>
+    <p className={styles.viewerHelp}>Only you can see this list. Entered emails are not verified. Repeat opens within 30 minutes count as one view.</p>
+    {error ? <ErrorAlert error={error} title="Viewers could not be loaded" action={<Button size="sm" variant="secondary" onClick={reload} disabled={loading}>Try again</Button>} /> : null}
+    {loading && viewers === null ? <p className={styles.empty} role="status">Loading viewers…</p> : null}
+    {viewers?.length === 0 && !loading ? <div className={styles.empty}>
+      <p>No viewer emails recorded yet.</p>
+      <p>{requireEmail ? "Emails will appear after visitors open the deck." : "Turn on Require email to view to start recording viewer emails."}</p>
+    </div> : null}
+    {viewers && viewers.length > 0 ? <div className={styles.viewerScroll} role="region" aria-label="Viewer history" tabIndex={0} aria-busy={loading}>
+      <table className={styles.viewerTable}>
+        <caption className="sr-only">Viewer emails and visits, visible only to the deck owner</caption>
+        <thead><tr><th scope="col">Email</th><th scope="col">Source</th><th scope="col">First viewed</th><th scope="col">Last viewed</th><th scope="col">Views</th></tr></thead>
+        <tbody>{viewers.map(viewer => <tr key={`${viewer.source}:${viewer.email}`}>
+          <th scope="row" className={styles.viewerEmail}>{viewer.email}</th>
+          <td><span className={styles.meta}>{viewer.source === "account" ? "Account email" : "Entered email · unverified"}</span></td>
+          <td><ViewerTime value={viewer.firstViewedAt} /></td>
+          <td><ViewerTime value={viewer.lastViewedAt} /></td>
+          <td className={styles.viewCount}>{viewer.views.toLocaleString("en-US")}</td>
+        </tr>)}</tbody>
+      </table>
+    </div> : null}
+  </section>;
 }
 
 export interface ShareButtonProps extends Omit<ShareDialogProps, "open" | "onOpenChange"> {

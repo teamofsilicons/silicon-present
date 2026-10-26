@@ -1,6 +1,5 @@
 /*
- * The decks pages: one quiet column, one list style (an icon, a name, one line of what it is, a "More actions" button),
- * hairlines between rows, no cards. The trash and transfers pages use the same list.
+ * Decks use a thumbnail card grid. Trash, transfers and dialogs retain the shared quiet list styles.
  */
 .view { display: grid; min-width: 0; gap: var(--space-6); }
 
@@ -27,6 +26,30 @@
 .tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .search { min-width: min(100%, 320px); flex: 1 1 260px; max-width: 420px; margin-left: auto; }
 .search label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Browse decks visually; controls remain visible for both pointer and touch use. */
+.collections { display: grid; gap: var(--space-8); min-width: 0; }
+.collection { display: grid; gap: var(--space-4); min-width: 0; }
+.cardGrid, .folderGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-5); margin: 0; padding: 0; list-style: none; }
+.deckCard { --sq-r: 20px; --sq-fill: var(--surface); --sq-stroke: var(--border); display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--sq-stroke); background: var(--sq-fill); }
+.deckCard:hover { --sq-stroke: var(--border-strong); }
+.deckCard:focus-within { --sq-stroke: var(--accent); }
+.previewLink { display: block; position: relative; min-width: 0; overflow: hidden; border-bottom: 1px solid var(--border-subtle); background: var(--surface-muted); text-decoration: none; }
+.cardBody { display: flex; flex: 1; flex-direction: column; align-items: stretch; gap: var(--space-2); padding: var(--space-4); min-width: 0; }
+.cardTitle { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--foreground); font-size: var(--text-base); font-weight: 500; line-height: 1.4; text-decoration: none; overflow-wrap: anywhere; }
+.cardTitle:hover, .cardTitle:focus-visible { color: var(--accent-ink); text-decoration: underline; text-underline-offset: .2em; outline: none; }
+.cardMeta { display: grid; gap: 2px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.cardMeta > * { font-size: inherit; }
+.cardExcerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.cardActions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding-top: var(--space-3); }
+.presentLink { --sq-r: 12px; --sq-fill: var(--surface); --sq-stroke: var(--border); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 36px; border: 1px solid var(--sq-stroke); padding: 0 var(--space-3); background: var(--sq-fill); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; text-decoration: none; }
+.presentLink:hover { --sq-fill: var(--surface-muted); --sq-stroke: var(--border-strong); color: var(--foreground); }
+.presentLink:focus-visible { --sq-fill: var(--accent-subtle); --sq-stroke: var(--accent); color: var(--accent-ink); outline: none; }
+.folderCard { --sq-r: 16px; --sq-fill: var(--surface); --sq-stroke: var(--border); display: flex; align-items: center; gap: var(--space-3); min-width: 0; border: 1px solid var(--sq-stroke); padding: var(--space-4); background: var(--sq-fill); }
+.folderCard:hover { --sq-stroke: var(--border-strong); }
+.folderCard:focus-within { --sq-stroke: var(--accent); }
+.folderCard .name { font-size: var(--text-sm); }
+.folderCard .main > :last-child { font-size: var(--text-xs); }
 
 /* The list. */
 .list { display: grid; margin: 0; padding: 0; list-style: none; }

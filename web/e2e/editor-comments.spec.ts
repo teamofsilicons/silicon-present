@@ -28,6 +28,7 @@ async function postComposer(page: Page, body: string) {
   await composer.getByRole("combobox", { name: "Comment" }).fill(body);
   await composer.getByRole("button", { name: "Comment", exact: true }).click();
   await expect(composer).toBeHidden();
+  await expect(page.getByTestId("comment-draft-anchor")).toHaveCount(0);
 }
 
 test("comments on every kind of anchor, live, with mentions, replies, reactions and resolving", async ({ browser }) => {
@@ -59,12 +60,28 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await openDeck(ada.page, deck);
   await openDeck(bo.page, deck);
 
-  // A commenter sees the same canvas without the editing tools, and the comments list.
+  // Select is read-only for a commenter; Comment explicitly starts a review.
   await expect(bo.page.getByRole("toolbar", { name: "Editing" })).toHaveCount(0);
+  await expect(bo.page.getByTestId("select-tool")).toHaveAttribute("aria-pressed", "true");
+  const selectPoint = await at(bo.page, 400, 160);
+  await bo.page.mouse.click(selectPoint.x, selectPoint.y);
+  await expect(bo.page.getByRole("dialog", { name: "New comment" })).toHaveCount(0);
+  await expect(bo.page.locator("[data-handle]")).toHaveCount(0);
+  await bo.page.getByTestId("comment-mode").click();
   await expect(bo.page.getByTestId("canvas-overlay")).toHaveAttribute("data-commenting", "true");
 
   // 1. A point: one click on the slide opens the box right there.
   const point = await at(bo.page, 1500, 160);
+  await bo.page.mouse.click(point.x, point.y);
+  const draft = bo.page.getByTestId("comment-draft-anchor");
+  await expect(draft).toHaveAttribute("data-anchor-kind", "point");
+  await expect(bo.page.getByTestId("comment-draft-pin")).toBeVisible();
+  await expect(bo.page.getByTestId("comment-draft-area")).toHaveCount(0);
+  const pointComposer = bo.page.getByRole("dialog", { name: "New comment" });
+  await pointComposer.getByRole("combobox", { name: "Comment" }).fill("A draft stays marked while typing");
+  await expect(draft).toBeVisible();
+  await pointComposer.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(draft).toHaveCount(0);
   await bo.page.mouse.click(point.x, point.y);
   await postComposer(bo.page, "Something should go here");
 
@@ -74,7 +91,18 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await bo.page.mouse.move(a1.x, a1.y);
   await bo.page.mouse.down();
   await bo.page.mouse.move(a2.x, a2.y, { steps: 6 });
+  await expect(bo.page.getByTestId("comment-drag-area")).toBeVisible();
   await bo.page.mouse.up();
+  await expect(bo.page.getByTestId("comment-drag-area")).toHaveCount(0);
+  await expect(draft).toHaveAttribute("data-anchor-kind", "area");
+  await expect(bo.page.getByTestId("comment-draft-area")).toBeVisible();
+  // Opening the comments panel can change Fit: the outline still follows slide coordinates.
+  await expect.poll(async () => {
+    const box = await bo.page.getByTestId("comment-draft-area").boundingBox();
+    const start = await at(bo.page, 200, 400);
+    const end = await at(bo.page, 600, 700);
+    return box ? Math.max(Math.abs(box.x - start.x), Math.abs(box.y - start.y), Math.abs(box.width - (end.x - start.x)), Math.abs(box.height - (end.y - start.y))) : Infinity;
+  }).toBeLessThan(2);
   await postComposer(bo.page, `@${si.id} make these bars simpler`);
 
   // 3. Some words of a text: double-click the text, then pick the words.
@@ -84,12 +112,16 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   await picker.locator(".ql-editor").waitFor();
   // Double-click a word (near the start of the line: the paragraph is wider than its words).
   await picker.getByText("Revenue grew in every region").dblclick({ position: { x: 12, y: 6 } });
+  await expect(draft).toHaveAttribute("data-anchor-kind", "text");
+  await expect(bo.page.getByTestId("comment-draft-area")).toBeVisible();
   await postComposer(bo.page, "Which regions exactly?");
 
   // 4. A whole slide and 5. the whole deck, from the list.
   await bo.page.getByRole("button", { name: "On this slide" }).click();
+  await expect(draft).toHaveCount(0);
   await postComposer(bo.page, "This slide needs a takeaway");
   await bo.page.getByRole("button", { name: "On the whole deck" }).click();
+  await expect(draft).toHaveCount(0);
   await postComposer(bo.page, "Use the new brand colours throughout");
 
   // 6. An element, a running HTML element, as an editor with the keyboard.
@@ -97,6 +129,8 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
   const h = await at(ada.page, 1450, 500);
   await ada.page.mouse.click(h.x, h.y);
   await ada.page.keyboard.press(process.platform === "darwin" ? "Meta+Alt+m" : "Control+Alt+m");
+  await expect(ada.page.getByTestId("comment-draft-anchor")).toHaveAttribute("data-anchor-kind", "element");
+  await expect(ada.page.getByTestId("comment-draft-area")).toBeVisible();
   await postComposer(ada.page, "Slow this animation down");
 
   // Every anchor kind reached the service, and each page shows the other's threads live.
@@ -194,12 +228,13 @@ test("a viewer can't edit or comment; a signed-out visitor is asked to sign in",
   const update = await call(bo.context, "POST", `/v1/decks/${deck}/updates`, { update: "AAA=" }, [403]);
   expect(update.status).toBe(403);
 
-  // Public with comments on: a signed-out visitor sees the deck; clicking asks them to sign in.
+  // Public with comments on: a signed-out visitor can choose Comment, which asks them to sign in.
   await setPublic(ada.context, deck, "comment");
   const anon = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await anon.newPage();
   await page.goto(`/decks/${deck}`);
   await page.getByTestId("slide-canvas").waitFor();
+  await page.getByTestId("comment-mode").click();
   const q = await at(page, 900, 500);
   await page.mouse.click(q.x, q.y);
   const box = page.getByRole("dialog", { name: "Comment" });

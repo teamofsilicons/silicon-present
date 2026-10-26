@@ -90,9 +90,9 @@ export function PresenterView({ deckId, title, deck }: { deckId: string; title: 
             <p className={styles.label}>{nextIsStep ? "Next: the next animation on this slide" : following ? "Next slide" : "Next"}</p>
             <div className={styles.frame} data-sq="clip">
               {nextIsStep && slide ? (
-                <SlideView deck={deck} slide={slide.id} step={position.step + 1} html="static" media="static" label="Next step" />
+                <SlideView deck={deck} slide={slide.id} step={position.step + 1} html="preview" media="static" label="Next step" />
               ) : following ? (
-                <SlideView deck={deck} slide={following.id} step={0} html="static" media="static" label="Next slide" />
+                <SlideView deck={deck} slide={following.id} step={0} html="preview" media="static" label="Next slide" />
               ) : (
                 <div className={styles.nextEnd}>End of the presentation</div>
               )}

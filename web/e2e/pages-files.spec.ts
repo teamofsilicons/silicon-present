@@ -9,7 +9,9 @@ import { expect, test } from "@playwright/test";
 import { createDeck, deckWithSlides, signedIn, type Signed } from "./pages-support";
 import { BASE } from "./support";
 
-test.describe.configure({ mode: "serial" });
+// Each format is independent. A broken native converter must not suppress the
+// image-render and import checks that follow it.
+test.describe.configure({ mode: "default" });
 
 const run = Date.now().toString(36);
 let me: Signed;
@@ -22,10 +24,9 @@ const OUT = join(process.cwd(), "test-results", `files-${process.env.E2E_LANE ??
 const MAGIC: Record<string, (bytes: Buffer) => boolean> = {
   pptx: bytes => bytes.subarray(0, 2).toString() === "PK",
   odp: bytes => bytes.subarray(0, 2).toString() === "PK" && bytes.includes(Buffer.from("application/vnd.oasis.opendocument.presentation")),
-  key: bytes => bytes.subarray(0, 2).toString() === "PK",
-  ppt: bytes => bytes.subarray(0, 4).toString("hex") === "d0cf11e0",
   pdf: bytes => bytes.subarray(0, 5).toString() === "%PDF-",
-  html: bytes => /^\s*<!doctype html/i.test(bytes.subarray(0, 64).toString()),
+  txt: bytes => bytes.toString("utf8").includes("First slide") && bytes.toString("utf8").includes("Second slide"),
+  svg: bytes => /<svg\s/.test(bytes.toString("utf8")) && /<path\s/.test(bytes.toString("utf8")),
   png: bytes => bytes.subarray(0, 2).toString() === "PK" || bytes.subarray(1, 4).toString() === "PNG",
   jpg: bytes => bytes.subarray(0, 2).toString() === "PK" || bytes.subarray(0, 2).toString("hex") === "ffd8",
 };
@@ -44,14 +45,16 @@ test.afterAll(async () => {
   await me?.context.close();
 });
 
-test("the export menu lists every format and downloads a PDF named after the deck", async () => {
+test("the export menu has exactly the seven requested formats and downloads a PDF named after the deck", async () => {
   const { page } = me;
   await page.goto(`/decks/${deck}/history`);
   await page.getByRole("button", { name: "Download" }).first().click();
   const menu = page.getByRole("menu");
-  for (const label of ["PowerPoint (.pptx)", "PowerPoint 97–2003 (.ppt)", "Keynote (.key)", "OpenDocument (.odp)", "PDF (.pdf)", "Web page (.html)", "PNG images (.zip)", "JPG images (.zip)"]) {
-    await expect(menu.getByRole("menuitem", { name: new RegExp(label.replace(/[()[\].*+?^$|\\]/g, "\\$&")) })).toBeVisible();
-  }
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Microsoft PowerPoint (.pptx)", "ODP document (.odp)", "PDF document (.pdf)", "Plain text (.txt)",
+    "JPEG image (.jpg, current slide)", "PNG image (.png, current slide)", "Scalable Vector Graphics (.svg, current slide)",
+  ]);
+  await menu.screenshot({ path: join(OUT, "export-menu.png") });
   const [download] = await Promise.all([page.waitForEvent("download"), menu.getByRole("menuitem", { name: /^PDF/ }).click()]);
   expect(download.suggestedFilename()).toMatch(/\.pdf$/);
   expect(download.suggestedFilename()).toContain("Export check");
@@ -60,24 +63,52 @@ test("the export menu lists every format and downloads a PDF named after the dec
   expect(MAGIC.pdf!(readFileSync(path))).toBe(true);
 });
 
-for (const format of ["pptx", "ppt", "odp", "html", "png", "jpg", "key"] as const) {
+test("current-slide exports follow the selected history slide and download individual images", async () => {
+  test.setTimeout(240_000);
+  const { page } = me;
+  await page.goto(`/decks/${deck}/history`);
+  await page.getByRole("list", { name: "Slides in this version" }).getByRole("button", { name: "Slide 2", exact: true }).click();
+  for (const [format, label] of [["jpg", "JPEG image"], ["png", "PNG image"], ["svg", "Scalable Vector Graphics"]] as const) {
+    await page.getByRole("button", { name: "Download" }).first().click();
+    const item = page.getByRole("menuitem", { name: `${label} (.${format}, current slide)`, exact: true });
+    await expect(item).toHaveAttribute("href", /slide=s_exp002/);
+    await expect(item).toHaveAttribute("href", /version=\d+/);
+    const [download] = await Promise.all([page.waitForEvent("download"), item.click()]);
+    expect(download.suggestedFilename()).toBe(`${title}.${format}`);
+    const path = join(OUT, download.suggestedFilename());
+    await download.saveAs(path);
+    const bytes = readFileSync(path);
+    expect(MAGIC[format]!(bytes)).toBe(true);
+    expect(bytes.subarray(0, 2).toString()).not.toBe("PK");
+  }
+  await page.getByRole("button", { name: "Download" }).first().click();
+  const text = page.getByRole("menuitem", { name: "Plain text (.txt)", exact: true });
+  await expect(text).not.toHaveAttribute("href", /slide=/);
+  const [download] = await Promise.all([page.waitForEvent("download"), text.click()]);
+  const path = join(OUT, download.suggestedFilename());
+  await download.saveAs(path);
+  expect(MAGIC.txt!(readFileSync(path))).toBe(true);
+});
+
+for (const format of ["pptx", "odp", "pdf", "txt", "png", "jpg"] as const) {
   test(`export as ${format}`, async () => {
     test.setTimeout(240_000);
     const response = await me.context.request.get(`${BASE}/api/v1/decks/${deck}/export?format=${format}`, { timeout: 200_000 });
     const body = await response.body();
-    if (format === "key" && !response.ok()) {
-      // Keynote export needs Keynote on the converter's machine; without it the service says so in its own words.
-      const error = JSON.parse(body.toString()) as { error: { code: string; message: string; hint?: string } };
-      expect(error.error.message.length).toBeGreaterThan(10);
-      test.info().annotations.push({ type: "keynote", description: `${error.error.code}: ${error.error.message} ${error.error.hint ?? ""}` });
-      return;
-    }
     expect(response.status(), body.subarray(0, 300).toString()).toBe(200);
     expect(response.headers()["content-disposition"] ?? "").toMatch(/attachment|filename/);
     expect(MAGIC[format]!(body), `${format} starts with ${body.subarray(0, 8).toString("hex")}`).toBe(true);
     writeFileSync(join(OUT, `export.${format === "png" || format === "jpg" ? `${format}.zip` : format}`), body);
   });
 }
+
+test("ppt, key and html are not download formats", async () => {
+  for (const format of ["ppt", "key", "html"]) {
+    const response = await me.context.request.get(`${BASE}/api/v1/decks/${deck}/export?format=${format}`);
+    expect(response.status(), format).toBe(400);
+    expect((await response.json() as { error: { code: string } }).error.code).toBe("invalid_format");
+  }
+});
 
 test("one slide as a picture: the export answers the image itself, and a slide render", async () => {
   const single = await me.context.request.get(`${BASE}/api/v1/decks/${deck}/export?format=png&slide=s_exp001`, { timeout: 120_000 });

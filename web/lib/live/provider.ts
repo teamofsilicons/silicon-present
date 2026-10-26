@@ -243,6 +243,13 @@ export class LiveProvider {
     try {
       const response = await fetch(`${this.base}/v1/decks/${encodeURIComponent(this.deckId)}`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } });
       if (response.status === 403 || response.status === 404 || response.status === 410) {
+        const body = await response.json().catch(() => null);
+        if (body?.error?.code === "email_required" && typeof window !== "undefined") {
+          this.destroyed = true;
+          this.closeSource();
+          window.location.reload();
+          return;
+        }
         this.emit("gone", response.status);
         this.destroyed = true;
         this.closeSource();

@@ -3,8 +3,8 @@
  * changing and removing members, and a deck's public switch. Plus resolving an id for the invite field.
  */
 import { api, seg } from "../client/api";
-import { toAccess, toAccount } from "./normalize";
-import type { Access, Account, PublicMode, ResourceKind, Role } from "./types";
+import { toAccess, toAccount, toDeckViewers } from "./normalize";
+import type { Access, Account, DeckViewer, PublicMode, ResourceKind, Role } from "./types";
 
 const base = (kind: ResourceKind, id: string) => `/v1/${kind === "deck" ? "decks" : "folders"}/${seg(id)}`;
 
@@ -25,8 +25,13 @@ export async function removeMember(kind: ResourceKind, id: string, member: strin
   await api.delete(`${base(kind, id)}/access/${seg(member)}`);
 }
 
-export async function setPublic(id: string, mode: PublicMode): Promise<void> {
-  await api.put(`/v1/decks/${seg(id)}/public`, { mode });
+export async function setPublic(id: string, mode: PublicMode, requireEmail?: boolean): Promise<void> {
+  await api.put(`/v1/decks/${seg(id)}/public`, { mode, ...(requireEmail === undefined ? {} : { requireEmail }) });
+}
+
+/** The service permits only the deck's owner to read viewer email addresses. */
+export async function getDeckViewers(id: string, signal?: AbortSignal): Promise<DeckViewer[]> {
+  return toDeckViewers(await api.get<unknown>(`${base("deck", id)}/viewers`, { signal }));
 }
 
 /** Who a c:/si: id is, for the invite field. Null when nobody has it. */

@@ -4,8 +4,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { toAccess, toAccount, toComparison, toDeck, toPresentation, toSearchHit, toTransfer, toVersions } from "../lib/present/normalize";
-import { listPaths, topOfShared, transfersFrom } from "../lib/present/paths";
+import { toAccess, toAccount, toComparison, toDeck, toFolder, toPresentation, toSearchHit, toTransfer, toVersions } from "../lib/present/normalize";
+import { homeListing, listPaths, topOfShared, transfersFrom } from "../lib/present/paths";
 import { can } from "../lib/present/types";
 
 const ada = { uuid: "0b6c-ada", id: "c:ada", kind: "carbon", displayName: "Ada Lovelace", pfp: "https://iris.example/pfp/carbon?id=ada" };
@@ -59,6 +59,18 @@ test("listings ask for the top of My decks explicitly; the top of Shared with me
     decks: [toDeck({ id: "d1", folder: "fd1" }), toDeck({ id: "d2", folder: null }), toDeck({ id: "d3", folder: "private" })],
   });
   assert.deepEqual(top.decks.map(deck => deck.id), ["d2", "d3"]);
+});
+
+test("home combines owned and shared items once, in order, with their access roles intact", () => {
+  const owned = toDeck({ id: "own", role: "owner", updatedAt: "2026-10-26T08:00:00Z" });
+  const shared = toDeck({ id: "shared", role: "viewer", updatedAt: "2026-10-27T08:00:00Z" });
+  const folder = toFolder({ id: "shared-folder", name: "Alpha", role: "commenter" });
+  const mine = { decks: [owned], folders: [toFolder({ id: "own-folder", name: "Zeta", role: "owner" })] };
+  const result = homeListing(mine, { decks: [shared, shared], folders: [folder, folder] });
+  assert.deepEqual(result.decks.map(deck => [deck.id, deck.role]), [["shared", "viewer"], ["own", "owner"]]);
+  assert.deepEqual(result.folders.map(item => [item.id, item.role]), [["shared-folder", "commenter"], ["own-folder", "owner"]]);
+  assert.deepEqual(mine.decks, [owned], "merging does not alter a cached My decks listing");
+  assert.deepEqual(homeListing({ decks: [], folders: [] }, { decks: [shared], folders: [] }).decks, [shared]);
 });
 
 test("transfers come as incoming and outgoing, the resource carrying its kind and name", () => {

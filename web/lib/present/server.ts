@@ -5,7 +5,7 @@
 import "server-only";
 import type { ApiErrorInit } from "../errors";
 import { tryApiFetch } from "../server/rsc";
-import { listPaths, topOfShared, transfersFrom, type Listing } from "./paths";
+import { homeListing, listPaths, topOfShared, transfersFrom, type Listing } from "./paths";
 import { listOf, toDeck, toFolder, toVersions } from "./normalize";
 import type { Deck, Folder, FolderPath, Scope, Transfer, Version } from "./types";
 
@@ -14,6 +14,13 @@ export type Loaded<T> = { data: T; error: null } | { data: null; error: ApiError
 const query = (values: Record<string, string | undefined>) => Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as Record<string, string>;
 
 export async function loadPlace(scope: Scope, folder: string | null): Promise<Loaded<Listing>> {
+  if (scope === "all") {
+    if (folder) return loadPlace("mine", folder);
+    const [mine, shared] = await Promise.all([loadPlace("mine", null), loadPlace("shared", null)]);
+    if (mine.error) return mine;
+    if (shared.error) return shared;
+    return { data: homeListing(mine.data, shared.data), error: null };
+  }
   const decks = listPaths.decks(scope, folder);
   const answer = await tryApiFetch<unknown>(decks.path, { query: query(decks.query) });
   if (answer.error) return answer;

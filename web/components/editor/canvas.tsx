@@ -4,25 +4,31 @@
  * The slide canvas: the current slide at its own size (1920 x 1080 by default), scaled to fit the window or to a zoom
  * level. Editors select (click, shift-click, marquee), move, resize (8 handles, shift keeps the ratio), rotate (shift
  * snaps to 15°), with snapping to the slide's edges and centre, other elements' edges and centres and an optional grid,
- * showing the guide lines. Double-click edits text in place.
+ * showing the guide lines. Double-click edits text in place, or the inside of an HTML element (./html-inside.tsx).
  *
- * For anyone who can't edit, and for editors in comment mode, a click opens a comment box right there and a drag draws
- * an area for it; double-clicking text lets them pick a passage to comment on.
+ * In comment mode (or the phone's review view), a click opens a comment box right there and a drag draws an area for
+ * it; double-clicking text lets them pick a passage to comment on. Select never changes a read-only deck.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { backgroundCss, fontCss, slideCss } from "@silicon-present/render";
-import type { Element } from "@silicon-present/deck";
+import { normalizeElement, type Element, type ShapeName } from "@silicon-present/deck";
 import { HANDLES, hitElement, intersects, normalizeRect, resizeBox, rotatedBounds, snapMove, snapResize, toElementFraction, unionBox, type Box, type Handle } from "@/lib/editor/geometry";
 import { insertFiles } from "@/lib/editor/insert";
+import { areaAnchorFractions } from "@/lib/editor/comment-anchors";
+import { drawnShape } from "@/lib/editor/shape-drawing";
+import { editorShortcutAllowed } from "@/lib/editor/keys";
 import type { Anchor } from "@/lib/editor/types";
 import { useAbilities, useCurrentSlide, useDeck, useEditor, useUi } from "./editor-context";
 import { SlideElement, type ElementBox } from "./slide-element";
 import { CanvasPresence } from "./canvas-presence";
 import { TextEditor } from "./text-editor";
+import { HtmlInside } from "./html-inside";
 import { CommentLayer } from "@/components/comments/comment-layer";
+import { ObjectContextMenu, type ObjectMenuTarget } from "./object-context-menu";
 import styles from "./editor.module.css";
 
 type Drag =
+  | { kind: "draw"; shape: ShapeName; slideId: string; start: { x: number; y: number }; current: { x: number; y: number }; pointerId: number; surface: HTMLElement; scale: number }
   | { kind: "move"; start: { x: number; y: number }; boxes: Map<string, ElementBox>; moved: boolean; clicked: string; wasSelected: boolean }
   | { kind: "resize"; handle: Handle; id: string; start: { x: number; y: number }; box: ElementBox }
   | { kind: "rotate"; id: string; center: { x: number; y: number }; startAngle: number; startRotation: number }
@@ -40,26 +46,77 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     editing: s.editing,
     zoom: s.zoom,
     commentMode: s.commentMode,
+    handMode: s.handMode,
+    shape: s.shape,
+    shapeArmed: s.shapeArmed,
     preview: s.preview,
     guides: s.guides,
     snap: s.snap,
     grid: s.grid,
     master: s.master,
     codeElement: s.codeElement,
+    htmlInside: s.htmlInside,
   }));
   const { canEdit, canComment, signInToComment } = useAbilities();
   const viewport = useRef<HTMLDivElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(0.4);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const panDrag = useRef<{ id: number; x: number; y: number; startX: number; startY: number } | null>(null);
+  const panning = ui.handMode || spaceHeld;
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey || !editorShortcutAllowed(event)) return;
+      event.preventDefault(); setSpaceHeld(true);
+    };
+    const up = (event: KeyboardEvent) => { if (event.code === "Space") setSpaceHeld(false); };
+    const blur = () => { setSpaceHeld(false); panDrag.current = null; };
+    const reset = () => setPan({ x: 0, y: 0 });
+    window.addEventListener("keydown", down); window.addEventListener("keyup", up); window.addEventListener("blur", blur); window.addEventListener("present:fit", reset);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur); window.removeEventListener("present:fit", reset); };
+  }, []);
   const [marquee, setMarquee] = useState<Box | null>(null);
   const [draft, setDraft] = useState<Box | null>(null);
+  const [drawing, setDrawing] = useState<{ slideId: string; element: Element } | null>(null);
+  const [objectMenu, setObjectMenu] = useState<ObjectMenuTarget | null>(null);
   const [commentText, setCommentText] = useState<{ elementId: string; field: string } | null>(null);
   const [runKeys, setRunKeys] = useState<Record<string, number>>({});
   const [paused, setPaused] = useState<Record<string, boolean>>({});
   const drag = useRef<Drag | null>(null);
+  const cancelDrawing = useCallback(() => {
+    const current = drag.current;
+    if (current?.kind !== "draw") return;
+    drag.current = null;
+    setDrawing(null);
+    if (current.surface.hasPointerCapture(current.pointerId)) current.surface.releasePointerCapture(current.pointerId);
+  }, []);
+  useEffect(() => {
+    const check = () => {
+      const state = editor.ui.get();
+      const current = drag.current;
+      if (current?.kind === "draw" && (!editor.canEdit || !state.shapeArmed || state.shape !== current.shape
+        || state.overview || editor.currentSlideId() !== current.slideId)) cancelDrawing();
+      setObjectMenu(menu => menu && (editor.currentSlideId() !== menu.slideId || state.shapeArmed || state.handMode || state.commentMode || state.overview) ? null : menu);
+    };
+    const stopUi = editor.ui.subscribe(check);
+    const stopMeta = editor.meta.subscribe(check);
+    const blur = () => cancelDrawing();
+    const shift = (event: KeyboardEvent) => {
+      const current = drag.current;
+      if (event.key !== "Shift" || current?.kind !== "draw") return;
+      const input = drawnShape(current.shape, current.start, current.current, event.shiftKey, editor.deck().theme, current.scale);
+      setDrawing(input ? { slideId: current.slideId, element: normalizeElement({ ...input, id: "e_drawpreview" }) } : null);
+    };
+    window.addEventListener("blur", blur);
+    window.addEventListener("keydown", shift); window.addEventListener("keyup", shift);
+    return () => { stopUi(); stopMeta(); window.removeEventListener("blur", blur); window.removeEventListener("keydown", shift); window.removeEventListener("keyup", shift); };
+  }, [editor, cancelDrawing]);
   const { width: W, height: H } = deck.size;
-  const commenting = !canEdit || ui.commentMode;
+  const commenting = phone || ui.commentMode;
   const mayComment = canComment || signInToComment;
+  // A passage picker belongs to Comment; returning to Select or Hand closes it.
+  if (!commenting && commentText) setCommentText(null);
 
   // Fit to the window.
   useLayoutEffect(() => {
@@ -67,7 +124,7 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     if (!node) return;
     const measure = () => {
       const pad = phone ? 16 : 56;
-      const next = Math.max(0.05, Math.min((node.clientWidth - pad) / W, (node.clientHeight - pad) / H));
+      const next = Math.max(0.05, Math.min((node.clientWidth - pad) / W, (node.clientHeight - pad - (phone ? 0 : 72)) / H));
       setFit(next);
     };
     measure();
@@ -121,6 +178,13 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
 
   const boxOf = (element: Element): ElementBox => ui.preview?.[element.id] ?? { x: element.x, y: element.y, w: element.w, h: element.h, rotation: element.rotation };
 
+  // Editing an HTML element's inside ends when it is locked, deleted, or this Carbon can no longer edit.
+  const insideEl = ui.htmlInside && canEdit && !commenting ? elements.find(e => e.id === ui.htmlInside!.elementId && e.kind === "html" && !e.locked) ?? null : null;
+  const insideLost = Boolean(ui.htmlInside) && !insideEl;
+  useEffect(() => {
+    if (insideLost) editor.exitHtmlInside();
+  }, [editor, insideLost]);
+
   // ---- comments ----
 
   const openComposer = (anchor: Anchor, at: { x: number; y: number }) => {
@@ -137,8 +201,8 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     if (isArea) {
       anchor = { kind: "area", slide: slideId, x: round(area.x), y: round(area.y), w: round(area.w), h: round(area.h) };
       if (target) {
-        const a = toElementFraction(target, area.x, area.y);
-        anchor = { ...anchor, element: target.id, ex: frac(a.ex), ey: frac(a.ey), ew: frac(area.w / Math.max(1, target.w)), eh: frac(area.h / Math.max(1, target.h)) };
+        const a = areaAnchorFractions(target, area);
+        anchor = { ...anchor, element: target.id, ...a };
       }
       openComposer(anchor, { x: area.x + area.w, y: area.y });
     } else {
@@ -154,12 +218,15 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
   // ---- pointer ----
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || !slide) return;
+    if (event.button !== 0 || !slide || !event.isPrimary) return;
     const target = event.target as HTMLElement;
     if (target.closest("[data-no-canvas]")) return;
     const p = toSlide(event.clientX, event.clientY);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    // The HTML element being edited inside covers its own box: a press anywhere else on the canvas finishes.
+    if (ui.htmlInside) editor.exitHtmlInside();
     editor.ui.set({ composer: null });
+    setObjectMenu(null);
     if (commentText) setCommentText(null);
 
     if (commenting) {
@@ -167,7 +234,20 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
       drag.current = { kind: "comment", start: p, current: p };
       return;
     }
+    if (!canEdit) {
+      const element = hit(p);
+      if (element) editor.select([element.id], event.shiftKey ? "toggle" : "replace");
+      else editor.clearSelection();
+      return;
+    }
     if (ui.editing) editor.stopEditing();
+    if (ui.shapeArmed) {
+      event.preventDefault();
+      drag.current = { kind: "draw", shape: ui.shape, slideId: slide.id, start: p, current: p,
+        pointerId: event.pointerId, surface: event.currentTarget, scale };
+      setDrawing(null);
+      return;
+    }
 
     const handle = target.dataset.handle as Handle | "rotate" | undefined;
     const one = ui.selection.length === 1 ? elements.find(e => e.id === ui.selection[0]) : null;
@@ -205,6 +285,13 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     editor.provider.setPresence({ cursor: { x: round(p.x), y: round(p.y) } });
     const d = drag.current;
     if (!d) return;
+    if (d.kind === "draw") {
+      if (d.pointerId !== event.pointerId) return;
+      d.current = p;
+      const input = drawnShape(d.shape, d.start, p, event.shiftKey, deck.theme, d.scale);
+      setDrawing(input ? { slideId: d.slideId, element: normalizeElement({ ...input, id: "e_drawpreview" }) } : null);
+      return;
+    }
     const threshold = 6 / scale;
     if (d.kind === "comment") {
       d.current = p;
@@ -268,8 +355,18 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
 
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
+    if (d?.kind === "draw" && d.pointerId !== event.pointerId) return;
     drag.current = null;
     if (!d || !slide) return;
+    if (d.kind === "draw") {
+      setDrawing(null);
+      if (d.surface.hasPointerCapture(d.pointerId)) d.surface.releasePointerCapture(d.pointerId);
+      const state = editor.ui.get();
+      if (!editor.canEdit || !state.shapeArmed || state.shape !== d.shape || state.overview || editor.currentSlideId() !== d.slideId) return;
+      const input = drawnShape(d.shape, d.start, toSlide(event.clientX, event.clientY), event.shiftKey, deck.theme, d.scale);
+      if (input) editor.addElement(input);
+      return;
+    }
     if (d.kind === "comment") {
       setDraft(null);
       const target = event.target as HTMLElement;
@@ -316,7 +413,7 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
   };
 
   const onDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!slide) return;
+    if (!slide || panning) return;
     const p = toSlide(event.clientX, event.clientY);
     const element = hit(p);
     if (!element) return;
@@ -328,8 +425,10 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
       }
       return;
     }
+    if (!canEdit || element.locked) return;
+    if (ui.shapeArmed) editor.setTool("select");
     if (element.kind === "html") {
-      editor.ui.set({ codeElement: element.id, selection: [element.id] });
+      editor.enterHtmlInside(element.id);
       return;
     }
     if (field) editor.startEditing(element.id, field);
@@ -343,6 +442,26 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     const p = toSlide(event.clientX, event.clientY);
     void insertFiles(editor, Array.from(event.dataTransfer.files), p);
   };
+
+  const openObjectMenu = useCallback((element: Element, at: { x: number; y: number }, field?: string) => {
+    const slideId = editor.currentSlideId();
+    if (!slideId) return;
+    editor.setTool("select");
+    if (!editor.ui.get().selection.includes(element.id)) editor.select([element.id]);
+    setObjectMenu({ at, slideId, elementId: element.id, field });
+  }, [editor]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) || !editorShortcutAllowed(event)) return;
+      const element = editor.selectedElements()[0];
+      const rect = slideRef.current?.getBoundingClientRect();
+      if (!element || !rect) return;
+      event.preventDefault();
+      openObjectMenu(element, { x: rect.left + (element.x + element.w / 2) * scale, y: rect.top + (element.y + element.h / 2) * scale });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editor, openObjectMenu, scale]);
 
   if (!slide) {
     return (
@@ -364,6 +483,18 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     <div
       className={styles.viewport}
       ref={viewport}
+      data-hand={panning || undefined}
+      onPointerDownCapture={event => {
+        if ((event.button !== 0 && event.button !== 1) || (!panning && event.button !== 1) || (event.target as HTMLElement).closest("[data-no-canvas]")) return;
+        event.preventDefault(); event.stopPropagation();
+        if (panDrag.current || !event.isPrimary) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        panDrag.current = { id: event.pointerId, x: pan.x, y: pan.y, startX: event.clientX, startY: event.clientY };
+      }}
+      onPointerMoveCapture={event => { const start = panDrag.current; if (!start) return; event.stopPropagation(); if (start.id === event.pointerId) setPan({ x: start.x + event.clientX - start.startX, y: start.y + event.clientY - start.startY }); }}
+      onPointerUpCapture={event => { if (!panDrag.current) return; event.stopPropagation(); if (panDrag.current.id !== event.pointerId) return; panDrag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+      onPointerCancelCapture={event => { if (panDrag.current?.id === event.pointerId) panDrag.current = null; }}
+      onLostPointerCapture={event => { if (panDrag.current?.id === event.pointerId) panDrag.current = null; }}
       data-zoomed={ui.zoom !== "fit" || undefined}
       onDragOver={event => {
         if (canEdit && event.dataTransfer.types.includes("Files")) event.preventDefault();
@@ -372,13 +503,13 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
     >
       <style>{slideCss()}</style>
       <FontStyles />
-      <div className={styles.stage} style={{ width: W * scale, height: H * scale }}>
+      <div className={styles.stage} style={{ width: W * scale, height: H * scale, transform: `translate(${pan.x}px, ${pan.y}px)` }}>
         <div
           ref={slideRef}
           className={`sp-slide ${styles.slide}`}
           data-testid="slide-canvas"
           data-slide-id={slide.id}
-          data-mode={commenting ? "comment" : "edit"}
+          data-mode={panning ? "hand" : commenting ? "comment" : ui.shapeArmed ? "draw" : "edit"}
           style={{ width: W, height: H, transform: `scale(${scale})`, fontFamily: `"${deck.theme.fonts.body}", system-ui, sans-serif`, color: deck.theme.colors.text }}
         >
           <div className={styles.transitionTarget} data-transition-target="">
@@ -394,11 +525,15 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
                 theme={deck.theme}
                 box={ui.preview?.[element.id] ?? null}
                 hideText={editingEl?.id === element.id}
-                html={paused[element.id] ? "static" : "live"}
+                hidden={insideEl?.id === element.id}
+                html={paused[element.id] || insideEl?.id === element.id ? "static" : "live"}
                 runKey={runKeys[element.id] ?? 0}
                 placeholder={canEdit && !commenting}
               />
             ))}
+            {drawing && drawing.slideId === slide.id && ui.shapeArmed ? <div data-testid="shape-draw-preview" aria-hidden="true" style={{ position: "absolute", inset: 0, opacity: 0.75, pointerEvents: "none" }}>
+              <SlideElement element={drawing.element} theme={deck.theme} />
+            </div> : null}
           </div>
           </div>
           {ui.grid && !commenting ? <div className={styles.grid} style={{ backgroundSize: `${GRID}px ${GRID}px` }} aria-hidden="true" /> : null}
@@ -407,17 +542,27 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
             data-testid="canvas-overlay"
             data-commenting={commenting || undefined}
             data-can-comment={mayComment || undefined}
+            style={ui.shapeArmed ? { cursor: "crosshair" } : undefined}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={() => {
+              cancelDrawing();
               drag.current = null;
               setMarquee(null);
               setDraft(null);
               editor.ui.set({ preview: null, guides: [] });
             }}
+            onLostPointerCapture={event => { if (drag.current?.kind === "draw" && drag.current.pointerId === event.pointerId) cancelDrawing(); }}
             onPointerLeave={() => editor.provider.setPresence({ cursor: null })}
             onDoubleClick={onDoubleClick}
+            onContextMenu={event => {
+              event.preventDefault(); event.stopPropagation();
+              const point = toSlide(event.clientX, event.clientY);
+              const element = hit(point);
+              if (element) openObjectMenu(element, { x: event.clientX, y: event.clientY }, textFieldAt(element, point) ?? undefined);
+              else { cancelDrawing(); setObjectMenu(null); }
+            }}
           >
             {!commenting
               ? selectionBoxes.map(({ element, box }) => (
@@ -428,12 +573,12 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
                     data-testid="selection-box"
                     style={{ left: box.x, top: box.y, width: box.w, height: box.h, transform: box.rotation ? `rotate(${box.rotation}deg)` : undefined, outlineWidth: line, outlineOffset: line }}
                   >
-                    {one && one.id === element.id && !element.locked && !ui.editing
+                    {canEdit && one && one.id === element.id && !element.locked && !ui.editing && !insideEl
                       ? HANDLES.map(h => (
                           <span key={h} className={styles.handle} data-handle={h} data-pos={h} style={{ width: hs, height: hs, margin: -hs / 2, borderWidth: line }} />
                         ))
                       : null}
-                    {one && one.id === element.id && !element.locked && !ui.editing ? (
+                    {canEdit && one && one.id === element.id && !element.locked && !ui.editing && !insideEl ? (
                       <span className={styles.rotateHandle} data-handle="rotate" title="Rotate (shift snaps to 15°)" style={{ width: hs * 1.2, height: hs * 1.2, top: -hs * 3, marginLeft: (-hs * 1.2) / 2, borderWidth: line }} />
                     ) : null}
                     {element.locked ? <span className={styles.lockBadge} style={{ fontSize: 12 / scale, padding: `${2 / scale}px ${6 / scale}px` }}>Locked</span> : null}
@@ -449,9 +594,10 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
               ),
             )}
             {marquee ? <div className={styles.marquee} style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, borderWidth: line }} /> : null}
-            {draft ? <div className={styles.commentDraft} style={{ left: draft.x, top: draft.y, width: draft.w, height: draft.h, borderWidth: 2 / scale }} /> : null}
+            {draft ? <div className={styles.commentDraft} data-testid="comment-drag-area" style={{ left: draft.x, top: draft.y, width: draft.w, height: draft.h, borderWidth: 2 / scale }} /> : null}
             <CanvasPresence slideId={slide.id} elements={elements} scale={scale} />
           </div>
+          {insideEl?.kind === "html" ? <HtmlInside key={insideEl.id} element={insideEl} theme={deck.theme} /> : null}
           {editingEl && ui.editing ? <TextEditor key={`${editingEl.id}/${ui.editing.field}`} element={editingEl} field={ui.editing.field} theme={deck.theme} readOnly={false} /> : null}
           {commentTextEl && commentText ? (
             <TextEditor
@@ -470,6 +616,7 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
         </div>
         <CommentLayer slide={slide} elements={elements} scale={scale} phone={phone} />
       </div>
+      <ObjectContextMenu target={objectMenu} onClose={() => setObjectMenu(null)} />
     </div>
   );
 }

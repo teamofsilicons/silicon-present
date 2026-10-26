@@ -5,7 +5,7 @@
  */
 import { api, seg } from "../client/api";
 import { listOf, toDeck, toFolder, toSearchHit } from "./normalize";
-import { listPaths, topOfShared, type Listing } from "./paths";
+import { homeListing, listPaths, topOfShared, type Listing } from "./paths";
 import type { Deck, Folder, FolderPath, ResourceKind, Scope, SearchHit } from "./types";
 
 export { listPaths, topOfShared, type Listing } from "./paths";
@@ -18,6 +18,12 @@ const collection = (kind: ResourceKind) => (kind === "deck" ? "decks" : "folders
  * folders too (`{ decks, folders }`); otherwise they come from the folders listing.
  */
 export async function listPlace(scope: Scope, folder: string | null, signal?: AbortSignal): Promise<Listing> {
+  if (scope === "all") {
+    // Folder access is checked by the service independently of the listing's scope.
+    if (folder) return listPlace("mine", folder, signal);
+    const [mine, shared] = await Promise.all([listPlace("mine", null, signal), listPlace("shared", null, signal)]);
+    return homeListing(mine, shared);
+  }
   const decks = listPaths.decks(scope, folder);
   const answer = await api.get<unknown>(decks.path, { query: decks.query, signal });
   const deckList = listOf(answer, "decks").map(toDeck);

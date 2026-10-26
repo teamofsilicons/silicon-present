@@ -16,12 +16,35 @@ export function keyLabel(combo: string): string {
   return combo.replace(/Mod/g, mod()).replace(/Alt/g, alt()).replace(/Shift/g, isMac() ? "⇧" : "Shift").replace(/\+/g, isMac() ? "" : "+");
 }
 
+export function editorTypingTarget(target: EventTarget | null): boolean {
+  return Boolean((target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), .ql-editor, [role=textbox]"));
+}
+
+/** Canvas shortcuts must leave typing, open menus and native control activation alone. */
+export function editorShortcutAllowed(event: KeyboardEvent): boolean {
+  if (event.defaultPrevented || event.isComposing || editorTypingTarget(event.target)) return false;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("[role=dialog], [data-radix-popper-content-wrapper]")) return false;
+  return !((event.key === "Enter" || event.key === " ") && target?.closest("button, a, [role=button], [role=link], [role=checkbox], [role=switch], [role=slider]"));
+}
+
 export interface ShortcutGroup {
   title: string;
   items: { keys: string; what: string }[];
 }
 
 export const SHORTCUTS: ShortcutGroup[] = [
+  { title: "Tools", items: [
+    { keys: "V", what: "Select objects" },
+    { keys: "H / hold Space", what: "Hand tool / pan the canvas" },
+    { keys: "T", what: "Add a text box" },
+    { keys: "R / O", what: "Draw a rectangle / ellipse" },
+    { keys: "L / Shift+L", what: "Draw a line / arrow" },
+    { keys: "Shift while drawing", what: "Make a square/circle or snap a line to 45°" },
+    { keys: "Mod+Shift+K", what: "Add images or videos" },
+    { keys: "C", what: "Comment on a point or area" },
+    { keys: "Escape", what: "Cancel drawing or a comment, then return to Select" },
+  ] },
   {
     title: "Everywhere",
     items: [

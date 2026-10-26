@@ -1,13 +1,15 @@
 "use client";
 
 /** Speaker notes for the current slide, under the canvas: a plain text Y.Text that everyone edits together. */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, StickyNote } from "lucide-react";
 import { usePlainText } from "@/lib/editor/use-plain-text";
 import { useAbilities, useCurrentSlide, useEditor, useUi } from "./editor-context";
 import styles from "./editor.module.css";
 
 export function NotesPane() {
   const editor = useEditor();
+  const [open, setOpen] = useState(true);
   const slide = useCurrentSlide();
   const master = useUi(s => s.master);
   const { canEdit } = useAbilities();
@@ -19,12 +21,14 @@ export function NotesPane() {
   if (master || !slideId) return null;
   if (!canEdit && !value) return null;
   return (
-    <div className={styles.notes}>
-      <label className={styles.notesLabel} htmlFor="speaker-notes">
-        Speaker notes
-      </label>
+    <div className={styles.notes} data-collapsed={!open || undefined}>
+      <button type="button" className={styles.notesToggle} aria-expanded={open} aria-controls="speaker-notes" onClick={() => setOpen(!open)}>
+        <StickyNote size={14} aria-hidden="true" /><span>Speaker notes</span>{open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
+      </button>
       <textarea
         id="speaker-notes"
+        aria-label="Speaker notes"
+        hidden={!open}
         ref={ref}
         className={styles.notesField}
         value={value}

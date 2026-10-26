@@ -40,6 +40,8 @@ interface Props {
   muted?: boolean;
   /** Show "Click to add text" in an empty text box (editors). */
   placeholder?: boolean;
+  /** Not drawn (an HTML element being edited inside: its edit frame is drawn on top instead). */
+  hidden?: boolean;
 }
 
 const READY = "present:sandbox-ready";
@@ -86,7 +88,7 @@ function isEmptyText(element: Element): boolean {
   return element.text.paragraphs.every(p => p.runs.every(r => !r.text.trim()));
 }
 
-export const SlideElement = memo(function SlideElement({ element, theme, box, hideText = false, html = "live", runKey = 0, muted = false, placeholder = false }: Props) {
+export const SlideElement = memo(function SlideElement({ element, theme, box, hideText = false, html = "live", runKey = 0, muted = false, placeholder = false, hidden = false }: Props) {
   const b = box ?? element;
   // Size changes re-render the inside (a table's rows, a shape's path); position and rotation never do.
   const sized = useMemo(() => ({ ...element, w: b.w, h: b.h }) as Element, [element, b.w, b.h]);
@@ -111,6 +113,7 @@ export const SlideElement = memo(function SlideElement({ element, theme, box, hi
         width: b.w,
         height: b.h,
         transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined,
+        visibility: hidden ? "hidden" : undefined,
         opacity: muted ? 0.55 : typeof opacity === "number" && opacity < 1 ? Math.max(0, opacity) : undefined,
       }}
     >

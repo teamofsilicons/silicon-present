@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { INLINE_ATTRS, MASTER, attrsAt, findInDeck, type TextHit } from "@silicon-present/deck";
+import { MASTER, replaceTextRange, findInDeck, type TextHit } from "@silicon-present/deck";
 import { useAbilities, useDeck, useEditor, useUi } from "./editor-context";
 import styles from "./editor.module.css";
 
@@ -55,13 +55,7 @@ export function FindReplace() {
       const text = editor.textField(hit.slide, hit.element, hit.field);
       if (!text) return;
       const rich = hit.field === "text" || hit.field.startsWith("cell:");
-      const keep: Record<string, unknown> = {};
-      if (rich) {
-        const attrs = attrsAt(text, hit.index);
-        for (const key of INLINE_ATTRS) if (attrs[key] !== undefined && attrs[key] !== null) keep[key] = attrs[key];
-      }
-      text.delete(hit.index, hit.length);
-      if (replacement) text.insert(hit.index, replacement, rich ? keep : undefined);
+      replaceTextRange(text, hit.index, hit.length, replacement, rich);
     }, "Replacing");
     setNote("Replaced 1.");
   };

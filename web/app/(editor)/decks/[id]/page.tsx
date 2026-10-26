@@ -9,6 +9,7 @@ import { Problem } from "@/components/foundation/feedback/problem";
 import { ButtonLink } from "@/components/foundation/button-link";
 import { EditorApp } from "@/components/editor/editor-app";
 import { loadDeckPage } from "@/lib/editor/server";
+import { ViewerEmailGate } from "@/components/share/viewer-email-gate";
 
 export async function generateMetadata({ params }: PageProps<"/decks/[id]">): Promise<Metadata> {
   const { id } = await params;
@@ -22,6 +23,7 @@ export default async function DeckPage({ params, searchParams }: PageProps<"/dec
   const slide = typeof query.slide === "string" ? query.slide : null;
   const thread = typeof query.thread === "string" ? query.thread : null;
   const { me, meta, error } = await loadDeckPage(id);
+  if (error?.code === "email_required") return <ViewerEmailGate />;
   if (!meta) {
     const status = error?.status ?? 0;
     const signedOut = !me;

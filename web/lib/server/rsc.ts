@@ -17,6 +17,7 @@ import { notFound, redirect } from "next/navigation";
 import { ApiError, errorFromResponse, networkError, type ApiErrorInit } from "../errors";
 import { serverEnv } from "./env";
 import { clientHeaders, safeReturnPath, sessionCookieName, sessionFromCookie, type SessionAccount, type StoredSession } from "./session";
+import { viewerEmailCookieName, viewerEmailHeaders } from "./viewer-email";
 
 /** What a page may know about the session: never the tokens. */
 export interface PublicSession {
@@ -84,7 +85,8 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promis
 
   const env = serverEnv();
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");
-  const outgoing: Record<string, string> = { Accept: "application/json", ...clientHeaders({ headers: await headers() }), ...init.headers, Authorization: `Bearer ${live.at}` };
+  const store = await cookies();
+  const outgoing: Record<string, string> = { Accept: "application/json", ...clientHeaders({ headers: await headers() }), ...init.headers, ...viewerEmailHeaders(store.get(viewerEmailCookieName())?.value), Authorization: `Bearer ${live.at}` };
   if (init.body !== undefined) outgoing["Content-Type"] = "application/json";
   const url = `${env.appApiUrl}${path}${queryString(init.query)}`;
   let response: Response;

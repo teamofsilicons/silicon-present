@@ -7,7 +7,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createDeck, eventually, signedIn } from "./pages-support";
 import { runAccounts } from "./support";
-import { deckJson, openDeck, plain, settled, share, silicon } from "./editor-support";
+import { deckJson, drawArmedShape, openDeck, plain, settled, share, silicon } from "./editor-support";
 
 type W = { __presentEditor: { deck(): { slides: Array<{ id: string; elements: Array<{ id: string; kind: string }> }> }; ui: { get(): { selection: string[] } } } };
 
@@ -72,8 +72,10 @@ test("two Carbons edit the same deck at once and see each other", async ({ brows
   // Bo goes offline and keeps working; Ada edits meanwhile; everything merges once Bo is back.
   await bo.context.setOffline(true);
   await expect(bo.page.getByTestId("connection-status")).toHaveAttribute("data-status", "offline", { timeout: 20_000 });
-  await bo.page.getByTestId("insert-shape").click();
+  await bo.page.getByTestId("choose-shape").click();
+  await bo.page.getByRole("menuitem", { name: "More shapes", exact: true }).click();
   await bo.page.locator('[data-shape="hexagon"]').click();
+  await drawArmedShape(bo.page);
   await bo.page.getByTestId("speaker-notes").fill("Written offline");
   await dblclickElement(ada.page, title!, 0.95, 0.5);
   await ada.page.keyboard.press("End");
@@ -138,8 +140,10 @@ test("a Silicon's change through the ops API appears at once with its name", asy
   await expect(highlights).toHaveCount(0, { timeout: 10_000 });
 
   // And the Silicon's edits merge with the Carbon's own: an update_element moves what the Carbon added.
-  await ada.page.getByTestId("insert-shape").click();
+  await ada.page.getByTestId("choose-shape").click();
+  await ada.page.getByRole("menuitem", { name: "More shapes", exact: true }).click();
   await ada.page.locator('[data-shape="triangle"]').click();
+  await drawArmedShape(ada.page);
   await settled(ada.page);
   const triangle = (await deckJson(ada.context, deck)).slides[0]!.elements.find(e => e.kind === "shape" && e.shape === "triangle")!;
   const moved = await si.call("POST", `/v1/decks/${deck}/edits`, { summary: "Moved the triangle", ops: [{ op: "update_element", slide, element: triangle.id, set: { x: 40, y: 40 } }] });

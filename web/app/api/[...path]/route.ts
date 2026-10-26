@@ -19,6 +19,11 @@ import { forwardRequestHeaders, publicReadPath, relayResponseHeaders, upstreamPa
 import { freshSession } from "@/lib/server/fresh";
 import { json, misconfigured } from "@/lib/server/responses";
 import { clearSession, clientHeaders, errorBody, readSession, sameOriginProblem, writeSession } from "@/lib/server/session";
+import { viewerEmailCookieName, viewerEmailHeaders } from "@/lib/server/viewer-email";
+
+function viewerHeaders(request: NextRequest) {
+  return { ...clientHeaders(request), ...viewerEmailHeaders(request.cookies.get(viewerEmailCookieName())?.value) };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +58,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   try {
     upstream = await fetch(`${env.appApiUrl}/${path}${request.nextUrl.search}`, {
       method,
-      headers: forwardRequestHeaders(request.headers, session.at, clientHeaders(request)),
+      headers: forwardRequestHeaders(request.headers, session.at, viewerHeaders(request)),
       body: hasBody ? request.body : undefined,
       // Streams the body through instead of buffering it (Node's fetch needs this for a stream body).
       ...(hasBody ? { duplex: "half" } : {}),
@@ -92,7 +97,7 @@ async function forwardAnonymous(request: NextRequest, apiUrl: string, method: st
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]);
   let upstream: Response;
   try {
-    upstream = await fetch(`${apiUrl}/${path}${request.nextUrl.search}`, { method, headers: forwardRequestHeaders(request.headers, null, clientHeaders(request)), redirect: "manual", cache: "no-store", signal });
+    upstream = await fetch(`${apiUrl}/${path}${request.nextUrl.search}`, { method, headers: forwardRequestHeaders(request.headers, null, viewerHeaders(request)), redirect: "manual", cache: "no-store", signal });
   } catch (error) {
     const reason = error instanceof Error ? (error.cause instanceof Error ? error.cause.message : error.message) : String(error);
     return json(502, errorBody("service_unreachable", `This site could not reach its service for ${method} /${path}: ${reason}.`, "Wait a moment and try again."));

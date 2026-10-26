@@ -571,6 +571,26 @@
   pointer-events: none;
 }
 
+.draftMarker {
+  position: absolute;
+  z-index: 31;
+  inset: 0;
+  pointer-events: none;
+}
+
+.draftArea {
+  border-style: solid;
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.draftPin {
+  cursor: default;
+  pointer-events: none;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent-foreground);
+}
+
 .floating {
   position: absolute;
   z-index: 60;

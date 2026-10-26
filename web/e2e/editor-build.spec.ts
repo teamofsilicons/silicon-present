@@ -7,7 +7,7 @@
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { createDeck, signedIn } from "./pages-support";
-import { deckJson, openDeck, plain, settled } from "./editor-support";
+import { deckJson, drawArmedShape, openDeck, plain, settled } from "./editor-support";
 
 const FIXTURES = resolve(__dirname, "../../renderer/test/fixtures");
 
@@ -49,7 +49,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await typeInto(page, first[1]!, "Made in the editor");
 
   // A second slide from the layout picker.
-  await page.getByTestId("new-slide").click();
+  await page.getByTestId("new-slide-layout").click();
   await page.getByRole("dialog").getByRole("button", { name: "Blank" }).click();
   await expect(page.getByTestId("slide-thumb")).toHaveCount(2);
 
@@ -63,12 +63,14 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await place(page, 100, 80);
 
   // Shapes: a star and an ellipse with text inside.
-  await page.getByTestId("insert-shape").click();
+  await page.getByTestId("choose-shape").click();
   await page.locator('[data-shape="star"]').click();
+  await drawArmedShape(page);
   const [starId] = await selection(page);
   await place(page, 100, 300);
-  await page.getByTestId("insert-shape").click();
+  await page.getByTestId("choose-shape").click();
   await page.locator('[data-shape="ellipse"]').click();
+  await drawArmedShape(page);
   const [ellipseId] = await selection(page);
   await place(page, 1300, 80);
   await typeInto(page, ellipseId!, "Inside");
@@ -85,6 +87,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await place(page, 100, 900);
 
   // A table: 3 x 3, then a row and a column more, a cell typed in and filled.
+  await page.getByTestId("more-tools").click();
   await page.getByTestId("insert-table").click();
   await page.getByRole("button", { name: "3 by 3 table" }).click();
   const [tableId] = await selection(page);
@@ -96,6 +99,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await page.getByRole("button", { name: "Accent", exact: true }).click();
 
   // A chart: a line chart with a changed value.
+  await page.getByTestId("more-tools").click();
   await page.getByTestId("insert-chart").click();
   const [chartId] = await selection(page);
   await place(page, 1300, 420);
@@ -105,6 +109,7 @@ test("a Carbon builds a deck with every element kind through the editor", async 
   await cell.press("Enter");
 
   // An HTML element whose code is edited; it runs.
+  await page.getByTestId("more-tools").click();
   await page.getByTestId("insert-html").click();
   const [htmlId] = await selection(page);
   await page.getByTestId("code-html").fill('<h1 id="hi">Built by hand</h1>');

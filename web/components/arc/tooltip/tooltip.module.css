@@ -1,5 +1,6 @@
 .tooltip { --tooltip-y: 3px; z-index: 90; max-width: 15rem; padding: var(--space-3) var(--space-4); --sq-r: var(--radius-control); --sq-fill: var(--foreground); --sq-stroke: color-mix(in oklab, var(--background) 14%, var(--foreground)); border: 1px solid var(--sq-stroke); background: var(--sq-fill); color: var(--background); box-shadow: var(--shadow-raised); font-size: var(--text-sm); font-weight: 400; line-height: var(--leading-body); transform-origin: var(--radix-tooltip-content-transform-origin); transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-fast) var(--ease-enter); }
 .tooltip[data-side="bottom"] { --tooltip-y: -3px; }
+.tooltip[data-compact] { padding: 5px 8px; font-size: var(--text-xs); line-height: 1.35; }
 /* The first tooltip waits, then rises a few pixels from its trigger. Within the skip window the next one only fades.
    Transitions instead of keyframes, so returning to the trigger while it fades out reverses the fade instead of restarting it. */
 @starting-style {

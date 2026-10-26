@@ -13,8 +13,9 @@ import type { DeckMeta, Me } from "@/lib/editor/types";
 import { appConfig } from "@/lib/app.config";
 import { EditorContext, useAbilities, useDeck, useEditor, useMeta, useUi } from "./editor-context";
 import { TopBar } from "./top-bar";
-import { Toolbar } from "./toolbar";
-import { SlideStrip } from "./slide-strip";
+import { Toolbar, ContextToolbar } from "./toolbar";
+import { LayersControl } from "./layers-control";
+import { SlideStrip, SlideOverview } from "./slide-strip";
 import { Canvas } from "./canvas";
 import { RightPanel } from "./right-panel";
 import { NotesPane } from "./notes-pane";
@@ -69,7 +70,7 @@ function EditorLayout() {
   const editor = useEditor();
   const phone = usePhone();
   const { canEdit } = useAbilities();
-  const { panelOpen, codeElement } = useUi(s => ({ panelOpen: s.panelOpen, codeElement: s.codeElement }));
+  const { panelOpen, codeElement, overview } = useUi(s => ({ panelOpen: s.panelOpen, codeElement: s.codeElement, overview: s.overview }));
   useShortcuts(editor);
 
   // The tab's title follows the deck's (a rename here or by someone else).
@@ -121,12 +122,16 @@ function EditorLayout() {
   return (
     <div className={styles.shell} data-can-edit={canEdit || undefined}>
       <TopBar />
-      {canEdit ? <Toolbar /> : null}
+      <ContextToolbar />
       <div className={styles.body} data-panel={panelOpen || undefined}>
         <SlideStrip />
         <main className={styles.center} id="main">
-          <Canvas />
-          {codeElement ? <CodePanel /> : <NotesPane />}
+          <div className={styles.canvasArea}>
+            {overview ? <SlideOverview /> : <Canvas />}
+            {!overview ? <Toolbar /> : null}
+            {!overview ? <div className={styles.layersDock} data-with-tools={canEdit || undefined} data-testid="layers-dock" data-sq="surface"><LayersControl /></div> : null}
+          </div>
+          {!overview && (codeElement ? <CodePanel /> : <NotesPane />)}
           <FindReplace />
         </main>
         {panelOpen ? <RightPanel /> : null}

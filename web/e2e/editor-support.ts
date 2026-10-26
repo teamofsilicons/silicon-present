@@ -24,6 +24,20 @@ export async function openDeck(page: Page, deck: string, query = ""): Promise<vo
   await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", /live|saving/, { timeout: 30_000 });
 }
 
+/** Draw the armed shape using slide-relative points, observing the preview before committing. */
+export async function drawArmedShape(page: Page, from = { x: 0.3, y: 0.35 }, to = { x: 0.55, y: 0.65 }): Promise<void> {
+  const canvas = page.getByTestId("slide-canvas");
+  await expect(canvas).toHaveAttribute("data-mode", "draw");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * from.x, box.y + box.height * from.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * to.x, box.y + box.height * to.y, { steps: 6 });
+  await expect(page.getByTestId("shape-draw-preview")).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId("shape-draw-preview")).toHaveCount(0);
+  await expect(canvas).toHaveAttribute("data-mode", "edit");
+}
+
 /** Waits until every change made in this page has reached the service. */
 export async function settled(page: Page): Promise<void> {
   await expect(page.getByTestId("connection-status")).toHaveAttribute("data-status", "live", { timeout: 20_000 });

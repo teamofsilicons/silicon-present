@@ -12,7 +12,7 @@ export type Role = "editor" | "commenter" | "viewer";
 export type MyRole = Role | "owner";
 export type PublicMode = "off" | "view" | "comment" | "edit";
 export type ResourceKind = "deck" | "folder";
-export type Scope = "mine" | "shared" | "trash";
+export type Scope = "all" | "mine" | "shared" | "trash";
 
 /** A Carbon or Silicon as Present shows them: always by c:/si: id and display name, keyed by uuid. */
 export interface Account {
@@ -31,6 +31,8 @@ export interface Deck {
   /** The folder it is in, or null at the top of the owner's decks. */
   folder: string | null;
   public: PublicMode;
+  /** Public visitors must provide an email before opening the deck. */
+  requireEmail: boolean;
   /** The caller's effective role (null for an anonymous visitor of a public deck: then `public` says what they may do). */
   role: MyRole | null;
   trashedAt: string | null;
@@ -76,8 +78,19 @@ export interface Access {
   members: Member[];
   /** Decks only. */
   public: PublicMode;
+  /** Decks only; ignored while public access is off. */
+  requireEmail: boolean;
   /** The caller's own role on it. */
   role: MyRole | null;
+}
+
+/** Owner-only view history. Entered addresses are self-reported, not verified. */
+export interface DeckViewer {
+  email: string;
+  source: "account" | "entered";
+  firstViewedAt: string | null;
+  lastViewedAt: string | null;
+  views: number;
 }
 
 export type TransferState = "pending" | "accepted" | "declined" | "cancelled";
@@ -191,17 +204,16 @@ export const can = {
 };
 
 /** Export formats (UNDERSTANDING.md "Formats"; docs/architecture.md `GET /v1/decks/{id}/export`). */
-export type ExportFormat = "pptx" | "ppt" | "key" | "odp" | "pdf" | "html" | "png" | "jpg";
+export type ExportFormat = "pptx" | "odp" | "pdf" | "txt" | "jpg" | "png" | "svg";
 
-export const EXPORT_FORMATS: ReadonlyArray<{ format: ExportFormat; label: string; extension: string; note?: string }> = [
-  { format: "pptx", label: "PowerPoint", extension: ".pptx" },
-  { format: "ppt", label: "PowerPoint 97–2003", extension: ".ppt" },
-  { format: "key", label: "Keynote", extension: ".key" },
-  { format: "odp", label: "OpenDocument", extension: ".odp" },
-  { format: "pdf", label: "PDF", extension: ".pdf" },
-  { format: "html", label: "Web page", extension: ".html", note: "One file; HTML elements stay live" },
-  { format: "png", label: "PNG images", extension: ".zip", note: "One image per slide, in a .zip" },
-  { format: "jpg", label: "JPG images", extension: ".zip", note: "One image per slide, in a .zip" },
+export const EXPORT_FORMATS: ReadonlyArray<{ format: ExportFormat; label: string; extension: string; currentSlide?: boolean }> = [
+  { format: "pptx", label: "Microsoft PowerPoint", extension: ".pptx" },
+  { format: "odp", label: "ODP document", extension: ".odp" },
+  { format: "pdf", label: "PDF document", extension: ".pdf" },
+  { format: "txt", label: "Plain text", extension: ".txt" },
+  { format: "jpg", label: "JPEG image", extension: ".jpg", currentSlide: true },
+  { format: "png", label: "PNG image", extension: ".png", currentSlide: true },
+  { format: "svg", label: "Scalable Vector Graphics", extension: ".svg", currentSlide: true },
 ];
 
 /** Files Present opens (UNDERSTANDING.md "Formats", plus a deck's own pictures, video and audio as slides). */

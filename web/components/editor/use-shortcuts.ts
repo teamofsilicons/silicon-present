@@ -8,13 +8,9 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { insertFiles, textInput } from "@/lib/editor/insert";
+import { insertShortcut, PICK_MEDIA_EVENT } from "@/lib/editor/insert-shortcuts";
 import type { Editor } from "@/lib/editor/editor";
-
-function typingIn(target: EventTarget | null): boolean {
-  const node = target as HTMLElement | null;
-  if (!node) return false;
-  return Boolean(node.closest("input, textarea, select, [contenteditable='true'], .ql-editor, [role='dialog'] input"));
-}
+import { editorShortcutAllowed, editorTypingTarget } from "@/lib/editor/keys";
 
 export function useShortcuts(editor: Editor) {
   const router = useRouter();
@@ -25,6 +21,7 @@ export function useShortcuts(editor: Editor) {
     let pendingPaste: ReturnType<typeof setTimeout> | null = null;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key;
       const ui = editor.ui.get();
@@ -39,7 +36,7 @@ export function useShortcuts(editor: Editor) {
           const el = selected[0]!;
           editor.ui.set({ composer: { anchor: { kind: "element", slide, element: el.id }, at: { x: el.x + el.w, y: el.y } }, panel: "comments", panelOpen: true });
         } else if (canEdit) {
-          editor.ui.set({ commentMode: !ui.commentMode, panel: "comments", panelOpen: true, editing: null });
+          editor.setTool(ui.commentMode ? "select" : "comment");
         } else editor.ui.set({ panel: "comments", panelOpen: true });
         return;
       }
@@ -48,14 +45,65 @@ export function useShortcuts(editor: Editor) {
         editor.ui.set({ findOpen: true });
         return;
       }
-      if (typingIn(event.target)) return;
+      if (!editorShortcutAllowed(event)) return;
+
+      // Editing an HTML element's inside: keys act on its selected part, never on the element as a whole (the edit
+      // frame sends the same keys when it has the focus: components/editor/html-inside.tsx).
+      const inside = canEdit ? ui.htmlInside : null;
+      if (inside) {
+        if (key === "Escape") {
+          event.preventDefault();
+          editor.exitHtmlInside();
+          return;
+        }
+        if (key === "Delete" || key === "Backspace") {
+          event.preventDefault();
+          if (inside.part !== null) editor.changeHtmlInside({ kind: "delete", part: inside.part });
+          return;
+        }
+        if (key.startsWith("Arrow") && !mod) {
+          event.preventDefault();
+          const step = event.shiftKey ? 10 : 1;
+          if (inside.part !== null) editor.changeHtmlInside({ kind: "move", part: inside.part, dx: key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0, dy: key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0 });
+          return;
+        }
+        if (mod && ["x", "d", "a", "g"].includes(key.toLowerCase())) {
+          event.preventDefault();
+          return;
+        }
+      }
+
+      const insert = canEdit && !ui.overview ? insertShortcut(event) : null;
+      if (insert) {
+        event.preventDefault();
+        if (insert.kind === "shape") editor.armShape(insert.shape);
+        else { editor.setTool("select"); window.dispatchEvent(new Event(PICK_MEDIA_EVENT)); }
+        return;
+      }
+
+      if (!mod && !event.altKey && !event.shiftKey) {
+        const tool = key.toLowerCase();
+        if (tool === "v" || tool === "h" || (tool === "c" && (editor.canComment || editor.signInToComment))) {
+          event.preventDefault();
+          editor.setTool(tool === "v" ? "select" : tool === "h" ? "hand" : "comment");
+          return;
+        }
+        if (tool === "t" && canEdit) {
+          event.preventDefault();
+          if (event.repeat) return;
+          editor.setTool("select");
+          editor.addElement(textInput(editor), { edit: true });
+          return;
+        }
+      }
 
       if (key === "Escape") {
         if (ui.composer) editor.ui.set({ composer: null });
         else if (ui.findOpen) editor.ui.set({ findOpen: false });
         else if (ui.codeElement) editor.ui.set({ codeElement: null });
         else if (ui.activeThread) editor.ui.set({ activeThread: null });
-        else if (ui.commentMode) editor.ui.set({ commentMode: false });
+        else if (ui.commentMode || ui.handMode || ui.shapeArmed) editor.setTool("select");
+        else if (ui.overview) editor.ui.set({ overview: false });
         else if (ui.selection.length) editor.clearSelection();
         return;
       }
@@ -70,7 +118,7 @@ export function useShortcuts(editor: Editor) {
         router.push(`/decks/${encodeURIComponent(editor.deckId)}/present${slide ? `?slide=${encodeURIComponent(slide)}` : ""}`);
         return;
       }
-      if (key === "PageDown" || key === "PageUp") {
+      if (!ui.overview && (key === "PageDown" || key === "PageUp")) {
         event.preventDefault();
         editor.stepSlide(key === "PageDown" ? 1 : -1);
         return;
@@ -79,11 +127,11 @@ export function useShortcuts(editor: Editor) {
         event.preventDefault();
         const fit = ui.fitScale;
         const current = ui.zoom === "fit" ? fit : ui.zoom;
-        if (key === "0") editor.ui.set({ zoom: "fit" });
+        if (key === "0") { editor.ui.set({ zoom: "fit" }); window.dispatchEvent(new Event("present:fit")); }
         else editor.ui.set({ zoom: Math.max(0.1, Math.min(3, Math.round(current * (key === "-" ? 0.8 : 1.25) * 100) / 100)) });
         return;
       }
-      if (!ui.selection.length && (key === "ArrowDown" || key === "ArrowUp" || key === "ArrowLeft" || key === "ArrowRight") && !mod) {
+      if (!ui.overview && !ui.selection.length && (key === "ArrowDown" || key === "ArrowUp" || key === "ArrowLeft" || key === "ArrowRight") && !mod) {
         event.preventDefault();
         editor.stepSlide(key === "ArrowDown" || key === "ArrowRight" ? 1 : -1);
         return;
@@ -92,7 +140,7 @@ export function useShortcuts(editor: Editor) {
         editor.copy();
         return;
       }
-      if (!canEdit) return;
+      if (!canEdit || ui.commentMode || ui.handMode || ui.overview) return;
 
       if (mod && !event.altKey && key.toLowerCase() === "x" && ui.selection.length) {
         editor.copy();
@@ -199,7 +247,7 @@ export function useShortcuts(editor: Editor) {
     };
 
     const onCopy = (event: ClipboardEvent) => {
-      if (typingIn(event.target) || !editor.ui.get().selection.length) return;
+      if (editorTypingTarget(event.target) || !editor.ui.get().selection.length) return;
       if (editor.copy()) {
         event.preventDefault();
         const payload = localStorage.getItem("silicon-present:clipboard");
@@ -207,14 +255,14 @@ export function useShortcuts(editor: Editor) {
       }
     };
     const onCut = (event: ClipboardEvent) => {
-      if (typingIn(event.target) || !editor.canEdit || !editor.ui.get().selection.length) return;
+      if (editorTypingTarget(event.target) || !editor.canEdit || editor.ui.get().commentMode || editor.ui.get().handMode || !editor.ui.get().selection.length) return;
       if (pendingCut) clearTimeout(pendingCut);
       pendingCut = null;
       onCopy(event);
       editor.deleteSelection();
     };
     const onPaste = (event: ClipboardEvent) => {
-      if (typingIn(event.target) || !editor.canEdit) return;
+      if (editorTypingTarget(event.target) || !editor.canEdit || editor.ui.get().commentMode || editor.ui.get().handMode || editor.ui.get().overview) return;
       if (pendingPaste) clearTimeout(pendingPaste);
       pendingPaste = null;
       const data = event.clipboardData;

@@ -238,16 +238,26 @@
   flex: 0 0 auto;
 }
 
-.tool:hover:not(:disabled),
-.tool:focus-visible {
+.tool:is(:hover, :focus-visible):not(:disabled):not([data-active]) {
   --sq-fill: var(--surface-muted);
   color: var(--foreground);
   outline: none;
 }
 
-.tool[data-active] {
+.tool[data-active]:not(:disabled) {
   --sq-fill: var(--accent-subtle);
   color: var(--accent-ink);
+}
+
+.tool:focus-visible:not(:disabled) {
+  --sq-stroke: var(--border-strong);
+  outline: none;
+}
+
+/* Hover and keyboard focus preserve a toggle's selected color. */
+.tool[data-active]:is(:hover, :focus-visible):not(:disabled) {
+  --sq-stroke: var(--accent);
+  outline: none;
 }
 
 .tool:disabled {
@@ -1770,4 +1780,61 @@
   .topButton {
     transition: background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
   }
+}
+
+
+/* Tools follow the work: document actions above, creation tools close to the canvas. */
+.canvasArea { position: relative; flex: 1 1 auto; display: flex; min-width: 0; min-height: 0; container: editor-canvas / inline-size; }
+.canvasArea > .viewport { padding-bottom: 72px; }
+.canvasArea > .viewport[data-zoomed] { padding-bottom: 100px; }
+.creationDock {
+  position: absolute; z-index: 25; left: 50%; bottom: 16px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 3px; padding: 7px;
+  max-width: calc(100% - 24px); --sq-r: 18px; --sq-fill: var(--surface-raised); --sq-stroke: var(--border);
+  background: var(--sq-fill); border: 1px solid var(--sq-stroke); box-shadow: var(--shadow-raised);
+}
+.creationDock .tool { width: 38px; height: 38px; }
+.creationDock .tool[data-active]:not(:disabled) { --sq-fill: var(--primary); color: var(--primary-foreground); }
+.creationDock .tool[data-active]:is(:hover, :focus-visible):not(:disabled) { --sq-fill: var(--primary-hover); --sq-stroke: var(--primary-hover); }
+.creationDock .toolDivider { margin-inline: 3px; }
+.layersDock {
+  position: absolute; z-index: 25; right: 16px; bottom: 16px;
+  display: flex; align-items: center; padding: 7px;
+  --sq-r: 18px; --sq-fill: var(--surface-raised); --sq-stroke: var(--border);
+  background: var(--sq-fill); border: 1px solid var(--sq-stroke); box-shadow: var(--shadow-raised);
+}
+.layersDock .tool { height: 38px; }
+/* Keep both docks reachable when the side panels leave a narrow canvas. */
+@container editor-canvas (max-width: 580px) {
+  .layersDock[data-with-tools] { bottom: 78px; }
+}
+.toolHint { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
+.insertMenu { width: 250px; }
+.insertMenuGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.insertMenuTool { width: 100%; height: 60px; display: flex; flex-direction: column; justify-content: center; gap: 5px; font-size: var(--text-xs); }
+.stripHeader { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); font-size: var(--text-sm); font-weight: 500; }
+.slideTotal { margin-left: 4px; color: var(--text-muted); font-weight: 400; }
+.overview { flex: 1; overflow: auto; padding: 20px; }
+.overviewHeading { margin-bottom: 24px; }
+.overviewHeading h2 { margin: 0 0 6px; font-size: var(--text-xl); font-weight: 500; }
+.overviewHeading p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+.overviewGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(224px, 1fr)); gap: 22px; }
+.overviewCard { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px; --sq-r: 12px; --sq-fill: var(--surface); --sq-stroke: var(--border); background: var(--sq-fill); border: 1px solid var(--sq-stroke); color: var(--foreground); cursor: pointer; }
+.overviewCard:hover, .overviewCard:focus-visible, .overviewCard[data-current] { --sq-stroke: var(--accent); --sq-fill: var(--accent-subtle); outline: none; }
+.overviewCaption { display: flex; justify-content: space-between; width: 100%; font-size: var(--text-xs); color: var(--text-secondary); }
+.overviewCaption > span { display: inline-flex; align-items: center; gap: 4px; }
+.viewport[data-hand], .viewport[data-hand] * { cursor: grab !important; }
+.viewport[data-hand] { touch-action: none; }
+.viewport[data-hand]:active, .viewport[data-hand]:active * { cursor: grabbing !important; }
+.notesToggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: var(--text-xs); color: var(--text-muted); text-align: left; cursor: pointer; }
+.notesToggle span { flex: 1; }
+.notesToggle:hover, .notesToggle:focus-visible { color: var(--accent-ink); outline: none; }
+.notes[data-collapsed] { height: auto; flex-basis: auto; min-height: 0; padding-block: 10px; }
+.notesField[hidden] { display: none; }
+@media (max-width: 1150px) {
+  .body[data-panel] { grid-template-columns: 216px minmax(0, 1fr) 280px; }
+  .body { grid-template-columns: 216px minmax(0, 1fr); }
+  .creationDock { gap: 0; padding: 5px; }
+  .creationDock .tool { width: 32px; }
+  .toolbar .toolHint { display: none; }
 }

@@ -17,7 +17,6 @@ import { beginSignIn } from "@/lib/client/session";
 import { kindNoun } from "@/lib/format";
 import { notifyError } from "@/lib/notify";
 import { renameItem } from "@/lib/present/decks";
-import { keyLabel } from "@/lib/editor/keys";
 import { nameOf } from "@/lib/editor/normalize-api";
 import { safeColor } from "@/lib/editor/people";
 import { useStore } from "@/lib/editor/store";
@@ -86,7 +85,7 @@ export function TopBar({ phone = false }: { phone?: boolean }) {
   const editor = useEditor();
   const meta = useMeta();
   const { canEdit, canComment, signInToComment, signedIn } = useAbilities();
-  const { commentMode, panel, panelOpen } = useUi(s => ({ commentMode: s.commentMode, panel: s.panel, panelOpen: s.panelOpen }));
+  const { panel, panelOpen } = useUi(s => ({ panel: s.panel, panelOpen: s.panelOpen }));
   const slideId = useUi(s => s.slideId);
   const rename = async (title: string) => {
     const next = title.trim() || "Untitled deck";
@@ -127,14 +126,6 @@ export function TopBar({ phone = false }: { phone?: boolean }) {
       </div>
       <div className={styles.topRight}>
         {!phone ? <People /> : null}
-        {canEdit && !phone ? (
-          <Tooltip content={`Comment mode · ${keyLabel("Mod+Alt+M")}`} side="bottom">
-            <button type="button" className={styles.topButton} aria-pressed={commentMode} data-active={commentMode || undefined} onClick={() => editor.ui.set({ commentMode: !commentMode, panel: "comments", panelOpen: true, editing: null })} data-testid="comment-mode" data-sq="surface">
-              <MessageSquare size={16} aria-hidden="true" />
-              <span>Comment</span>
-            </button>
-          </Tooltip>
-        ) : null}
         {phone || (!canEdit && (canComment || signInToComment)) ? (
           <button
             type="button"

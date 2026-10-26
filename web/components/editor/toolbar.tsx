@@ -5,9 +5,13 @@
  * toolbar while editing text, arrange/align/group/lock for a selection. Zoom, snapping, the grid, find and the
  * shortcuts sit at the end.
  */
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bold,
+  MousePointer2,
+  Hand,
+  MessageSquare,
+  Plus,
   ChartColumn,
   Clapperboard,
   Code,
@@ -32,7 +36,6 @@ import {
   Music,
   Redo2,
   Search,
-  Shapes,
   Strikethrough,
   Table,
   TextAlignCenter,
@@ -55,50 +58,19 @@ import {
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
   Baseline,
+  PaintBucket,
+  Check,
 } from "lucide-react";
-import { SHAPES, type ShapeName } from "@silicon-present/deck";
-import { shapeGeometry } from "@silicon-present/render";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/arc/popover/popover";
 import { useStore } from "@/lib/editor/store";
-import { chartInput, htmlInput, insertFiles, shapeInput, tableInput, textInput } from "@/lib/editor/insert";
+import { chartInput, htmlInput, insertFiles, tableInput, textInput } from "@/lib/editor/insert";
 import { keyLabel } from "@/lib/editor/keys";
-import { useDeck, useEditor, useUi } from "./editor-context";
-import { ColorButton, MiniSelect, ToolButton, type Swatch } from "./controls";
+import { PICK_MEDIA_EVENT } from "@/lib/editor/insert-shortcuts";
+import { ShapeMenu } from "./shape-menu";
+export { SHAPE_NAMES, ShapeGlyph } from "./shape-menu";
+import { useAbilities, useDeck, useEditor, useUi } from "./editor-context";
+import { ColorButton, MiniSelect, NumberField, ToolButton, type Swatch } from "./controls";
 import styles from "./editor.module.css";
-
-export const SHAPE_NAMES: Record<string, string> = {
-  rect: "Rectangle",
-  "round-rect": "Rounded rectangle",
-  ellipse: "Ellipse",
-  triangle: "Triangle",
-  "right-triangle": "Right triangle",
-  diamond: "Diamond",
-  pentagon: "Pentagon",
-  hexagon: "Hexagon",
-  octagon: "Octagon",
-  star: "Star",
-  "arrow-right": "Arrow right",
-  "arrow-left": "Arrow left",
-  "arrow-up": "Arrow up",
-  "arrow-down": "Arrow down",
-  chevron: "Chevron",
-  line: "Line",
-  callout: "Callout",
-  heart: "Heart",
-  cloud: "Cloud",
-  plus: "Plus",
-};
-
-export function ShapeGlyph({ shape, size = 22 }: { shape: string; size?: number }) {
-  const w = size;
-  const h = shape === "line" ? size : Math.round(size * 0.78);
-  const geo = shapeGeometry(shape, w, h);
-  return (
-    <svg width={w} height={h} viewBox={`-1 -1 ${w + 2} ${h + 2}`} aria-hidden="true">
-      <path d={geo.d} fill={geo.open ? "none" : "currentColor"} fillOpacity={0.18} stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 const FONTS = ["Inter", "Fraunces", "Space Grotesk", "IBM Plex Sans", "IBM Plex Mono", "DM Serif Display", "Playfair Display", "Georgia", "system-ui"];
 const SIZES = [16, 20, 24, 28, 32, 40, 48, 56, 64, 72, 96, 120, 160];
@@ -116,62 +88,46 @@ export function themeSwatches(colors: Record<string, string>): Swatch[] {
 
 function InsertTools() {
   const editor = useEditor();
-  const deck = useDeck();
+  const { shape, shapeArmed } = useUi(s => ({ shape: s.shape, shapeArmed: s.shapeArmed }));
   const files = useRef<HTMLInputElement>(null);
-  const [accept, setAccept] = useState("image/*");
-  const [shapesOpen, setShapesOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   const [hover, setHover] = useState<{ r: number; c: number }>({ r: 3, c: 3 });
-  const pick = (kind: string) => {
-    setAccept(kind);
-    requestAnimationFrame(() => files.current?.click());
-  };
+  const pick = useCallback((kind: string) => {
+    const input = files.current;
+    if (!input) return;
+    input.accept = kind;
+    input.click();
+  }, []);
+  useEffect(() => {
+    const onPickMedia = () => pick("image/*,video/*");
+    window.addEventListener(PICK_MEDIA_EVENT, onPickMedia);
+    return () => window.removeEventListener(PICK_MEDIA_EVENT, onPickMedia);
+  }, [pick]);
   return (
     <div className={styles.toolGroup} role="group" aria-label="Insert">
-      <ToolButton label="Text box" onClick={() => editor.addElement(textInput(editor), { edit: true })} data-testid="insert-text">
+      <ToolButton label="Text box" shortcut="T" onClick={() => editor.addElement(textInput(editor), { edit: true })} data-testid="insert-text">
         <Type size={17} aria-hidden="true" />
       </ToolButton>
-      <Popover open={shapesOpen} onOpenChange={setShapesOpen}>
-        <PopoverTrigger asChild>
-          <ToolButton label="Shape" data-testid="insert-shape">
-            <Shapes size={17} aria-hidden="true" />
-          </ToolButton>
-        </PopoverTrigger>
-        <PopoverContent align="start" className={styles.shapeMenu}>
-          <p className={styles.menuTitle}>Shapes</p>
-          <div className={styles.shapeGrid}>
-            {SHAPES.map(shape => (
-              <button
-                key={shape}
-                type="button"
-                className={styles.shapeOption}
-                aria-label={SHAPE_NAMES[shape]}
-                title={SHAPE_NAMES[shape]}
-                data-shape={shape}
-                onClick={() => {
-                  setShapesOpen(false);
-                  editor.addElement(shapeInput(editor, shape as ShapeName, deck.theme));
-                }}
-              >
-                <ShapeGlyph shape={shape} />
-              </button>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+      <ShapeMenu shape={shape} armed={shapeArmed} onArm={choice => editor.armShape(choice)} onMedia={() => { editor.setTool("select"); pick("image/*,video/*"); }} />
       <ToolButton label="Image" onClick={() => pick("image/*")} data-testid="insert-image">
         <ImagePlus size={17} aria-hidden="true" />
       </ToolButton>
-      <ToolButton label="Video" onClick={() => pick("video/*")} data-testid="insert-video">
-        <Clapperboard size={17} aria-hidden="true" />
+      <Popover open={moreOpen} onOpenChange={open => { setMoreOpen(open); if (!open) setTableOpen(false); }}>
+        <PopoverTrigger asChild><ToolButton label="More tools" data-testid="more-tools"><Plus size={18} aria-hidden="true" /></ToolButton></PopoverTrigger>
+        <PopoverContent side="top" align="center" className={styles.insertMenu}>
+          <p className={styles.menuTitle}>Add to your slide</p>
+          <div className={styles.insertMenuGrid}>
+      <ToolButton className={styles.insertMenuTool} label="Video" tip={false} onClick={() => { setMoreOpen(false); pick("video/*"); }} data-testid="insert-video">
+        <Clapperboard size={17} aria-hidden="true" /><span>Video</span>
       </ToolButton>
-      <ToolButton label="Audio" onClick={() => pick("audio/*")} data-testid="insert-audio">
-        <Music size={17} aria-hidden="true" />
+      <ToolButton className={styles.insertMenuTool} label="Audio" tip={false} onClick={() => { setMoreOpen(false); pick("audio/*"); }} data-testid="insert-audio">
+        <Music size={17} aria-hidden="true" /><span>Audio</span>
       </ToolButton>
       <Popover open={tableOpen} onOpenChange={setTableOpen}>
         <PopoverTrigger asChild>
-          <ToolButton label="Table" data-testid="insert-table">
-            <Table size={17} aria-hidden="true" />
+          <ToolButton className={styles.insertMenuTool} label="Table" tip={false} data-testid="insert-table">
+            <Table size={17} aria-hidden="true" /><span>Table</span>
           </ToolButton>
         </PopoverTrigger>
         <PopoverContent align="start" className={styles.tableMenu}>
@@ -193,6 +149,7 @@ function InsertTools() {
                   onFocus={() => setHover({ r, c })}
                   onClick={() => {
                     setTableOpen(false);
+                    setMoreOpen(false);
                     editor.addElement(tableInput(editor, r, c));
                   }}
                 />
@@ -201,23 +158,29 @@ function InsertTools() {
           </div>
         </PopoverContent>
       </Popover>
-      <ToolButton label="Chart" onClick={() => editor.addElement(chartInput(editor))} data-testid="insert-chart">
-        <ChartColumn size={17} aria-hidden="true" />
+      <ToolButton className={styles.insertMenuTool} label="Chart" tip={false} onClick={() => { setMoreOpen(false); editor.addElement(chartInput(editor)); }} data-testid="insert-chart">
+        <ChartColumn size={17} aria-hidden="true" /><span>Chart</span>
       </ToolButton>
       <ToolButton
+        className={styles.insertMenuTool}
         label="HTML element"
+        tip={false}
         onClick={() => {
+          setMoreOpen(false);
           const id = editor.addElement(htmlInput(editor));
           if (id) editor.ui.set({ codeElement: id });
         }}
         data-testid="insert-html"
       >
-        <CodeXml size={17} aria-hidden="true" />
+        <CodeXml size={17} aria-hidden="true" /><span>HTML</span>
       </ToolButton>
+          </div>
+        </PopoverContent>
+      </Popover>
       <input
         ref={files}
         type="file"
-        accept={accept}
+        accept="image/*,video/*"
         multiple
         hidden
         data-testid="file-input"
@@ -378,6 +341,59 @@ function TextTools() {
   );
 }
 
+/** The selected part of an HTML element being edited inside: its text colour, size, weight, slant, background; delete. */
+function HtmlInsideTools() {
+  const editor = useEditor();
+  const deck = useDeck();
+  const inside = useUi(s => s.htmlInside);
+  if (!inside) return null;
+  const info = inside.part === null ? null : inside.info;
+  const swatches = themeSwatches(deck.theme.colors as unknown as Record<string, string>);
+  const set = (style: Record<string, string | null>) => {
+    if (inside.part === null) return;
+    if (!editor.changeHtmlInside({ kind: "style", part: inside.part, set: style })) return;
+    // The frame reports the part again once it redraws; until then show what was just set.
+    const patch: Partial<NonNullable<typeof info>> = {};
+    if ("color" in style) patch.color = style.color;
+    if ("background-color" in style) patch.background = style["background-color"] === "transparent" ? null : style["background-color"];
+    if ("font-size" in style && style["font-size"]) patch.fontSize = parseFloat(style["font-size"]);
+    if ("font-weight" in style) patch.bold = style["font-weight"] === "bold";
+    if ("font-style" in style) patch.italic = style["font-style"] === "italic";
+    const now = editor.ui.get().htmlInside;
+    if (now?.info && now.part === inside.part) editor.ui.set({ htmlInside: { ...now, info: { ...now.info, ...patch } } });
+  };
+  return (
+    <div className={styles.toolGroup} role="group" aria-label="HTML element parts" data-testid="html-inside-tools">
+      {info ? <>
+        <span className={styles.toolHint} data-testid="html-inside-part">&lt;{info.tag}&gt;</span>
+        <ColorButton label="Text colour" value={info.color} swatches={swatches} onChange={color => set({ color })}>
+          <Baseline size={16} aria-hidden="true" />
+        </ColorButton>
+        <NumberField label="Size" value={info.fontSize} min={1} max={2000} suffix="px" width={84} onChange={size => set({ "font-size": `${Math.round(size * 10) / 10}px` })} />
+        <ToolButton label="Bold" active={info.bold} onClick={() => set({ "font-weight": info.bold ? "normal" : "bold" })}>
+          <Bold size={16} aria-hidden="true" />
+        </ToolButton>
+        <ToolButton label="Italic" active={info.italic} onClick={() => set({ "font-style": info.italic ? "normal" : "italic" })}>
+          <Italic size={16} aria-hidden="true" />
+        </ToolButton>
+        <ColorButton label="Background colour" value={info.background} swatches={swatches} allowNone onChange={color => set({ "background-color": color ?? "transparent" })}>
+          <PaintBucket size={16} aria-hidden="true" />
+        </ColorButton>
+        <ToolButton label="Delete this part" shortcut="Delete" onClick={() => inside.part !== null && editor.changeHtmlInside({ kind: "delete", part: inside.part })} data-testid="html-inside-delete">
+          <Trash size={16} aria-hidden="true" />
+        </ToolButton>
+        <span className={styles.toolDivider} />
+      </> : <span className={styles.toolHint}>Click a part to select it · drag to move it · double-click text to type</span>}
+      <ToolButton label="Edit the code" onClick={() => editor.ui.set({ codeElement: inside.elementId })}>
+        <Code size={16} aria-hidden="true" />
+      </ToolButton>
+      <ToolButton label="Done · Esc" onClick={() => editor.exitHtmlInside()} data-testid="html-inside-done">
+        <Check size={16} aria-hidden="true" />
+      </ToolButton>
+    </div>
+  );
+}
+
 function SelectionTools() {
   const editor = useEditor();
   const selection = useUi(s => s.selection);
@@ -493,7 +509,7 @@ export function ViewTools() {
       <ToolButton label="Zoom out" shortcut={keyLabel("Mod+-")} onClick={() => step(-1)}>
         <ZoomOut size={16} aria-hidden="true" />
       </ToolButton>
-      <button type="button" className={styles.zoomValue} onClick={() => editor.ui.set({ zoom: "fit" })} title="Fit to the window" aria-label={`Zoom ${Math.round(current * 100)} percent. Fit to the window`}>
+      <button type="button" className={styles.zoomValue} onClick={() => { editor.ui.set({ zoom: "fit" }); window.dispatchEvent(new Event("present:fit")); }} title="Fit to the window" aria-label={`Zoom ${Math.round(current * 100)} percent. Fit to the window`}>
         {zoom === "fit" ? "Fit" : `${Math.round(current * 100)}%`}
       </button>
       <ToolButton label="Zoom in" shortcut={keyLabel("Mod+=")} onClick={() => step(1)}>
@@ -510,29 +526,44 @@ export function ViewTools() {
   );
 }
 
+/** Creation tools stay in one place, independent of the current selection. */
 export function Toolbar() {
   const editor = useEditor();
-  const { editing, master } = useUi(s => ({ editing: s.editing, master: s.master }));
+  const { canEdit, canComment, signInToComment } = useAbilities();
+  const { commentMode, handMode, shapeArmed } = useUi(s => s);
   return (
-    <div className={styles.toolbar} role="toolbar" aria-label="Editing">
-      <div className={styles.toolGroup} role="group" aria-label="History">
-        <ToolButton label="Undo" shortcut={keyLabel("Mod+Z")} onClick={() => editor.undo()} data-testid="undo">
-          <Undo2 size={17} aria-hidden="true" />
-        </ToolButton>
-        <ToolButton label="Redo" shortcut={keyLabel("Mod+Shift+Z")} onClick={() => editor.redo()} data-testid="redo">
-          <Redo2 size={17} aria-hidden="true" />
-        </ToolButton>
-      </div>
-      <span className={styles.toolDivider} />
-      <InsertTools />
-      <span className={styles.toolDivider} />
-      {editing ? <TextTools /> : <SelectionTools />}
+    <div className={styles.creationDock} role="toolbar" aria-label="Slide tools" data-sq="surface">
+      <ToolButton label="Select" shortcut="V" active={!commentMode && !handMode && !shapeArmed} onClick={() => editor.setTool("select")} data-testid="select-tool"><MousePointer2 size={19} aria-hidden="true" /></ToolButton>
+      <ToolButton label="Hand" shortcut="H" active={handMode} onClick={() => editor.setTool("hand")} data-testid="hand-tool"><Hand size={19} aria-hidden="true" /></ToolButton>
+      {canEdit ? <><span className={styles.toolDivider} /><InsertTools /></> : null}
+      {canComment || signInToComment ? <>
+        <span className={styles.toolDivider} />
+        <ToolButton label="Comment" shortcut="C" active={commentMode} onClick={() => editor.setTool(commentMode ? "select" : "comment")} data-testid="comment-mode"><MessageSquare size={19} aria-hidden="true" /></ToolButton>
+      </> : null}
+    </div>
+  );
+}
+
+/** Formatting follows the selection; file actions and creation tools no longer compete with it. */
+export function ContextToolbar() {
+  const editor = useEditor();
+  const { canEdit } = useAbilities();
+  const { editing, master, commentMode, handMode, shapeArmed, selection, overview, htmlInside } = useUi(s => s);
+  return (
+    <div className={styles.toolbar} role="toolbar" aria-label={canEdit ? "Editing" : "View controls"}>
+      {canEdit ? <div className={styles.toolGroup} role="group" aria-label="History">
+        <ToolButton label="Undo" shortcut={keyLabel("Mod+Z")} onClick={() => editor.undo()} data-testid="undo"><Undo2 size={17} aria-hidden="true" /></ToolButton>
+        <ToolButton label="Redo" shortcut={keyLabel("Mod+Shift+Z")} onClick={() => editor.redo()} data-testid="redo"><Redo2 size={17} aria-hidden="true" /></ToolButton>
+        <span className={styles.toolDivider} />
+      </div> : null}
+      {shapeArmed ? <span className={styles.toolHint}>Drag to draw · Shift to constrain · Esc to cancel</span> :
+        commentMode ? <span className={styles.toolHint}>Click to comment · drag to mark an area · Esc to finish</span> :
+        handMode ? <span className={styles.toolHint}>Drag to move around · V to select</span> :
+        canEdit && !overview && htmlInside ? <HtmlInsideTools /> :
+        canEdit && !overview && editing ? <TextTools /> : canEdit && !overview && selection.length ? <SelectionTools /> :
+        <span className={styles.toolHint}>{overview ? `Your deck at a glance · select a slide to ${canEdit ? "edit" : "view"}` : canEdit ? "Select an object to style it, or add one below" : "Select objects or use Hand to move around"}</span>}
       <div className={styles.toolSpacer} />
-      {master ? (
-        <button type="button" className={styles.masterBanner} onClick={() => editor.setMaster(false)} data-sq="surface">
-          Editing the master · Done
-        </button>
-      ) : null}
+      {master ? <button type="button" className={styles.masterBanner} onClick={() => editor.setMaster(false)} data-sq="surface">Editing the master · Done</button> : null}
       <ViewTools />
     </div>
   );
