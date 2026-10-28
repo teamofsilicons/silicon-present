@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { appConfig } from "@/lib/app.config";
-import { markFill, markSvg, svgDataUri } from "@/lib/brand-svg";
+import { ICON_PAPER, markSvg, svgDataUri } from "@/lib/brand-svg";
 
 export const dynamic = "force-static";
 
@@ -39,7 +39,7 @@ function rgb(hex: string): string {
 const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`);
 
 export async function GET() {
-  const wash = rgb(markFill());
+  const wash = rgb(ICON_PAPER);
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", padding: "64px 76px", backgroundColor: PAGE, backgroundImage: `radial-gradient(circle at 86% 18%, rgba(${wash},0.18), rgba(247,248,250,0) 55%)`, color: INK, fontFamily: "BDO Grotesk" }}>
