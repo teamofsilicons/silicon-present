@@ -61,7 +61,7 @@ fn content_type(headers: &HeaderMap) -> String {
 }
 
 /// Writes an asset's bytes and row.
-async fn save_asset(st: &AppState, id: &str, deck: &DeckRow, uploader: Uuid, filename: &str, ctype: &str, bytes: &[u8]) -> ApiResult<Value> {
+pub(crate) async fn save_asset(st: &AppState, id: &str, deck: &DeckRow, uploader: Uuid, filename: &str, ctype: &str, bytes: &[u8]) -> ApiResult<Value> {
     let path = asset_path(st, id);
     if let Some(dir) = path.parent() {
         tokio::fs::create_dir_all(dir).await.map_err(|e| ApiError::internal(format!("creating the asset directory: {e}")))?;

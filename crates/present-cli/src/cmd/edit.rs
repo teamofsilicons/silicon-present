@@ -106,6 +106,45 @@ fn read_text_arg(text: &str) -> R<String> {
     }
 }
 
+/// The most words a slide holds before adding text needs --dangerously-add-long-text.
+const SLIDE_WORD_LIMIT: usize = 50;
+
+fn word_count(text: &str) -> usize {
+    text.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric)).count()
+}
+
+/// Words an element puts on the slide: its text (text boxes, shapes) and its table cells.
+fn element_words(e: &Value) -> usize {
+    let text = e.get("text").map_or(0, |t| word_count(&deck::plain_text(t)));
+    let cells: usize = e
+        .get("cells")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .flatten()
+        .map(|cell| cell.get("text").map_or(0, |t| word_count(&deck::plain_text(t))))
+        .sum();
+    text + cells
+}
+
+fn slide_words(content: &Value, sid: &str) -> usize {
+    deck::slide_by_id(content, sid).map_or(0, |s| deck::elements(s).iter().map(element_words).sum())
+}
+
+/// Refuses a change that adds words and leaves the slide with more than SLIDE_WORD_LIMIT, unless the command
+/// was given --dangerously-add-long-text.
+fn check_slide_words(ctx: &Ctx, before: usize, after: usize) -> R<()> {
+    if ctx.dangerously_add_long_text || after <= before || after <= SLIDE_WORD_LIMIT {
+        return Ok(());
+    }
+    Err(Fail::new(
+        "slide_too_text_heavy",
+        format!("This slide is getting too text heavy, prefer adding more graphical elements to convey the idea instead. (It would have {after} words; the limit is {SLIDE_WORD_LIMIT}.)"),
+        "If you still need to add this text element you can add it via --dangerously-add-long-text",
+    ))
+}
+
 pub async fn slide_cmd(ctx: &Ctx, cmd: &SlideCmd) -> R<()> {
     let c = ctx.authed().await?;
     let deck_ref = match cmd {
@@ -153,6 +192,7 @@ pub async fn slide_cmd(ctx: &Ctx, cmd: &SlideCmd) -> R<()> {
             };
             let sid = deck::new_slide_id();
             let elements = deck::layout_elements(layout, deck::size(&content), accent, &lc);
+            check_slide_words(ctx, 0, elements.iter().map(element_words).sum())?;
             let mut slide = json!({ "id": sid, "layout": layout, "elements": elements });
             if let Some(n) = notes {
                 slide["notes"] = json!(n);
@@ -571,6 +611,8 @@ pub async fn add(ctx: &Ctx, cmd: &AddCmd) -> R<()> {
         }
     };
     let element = deck::element(kind, frame, fields);
+    let before = slide_words(&content, &sid);
+    check_slide_words(ctx, before, before + element_words(&element))?;
     let eid = deck::str_field(&element, "id").unwrap_or_default().to_owned();
     let extra = json!({ "slide": sid, "element": eid });
     apply_with(ctx, &c, &id, vec![Op::AddElement { slide: sid.clone(), element, z: None }], None, extra, |_| format!("{eid}\nAdded {kind} {eid} to {sid}.")).await.map(|_| ())
@@ -681,6 +723,14 @@ pub async fn set(ctx: &Ctx, deck: &str, slide: &str, element: &str, pairs: &[Str
             }
         }
     }
+    if set.contains_key("text") || set.contains_key("cells") {
+        let mut changed = el.clone();
+        for (k, v) in &set {
+            changed[k] = v.clone();
+        }
+        let before = slide_words(&content, &sid);
+        check_slide_words(ctx, before, before - element_words(&el) + element_words(&changed))?;
+    }
     let keys: Vec<String> = set.keys().cloned().collect();
     apply(ctx, &c, &id, vec![Op::UpdateElement { slide: sid.clone(), element: eid.clone(), set }], None, |_| format!("Changed {} on {eid}.", keys.join(", "))).await.map(|_| ())
 }
@@ -723,42 +773,107 @@ pub async fn delete_element(ctx: &Ctx, deck: &str, slide: &str, element: &str) -
     apply(ctx, &c, &id, vec![Op::DeleteElement { slide: sid.clone(), element: eid.clone() }], None, |_| format!("Deleted {eid} from {sid}.")).await.map(|_| ())
 }
 
-pub async fn theme(ctx: &Ctx, deck: Option<&str>, name: Option<&str>, heading: Option<&str>, body: Option<&str>, colors: &[String], list: bool) -> R<()> {
+/// What `present theme` does with your saved themes besides setting one.
+pub struct ThemeManage<'a> {
+    pub save: Option<&'a str>,
+    pub delete: Option<&'a str>,
+    pub rename: Option<&'a str>,
+    pub to: Option<&'a str>,
+}
+
+/// One of your saved themes, by id or (ignoring case) name.
+fn saved_theme<'a>(themes: &'a [Value], key: &str) -> Option<&'a Value> {
+    let key = key.trim();
+    themes.iter().find(|t| t["id"].as_str() == Some(key)).or_else(|| themes.iter().find(|t| t["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(key))))
+}
+
+fn unknown_theme(n: &str, saved: &[Value]) -> Fail {
+    let mut names: Vec<String> = deck::THEMES.iter().map(|t| t.0.to_owned()).collect();
+    names.extend(saved.iter().filter_map(|t| t["name"].as_str().map(|n| format!("\"{n}\""))));
+    Fail::new("unknown_theme", format!("`{n}` is not a built-in theme or one of yours."), format!("Use one of: {} (see present theme --list).", names.join(", ")))
+}
+
+fn theme_line(name: &str, t: &Value) -> String {
+    let c = &t["colors"];
+    let s = |v: &Value| v.as_str().unwrap_or("").to_owned();
+    format!("{name:<8} {} / {}  background {} text {} accent {}", s(&t["fonts"]["heading"]), s(&t["fonts"]["body"]), s(&c["background"]), s(&c["text"]), s(&c["accent"]))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn theme(ctx: &Ctx, deck: Option<&str>, name: Option<&str>, heading: Option<&str>, body: Option<&str>, colors: &[String], list: bool, manage: ThemeManage<'_>) -> R<()> {
+    if let Some(key) = manage.delete.or(manage.rename) {
+        let c = ctx.authed().await?;
+        let saved = c.themes().await?;
+        let t = saved_theme(&saved, key).ok_or_else(|| Fail::new("theme_not_found", format!("You have no theme `{key}`."), "See your themes with present theme --list."))?;
+        let (tid, tname) = (t["id"].as_str().unwrap_or_default().to_owned(), t["name"].as_str().unwrap_or_default().to_owned());
+        if manage.delete.is_some() {
+            c.delete_theme(&tid).await?;
+            ctx.out(&json!({ "deleted": tid, "name": tname }), || format!("Deleted your theme {tname}. Decks already using it keep their look."));
+        } else {
+            let v = c.update_theme(&tid, &json!({ "name": manage.to.unwrap_or_default() })).await?;
+            let new = v["name"].as_str().unwrap_or_default().to_owned();
+            ctx.out(&v, || format!("Renamed your theme {tname} to {new}."));
+        }
+        return Ok(());
+    }
     if list || deck.is_none() {
-        let v: Vec<Value> = deck::THEMES.iter().filter_map(|t| deck::theme(t.0)).collect();
-        ctx.out(&json!({ "themes": v }), || {
-            deck::THEMES
-                .iter()
-                .map(|(n, h, b, c)| format!("{n:<8} {h} / {b}  background {} text {} accent {}", c[0], c[1], c[2]))
-                .collect::<Vec<_>>()
-                .join("\n")
+        if manage.save.is_some() {
+            return Err(Fail::new("invalid_input", "--save needs the deck whose theme to save.", "e.g. present theme dk7Hq2mP9xRt --save Brand"));
+        }
+        let builtin: Vec<Value> = deck::THEMES.iter().filter_map(|t| deck::theme(t.0)).collect();
+        let saved = if ctx.session().await?.is_some() { ctx.authed().await?.themes().await? } else { Vec::new() };
+        ctx.out(&json!({ "themes": builtin, "yours": saved }), || {
+            let mut lines: Vec<String> = builtin.iter().map(|t| theme_line(t["name"].as_str().unwrap_or_default(), t)).collect();
+            lines.push(String::new());
+            if saved.is_empty() {
+                lines.push("Your themes: none yet. Save a deck's theme with present theme <deck> --save <name>.".into());
+            } else {
+                lines.push("Your themes:".into());
+                lines.extend(saved.iter().map(|t| theme_line(t["name"].as_str().unwrap_or_default(), t)));
+            }
+            lines.join("\n")
         });
         return Ok(());
     }
     let c = ctx.authed().await?;
     let id = ctx.deck_id(&c, deck.unwrap_or_default()).await?;
-    let content = c.content(&id, None).await?;
-    let mut theme = match name {
-        Some(n) => deck::theme(n).ok_or_else(|| {
-            Fail::new("unknown_theme", format!("`{n}` is not a theme."), format!("Use one of: {} (see present theme --list).", deck::THEMES.iter().map(|t| t.0).collect::<Vec<_>>().join(", ")))
-        })?,
-        None => content.get("theme").cloned().unwrap_or_else(|| deck::theme("Paper").unwrap_or_default()),
-    };
-    if let Some(h) = heading {
-        theme["fonts"]["heading"] = json!(h);
-    }
-    if let Some(b) = body {
-        theme["fonts"]["body"] = json!(b);
-    }
-    for spec in colors {
-        let (k, v) = spec.split_once('=').ok_or_else(|| Fail::new("invalid_input", format!("--color {spec} is not key=#hex."), "e.g. --color accent=#b4532a"))?;
-        if !["background", "text", "accent", "accent2", "accent3", "muted"].contains(&k) {
-            return Err(Fail::new("invalid_input", format!("`{k}` is not a theme colour."), "Use background, text, accent, accent2, accent3 or muted."));
+    let changing = name.is_some() || heading.is_some() || body.is_some() || !colors.is_empty();
+    if changing || manage.save.is_none() {
+        let content = c.content(&id, None).await?;
+        let mut theme = match name {
+            Some(n) => match deck::theme(n) {
+                Some(t) => t,
+                None => {
+                    let saved = c.themes().await?;
+                    let t = saved_theme(&saved, n).ok_or_else(|| unknown_theme(n, &saved))?;
+                    let tid = t["id"].as_str().unwrap_or_default().to_owned();
+                    c.use_theme(&tid, &id).await?["theme"].clone()
+                }
+            },
+            None => content.get("theme").cloned().unwrap_or_else(|| deck::theme("Paper").unwrap_or_default()),
+        };
+        if let Some(h) = heading {
+            theme["fonts"]["heading"] = json!(h);
         }
-        theme["colors"][k] = json!(v);
+        if let Some(b) = body {
+            theme["fonts"]["body"] = json!(b);
+        }
+        for spec in colors {
+            let (k, v) = spec.split_once('=').ok_or_else(|| Fail::new("invalid_input", format!("--color {spec} is not key=#hex."), "e.g. --color accent=#b4532a"))?;
+            if !["background", "text", "accent", "accent2", "accent3", "muted"].contains(&k) {
+                return Err(Fail::new("invalid_input", format!("`{k}` is not a theme colour."), "Use background, text, accent, accent2, accent3 or muted."));
+            }
+            theme["colors"][k] = json!(v);
+        }
+        let mut set = Map::new();
+        set.insert("theme".into(), theme.clone());
+        let name = theme["name"].as_str().unwrap_or_default().to_owned();
+        apply(ctx, &c, &id, vec![Op::UpdateDeck { set }], None, |_| format!("Theme set to {name}.")).await?;
     }
-    let mut set = Map::new();
-    set.insert("theme".into(), theme.clone());
-    let name = theme["name"].as_str().unwrap_or_default().to_owned();
-    apply(ctx, &c, &id, vec![Op::UpdateDeck { set }], None, |_| format!("Theme set to {name}.")).await.map(|_| ())
+    if let Some(save) = manage.save {
+        let v = c.save_theme(&id, Some(save)).await?;
+        let name = v["name"].as_str().unwrap_or_default().to_owned();
+        ctx.out(&v, || format!("Saved the deck's theme to your themes as {name}. Use it in any deck you edit: present theme <deck> \"{name}\""));
+    }
+    Ok(())
 }

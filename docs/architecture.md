@@ -621,6 +621,11 @@ notify the person who caused the event.
   can't; see `docs/accounts-and-ting.md`); it becomes a real member when an account whose Accounts email is that
   address signs in to Present.
 - `POST /v1/{decks|folders}/{id}/transfer { to }`, `GET /v1/transfers`, `POST /v1/transfers/{id}/accept|decline|cancel`.
+- Custom themes belong to an account: `GET /v1/themes`, `POST /v1/themes { name?, deck | theme }` (from a deck the
+  caller can edit, copying its uploaded fonts, or from theme JSON with https fonts only; built-in names are refused,
+  names are unique per account ignoring case), `GET|PATCH|DELETE /v1/themes/{id}` (`name`, `fonts`, `colors`; owner
+  only, anyone else gets 404), and `POST /v1/themes/{id}/use { deck }` (editor access to the deck): copies the theme's
+  fonts into the deck and returns `{ theme }` for the client to set with `update_deck`, so it stays undoable.
 
 Public decks optionally collect a contact email before viewing. The owner sets
 `PUT /v1/decks/{id}/public { mode, requireEmail?: boolean }`; omitting the flag preserves it,

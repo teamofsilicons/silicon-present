@@ -41,6 +41,7 @@ async fn main() {
     let result = match Ctx::new(cli.json, cli.api_url.clone(), cli.accounts_url.clone()) {
         Ok(mut ctx) => {
             ctx.dangerously_use_em_dash = cli.dangerously_use_em_dash;
+            ctx.dangerously_add_long_text = cli.dangerously_add_long_text;
             run(&ctx, cli.command).await
         },
         Err(f) => Err(f),
@@ -118,8 +119,9 @@ async fn run(ctx: &Ctx, command: Command) -> R<()> {
         }
         Command::Front { deck, slide, element, step } => layers::move_layers(ctx, &deck, &slide, &[element], layers::Destination::Direction(if step { LayerDirection::Forward } else { LayerDirection::Front })).await,
         Command::Back { deck, slide, element, step } => layers::move_layers(ctx, &deck, &slide, &[element], layers::Destination::Direction(if step { LayerDirection::Backward } else { LayerDirection::Back })).await,
-        Command::Theme { deck, name, heading, body, color, list } => {
-            edit::theme(ctx, deck.as_deref(), name.as_deref(), heading.as_deref(), body.as_deref(), &color, list).await
+        Command::Theme { deck, name, heading, body, color, list, save, delete, rename, to } => {
+            let manage = edit::ThemeManage { save: save.as_deref(), delete: delete.as_deref(), rename: rename.as_deref(), to: to.as_deref() };
+            edit::theme(ctx, deck.as_deref(), name.as_deref(), heading.as_deref(), body.as_deref(), &color, list, manage).await
         }
 
         Command::Pull { deck, dir, version, force } => sync::pull(ctx, &deck, dir.as_deref(), version, force).await,

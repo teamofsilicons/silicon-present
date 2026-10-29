@@ -10,6 +10,8 @@ use silicon_present_client::{Client, DEFAULT_API_URL, Scope, deck};
 pub struct Ctx {
     /// Explicit override, scoped to this process rather than saved sign-in state.
     pub dangerously_use_em_dash: bool,
+    /// Lets one command take a slide past the word limit (cmd/edit.rs).
+    pub dangerously_add_long_text: bool,
     /// Print JSON.
     pub json: bool,
     /// The API base.
@@ -45,6 +47,7 @@ impl Ctx {
         };
         Ok(Self {
             dangerously_use_em_dash: false,
+            dangerously_add_long_text: false,
             json,
             api_url: api_url.trim().trim_end_matches('/').to_owned(),
             api_source,
