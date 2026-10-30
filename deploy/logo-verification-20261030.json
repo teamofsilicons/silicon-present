@@ -1,0 +1,83 @@
+{
+  "revision": "033c24591286-61754394c342",
+  "archive": "/Users/codanium/Documents/silicon/silicon-present/.dev/logo-20261030/033c24591286-61754394c342.tar.gz",
+  "bytes": 100869203,
+  "source_revision": "033c24591286295f21c80b3c9dead76c07e5579c",
+  "source_archive_sha256": "6e4d6769dec77846745cdb5420e30fcb43137f7aec55c4d87c63466fd5926783",
+  "prior_revision": "ebbcf949cefe-daf0b7c87f11",
+  "prior_local_archive_sha256": "4b10e6eec0cc60556bb390005c461818131c06fb9f2b48031d201a9ca91fccab",
+  "web_build_id": "4MZNCXxczyJLT7ToPebUv",
+  "changed_nonweb_files": [],
+  "unchanged_nonweb_entries": 5968,
+  "stripped_env_paths": [],
+  "build_platform": "linux/arm64",
+  "web_archive_sha256": "bcf173f8b652d6b17cb54b6e4e01c737f26fa3f31bda8ea36c7dbe0e8f821203",
+  "supplied_file": "present-logo-1.svg",
+  "supplied_sha256": "a206e2edd0c2f551f37e0450237dbe79b1303d89300500985dc236caca2b5ee0",
+  "local_archive_sha256": "882c3cd93d68e8df03241b03c154b0a103a74399e72d35ae4e6292c374fc2a51",
+  "deployed_archive_sha256": "d980913aa364bff38ff5e35dfa02b10b01a7cce52033224e2138c928334cdcd4",
+  "url": "https://present.teamofsilicons.com",
+  "verified_at": "2026-10-30T10:12:11Z",
+  "checks": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "unit_tests": 124,
+    "macos_build": "passed",
+    "linux_arm64_build": "passed",
+    "public_browser_tests": 2,
+    "tiled_renderer_matches_supplied_svg": true,
+    "tiled_raster_matches_supplied_svg": true,
+    "light_dark_transparent_glyphs": "passed",
+    "live_assets": {
+      "url": "https://present.teamofsilicons.com",
+      "verified_at": "2026-10-30T10:12:11Z",
+      "assets": {
+        "/icon.svg": {
+          "sha256": "c7a411abed54a995838e5ce83f32d62dab3f3180da41e5f3f5cd89650aa952a9",
+          "content_type": "image/svg+xml",
+          "matches_source": true
+        },
+        "/brand/present-logo.svg": {
+          "sha256": "a206e2edd0c2f551f37e0450237dbe79b1303d89300500985dc236caca2b5ee0",
+          "content_type": "image/svg+xml",
+          "matches_source": true
+        },
+        "/icon": {
+          "sha256": "bf36f2aff7612d9337dddf71c6fa9a5dbb0fa4039e8b3cf1f75694023ad052ab",
+          "bytes": 7398,
+          "content_type": "image/png"
+        },
+        "/apple-icon": {
+          "sha256": "ac1f2083c9819a8127fc3d12bb3e8ad057c16574f5864a24c703a6ce5d4e7b1a",
+          "bytes": 1279,
+          "content_type": "image/png"
+        },
+        "/og.png": {
+          "sha256": "5e59eab6c0dc07b4a9dc52c5b42ec9950cf5050def5cc83dcdc8b90546ac92ed",
+          "bytes": 92571,
+          "content_type": "image/png"
+        }
+      },
+      "favicon_href": "/icon.svg?icon.3z3toxc6zp1rq.svg",
+      "landing_uses_new_glyph": true
+    },
+    "services_healthy": true
+  },
+  "activation": {
+    "revision": "033c24591286-61754394c342",
+    "baseline": "ebbcf949cefe-daf0b7c87f11",
+    "archive_sha256": "d980913aa364bff38ff5e35dfa02b10b01a7cce52033224e2138c928334cdcd4",
+    "web_build_id": "4MZNCXxczyJLT7ToPebUv",
+    "web_only": true,
+    "nonweb_identical": true,
+    "services_healthy": true,
+    "live_favicon_sha256": "c7a411abed54a995838e5ce83f32d62dab3f3180da41e5f3f5cd89650aa952a9"
+  },
+  "ssm_command": "757f0121-b934-4a3a-9c2a-f8a4f43ed0c3",
+  "evidence": ".dev/logo-20261030",
+  "notes": [
+    "Only web assets changed. All tracked non-web files match the previous immutable release.",
+    "First preflight stopped before activation because current source/node_modules contained incidental extra files. Candidate was reconstructed from the verified saved release archive; current manifest file hashes matched.",
+    "Previous release retained for rollback; existing deploy README and stack changes untouched."
+  ]
+}
