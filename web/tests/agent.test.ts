@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /** The public files built from lib/app.config.ts: robots.txt, the sitemap and the llms.txt stub. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -34,6 +35,6 @@ test("the mark retains the supplied presentation artwork on its dark square", ()
   const svg = markSvg();
   assert.ok(svg.includes('viewBox="0 0 200 200"'));
   assert.ok(svg.includes('<rect width="200" height="200" fill="#181818"/>'));
-  assert.ok(svg.includes('stroke="#EDE8E0"'));
-  assert.ok(svg.includes('<path d="M79.4316 139.2L98.9316 119.7L118.432 139.2"/>'));
+  assert.ok(svg.includes('fill="#EDE8E0"'));
+  assert.equal(svg, readFileSync(new URL("../public/brand/present-logo.svg", import.meta.url), "utf8").trim());
 });
