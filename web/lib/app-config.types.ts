@@ -37,7 +37,7 @@ export interface AppConfig {
   /** Two or three sentences for search engines, link previews and llms.txt. */
   description: string;
   /** The supplied logo paths and framing for its standalone navigation glyph. */
-  mark: { paths: string[]; viewBox: string; strokeWidth: number };
+  mark: { paths: string[]; viewBox: string; strokeWidth: number; fill?: boolean };
   /**
    * The product colour, if the app has one. It tints the mark and the landing page's wash only; actions, links and
    * focus stay brand blue on every Silicon site. Give a light and a dark value (each at least 3:1 on its page colour).

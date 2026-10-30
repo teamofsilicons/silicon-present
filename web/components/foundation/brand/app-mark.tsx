@@ -12,7 +12,7 @@ import styles from "./app-mark.module.css";
 
 export function AppGlyph({ size = 18 }: { size?: number }) {
   return (
-    <svg viewBox={appConfig.mark.viewBox} width={size} height={size} fill="none" stroke="currentColor" strokeWidth={appConfig.mark.strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    <svg viewBox={appConfig.mark.viewBox} width={size} height={size} fill={appConfig.mark.fill ? "currentColor" : "none"} stroke={appConfig.mark.fill ? undefined : "currentColor"} strokeWidth={appConfig.mark.strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
       {appConfig.mark.paths.map(d => <path key={d} d={d} />)}
     </svg>
   );
