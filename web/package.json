@@ -33,7 +33,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "y-indexeddb": "9.0.12",
-    "yjs": "13.6.33"
+    "yjs": "13.6.33",
+    "@aws-sdk/client-dynamodb": "3.1160.0",
+    "@vercel/oidc-aws-credentials-provider": "3.3.17"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

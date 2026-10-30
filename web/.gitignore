@@ -27,3 +27,5 @@ npm-debug.log*
 
 # pnpm screens
 /screens/
+
+.dev/
