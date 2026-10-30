@@ -267,7 +267,7 @@ def main():
         os.replace(base / 'current.next', current)
         for name, user, command, extra in [
             ('api', 'present', '/opt/present/current/bin/present-service', 'ReadWritePaths=/var/lib/present/data\n'),
-            ('web', 'present-web', '/opt/present/current/node/bin/node /opt/present/current/web/web/server.js', ''),
+            ('web', 'present-web', '/opt/present/current/node/bin/node /opt/present/current/web/web/server.js', 'StateDirectory=present-browser-sessions\nStateDirectoryMode=0700\nEnvironment=REFRESH_STATE_PATH=/var/lib/present-browser-sessions/state.sqlite\nReadWritePaths=/var/lib/present-browser-sessions\n'),
             ('converter', 'present-converter', '/opt/present/current/node/bin/node --import tsx src/server.ts',
              'ReadWritePaths=/var/lib/present-converter/tmp\nNoNewPrivileges=false\n'),
         ]:
