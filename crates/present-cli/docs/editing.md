@@ -69,7 +69,15 @@ passage).
     present layers move <deck> <slide> <elements>... --before <target> | --after <target>
     present front|back <deck> <slide> <element> [--step]
     present delete <deck> <slide> <element>
-    present theme <deck> Paper|Ivory|Ink|Slate|Forest|Coral|Mono [--heading F] [--body F] [--color accent=#hex]
+    present theme <deck> Paper|Ivory|Ink|Slate|Forest|Coral|Mono|<your theme> [--heading F] [--body F] [--color accent=#hex]
+    present theme <deck> --save <name>        save the deck's theme (fonts, colours, uploaded fonts) to your themes
+    present theme --list                      the built-in themes and yours
+    present theme --rename <name|id> --to <new name>
+    present theme --delete <name|id>
+
+Your themes belong to your account and work in any deck you can edit: `present theme <deck> Brand`
+copies the theme's uploaded fonts into that deck. Editors of a shared deck can `--save` its theme as
+their own copy; later changes to either don't affect the other.
 
 Layers are listed front first. Moves preserve selection order, keep groups together and respect
 locks. `--before` means in front of the target; `--after` means behind it. See `present docs layers`.
@@ -95,3 +103,16 @@ present --dangerously-use-em-dash reply THREAD "Keep this — intentionally"
 
 The override also lasts for the duration of a long-running command. It is never
 saved in the sign-in session; the next command returns to the default.
+
+## At most 50 words on a slide
+
+A slide holds up to 50 words from the CLI: text boxes, text in shapes and table cells
+count; notes, charts, images and HTML don't. `add`, `slide add` and `set text=` refuse
+a change that adds words past 50 with `slide_too_text_heavy`. Prefer graphical elements
+(a chart, a diagram, an image, a split into two slides) to carry the idea. Shortening
+text is always allowed. If the text really belongs there, pass
+`--dangerously-add-long-text` for that command only:
+
+```sh
+present add text <deck> 3 "The full quote, as said" --dangerously-add-long-text
+```

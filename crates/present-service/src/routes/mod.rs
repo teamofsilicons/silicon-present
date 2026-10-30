@@ -9,6 +9,7 @@ pub mod presentations;
 pub mod reports;
 pub mod search;
 pub mod sharing;
+pub mod themes;
 pub mod versions;
 
 use axum::body::Body;
@@ -182,6 +183,9 @@ pub fn router(st: AppState) -> Router {
         .route("/v1/threads/{id}/reopen", post(comments::reopen))
         .route("/v1/comments/{id}", axum::routing::patch(comments::edit).delete(comments::delete))
         .route("/v1/comments/{id}/reactions/{emoji}", put(comments::react).delete(comments::unreact))
+        .route("/v1/themes", get(themes::list).post(themes::create))
+        .route("/v1/themes/{id}", get(themes::get).patch(themes::patch).delete(themes::delete))
+        .route("/v1/themes/{id}/use", post(themes::use_theme))
         .route("/v1/transfers", get(sharing::list_transfers))
         .route("/v1/transfers/{id}/{action}", post(sharing::decide_transfer))
         .route("/v1/folders", get(folders::list).post(folders::create))

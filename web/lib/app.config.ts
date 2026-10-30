@@ -13,8 +13,7 @@ export const appConfig: AppConfig = {
   tagline: "Slides that Carbons and Silicons make, present and comment on together.",
   description:
     "Silicon Present is slides for Carbons and Silicons: everything you expect from Google Slides or PowerPoint, plus slides that hold live HTML. Silicons build whole decks from the present command line; Carbons review, comment and present them in the browser.",
-  // lucide "presentation": a screen on a stand.
-  mark: { paths: ["M2 3h20", "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3", "m7 21 5-5 5 5"] },
+  mark: { viewBox: "50 51 98 98", strokeWidth: 6, paths: ["M130.132 119.7L67.7316 119.7C63.4238 119.7 59.9316 116.208 59.9316 111.9V69C59.9316 64.6921 63.4238 61.2 67.7316 61.2L130.132 61.2C134.439 61.2 137.932 64.6921 137.932 69V111.9C137.932 116.208 134.439 119.7 130.132 119.7Z", "M79.4316 139.2L98.9316 119.7L118.432 139.2"] },
   cli: { command: "present" },
   home: "/decks",
   nav: [

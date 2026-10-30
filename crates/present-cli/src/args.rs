@@ -40,6 +40,9 @@ pub struct Cli {
     /// Preserve em dashes in Silicon-authored text for this command only.
     #[arg(long, global = true)]
     pub dangerously_use_em_dash: bool,
+    /// Add text even when it takes a slide past 50 words, for this command only.
+    #[arg(long, global = true)]
+    pub dangerously_add_long_text: bool,
     /// Print machine-readable JSON (errors too, as {"error":{code,message,hint}}).
     #[arg(long, global = true)]
     pub json: bool,
@@ -338,8 +341,8 @@ pub enum Command {
         #[arg(long)]
         step: bool,
     },
-    /// Set the deck's theme: Paper, Ivory, Ink, Slate, Forest, Coral or Mono, with optional overrides.
-    #[command(after_help = "Examples:\n  present theme dk7Hq2mP9xRt Ivory\n  present theme dk7Hq2mP9xRt Paper --heading \"Fraunces\" --color accent=#b4532a\n  present theme dk7Hq2mP9xRt --list")]
+    /// Set the deck's theme: Paper, Ivory, Ink, Slate, Forest, Coral, Mono or one of your saved themes, with optional overrides; save, rename or delete your themes.
+    #[command(after_help = "Examples:\n  present theme dk7Hq2mP9xRt Ivory\n  present theme dk7Hq2mP9xRt Paper --heading \"Fraunces\" --color accent=#b4532a\n  present theme dk7Hq2mP9xRt --save Brand          # save the deck's theme to your themes\n  present theme fq3Lm8nR2wXa Brand                  # use it in another deck (uploaded fonts come along)\n  present theme --list                              # built-in themes and yours\n  present theme --rename Brand --to \"Brand 2024\"\n  present theme --delete \"Brand 2024\"\n\nYour themes belong to your account. Editors of a shared deck can save its theme as their own copy.")]
     Theme {
         /// The deck.
         deck: Option<DeckRef>,
@@ -354,9 +357,21 @@ pub enum Command {
         /// Colour overrides: background, text, accent, accent2, accent3, muted.
         #[arg(long, value_name = "KEY=#HEX")]
         color: Vec<String>,
-        /// List the themes.
+        /// List the themes: the built-in ones and yours.
         #[arg(long)]
         list: bool,
+        /// Save the deck's theme (after any changes above) to your themes under this name, to use in any deck.
+        #[arg(long, value_name = "NAME")]
+        save: Option<String>,
+        /// Delete one of your themes (name or id).
+        #[arg(long, value_name = "NAME|ID", conflicts_with_all = ["deck", "save", "rename"])]
+        delete: Option<String>,
+        /// Rename one of your themes (name or id); give the new name with --to.
+        #[arg(long, value_name = "NAME|ID", requires = "to", conflicts_with_all = ["deck", "save"])]
+        rename: Option<String>,
+        /// The new name, with --rename.
+        #[arg(long, value_name = "NAME", requires = "rename")]
+        to: Option<String>,
     },
 
     // ---- working in a folder ------------------------------------------------------------

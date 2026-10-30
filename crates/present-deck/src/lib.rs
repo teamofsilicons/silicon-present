@@ -39,6 +39,11 @@ pub use richtext::{plain_text, rich_from_plain, rich_to_markdownish};
 pub use textview::to_text;
 pub use undo::undo_author;
 
+/// Checks a theme's shape (name, fonts, colours, customFonts), the same check an `update_deck` op makes.
+pub fn validate_theme(theme: &serde_json::Value) -> Result<(), DeckError> {
+    validate::theme(theme)
+}
+
 /// Clones a document by encoding its state into a fresh one (with a new client id).
 pub fn clone_doc(doc: &yrs::Doc) -> yrs::Doc {
     let bytes = encode_doc(doc);

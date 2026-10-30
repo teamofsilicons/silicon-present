@@ -1,0 +1,63 @@
+{
+  "revision": "4322b03d641e-0d511889abf3",
+  "archive": "/Users/codanium/Documents/silicon/silicon-present/.dev/logo-20261029/4322b03d641e-0d511889abf3.tar.gz",
+  "sha256": "5a0caf6dee763242f2f2ecfb96e67e12474e357339bcfb5f64b4eb4d8825f9c4",
+  "bytes": 100750351,
+  "source_revision": "4322b03d641ef7c0f19b21a3971c921b8f13fff2",
+  "source_archive_sha256": "6717d52a36c5a2d6b8c880ab52b31279d15e523ac1553045930137723b21c04c",
+  "prior_revision": "6fadfb8a38d9-de671e9b1253",
+  "prior_sha256": "9d751149e9e400873bde989debe18ec647cfe91b04120e7ff7ff60c9c2c17902",
+  "web_build_id": "541KtKzlZV7L4sqHf0xZc",
+  "changed_nonweb_files": [],
+  "unchanged_nonweb_entries": 5967,
+  "stripped_env_paths": [],
+  "build_platform": "linux/arm64",
+  "web_archive_sha256": "18de09a8b51d06b49b8ff889143ea56ed3e36d5ade64b98dbe35a0b94dc05248",
+  "verified_at": "2026-10-28T22:06:33.461207+00:00",
+  "url": "https://present.teamofsilicons.com",
+  "supplied_svg_sha256": "9022822099b96df131cabdec7ebbd35abba55a8d6a76d9da01f558d83659b328",
+  "original_matches_live": true,
+  "checks": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "unit_tests": 124,
+    "build": "passed",
+    "public_browser_tests": 2,
+    "candidate": "navigation and original SVG passed",
+    "live_navigation": "screen mark visible; 2 paths; viewBox 50 51 98 98",
+    "live_assets": [
+      {
+        "endpoint": "icon",
+        "status": 200,
+        "bytes": 9535,
+        "content_type": "image/png"
+      },
+      {
+        "endpoint": "apple-icon",
+        "status": 200,
+        "bytes": 1992,
+        "content_type": "image/png"
+      },
+      {
+        "endpoint": "og.png",
+        "status": 200,
+        "bytes": 92827,
+        "content_type": "image/png"
+      },
+      {
+        "endpoint": "brand/present-logo.svg",
+        "status": 200,
+        "bytes": 606,
+        "content_type": "image/svg+xml"
+      }
+    ],
+    "live_health": "API, web, converter, database and Ting healthy"
+  },
+  "install_command_id": "01d0fb15-deed-4d44-b54a-1c2b67d9cf34",
+  "verification_command_id": "9a2fc165-3a7a-4e27-ad14-3d8f549dc7b3",
+  "installation_note": "Installer and local readiness succeeded. Immediate external probe ran before TLS listener was ready; subsequent external, browser and service checks all passed.",
+  "backup": "20261028T220515Z",
+  "unrelated_worktree_changes_excluded": true,
+  "evidence_directory": ".dev/logo-20261029",
+  "scope": "Branding only: navigation and sign-in mark, favicon, home screen icon, link preview; original SVG preserved."
+}

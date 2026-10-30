@@ -5,11 +5,12 @@
  * master), Animate (the element's animation and the slide's transition, with previews), Theme, and Comments.
  */
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, Plus, Minus, Upload, X } from "lucide-react";
 import { MASTER, LAYOUTS, SHAPES, THEMES, applyOps, getSize, getSlide, getTheme, type Animation, type ChartType, type Element, type Slide, type Theme, type Transition } from "@silicon-present/deck";
 import { slideSteps, transitionCss } from "@silicon-present/render";
 import { ThreadsPanel } from "@/components/comments/threads-panel";
-import { useAbilities, useCurrentSlide, useDeck, useEditor, useUi } from "./editor-context";
+import { useAbilities, useCurrentSlide, useDeck, useEditor, useMeta, useUi } from "./editor-context";
 import { ColorButton, MiniSelect, NumberField, PanelSection, Row, Toggle } from "./controls";
 import { LayoutGlyph, LAYOUT_NAMES } from "./slide-strip";
 import { SHAPE_NAMES, themeSwatches } from "./toolbar";
@@ -17,6 +18,8 @@ import type { RightPanel as Tab } from "@/lib/editor/editor";
 import { colorKey, commonTextColor, elementFillColor, elementTextColor } from "@/lib/editor/colors";
 import { layoutChangeOps } from "@/lib/editor/layout-change";
 import { useStore } from "@/lib/editor/store";
+import { isBuiltInLook, listThemes, saveTheme, suggestedThemeName, themeForDeck, themeLook, type SavedTheme } from "@/lib/present/themes";
+import { notify } from "@/lib/notify";
 import styles from "./editor.module.css";
 
 const TABS: { value: Tab; label: string }[] = [
@@ -613,6 +616,84 @@ function AnimationSection({ element, slide }: { element: Element; slide: Slide }
 
 // ---------------------------------------------------------------- theme
 
+/** Your saved themes (usable in any deck you edit), and saving this deck's theme to them. */
+function YourThemes() {
+  const editor = useEditor();
+  const deck = useDeck();
+  const { role } = useMeta();
+  const queryClient = useQueryClient();
+  const theme = deck.theme;
+  const saved = useQuery({ queryKey: ["themes"], queryFn: ({ signal }) => listThemes(signal), enabled: Boolean(editor.me), meta: { toast: false } });
+  const [naming, setNaming] = useState<string | null>(null);
+  const use = useMutation({
+    mutationFn: (t: SavedTheme) => themeForDeck(t.id, editor.deckId),
+    onSuccess: next => editor.setTheme(next),
+    meta: { errorTitle: "Couldn't use that theme" },
+  });
+  const save = useMutation({
+    mutationFn: (name: string) => saveTheme(editor.deckId, name),
+    onSuccess: async t => {
+      setNaming(null);
+      await queryClient.invalidateQueries({ queryKey: ["themes"] });
+      notify.success(`Saved ${t.name} to your themes`, "Use it in any deck you edit, from the Theme panel.");
+    },
+    meta: { errorTitle: "Couldn't save the theme" },
+  });
+  if (!editor.me) return null;
+  const themes = saved.data ?? [];
+  const look = themeLook(theme);
+  const alreadySaved = themes.some(t => themeLook(t) === look);
+  const canSave = !isBuiltInLook(theme) && !alreadySaved;
+  const label = role === "owner" ? "Save to my themes" : "Add to my themes";
+  return (
+    <PanelSection title="Your themes">
+      {themes.length ? (
+        <div className={styles.themeList} data-testid="your-themes">
+          {themes.map(t => (
+            <button key={t.id} type="button" className={styles.themeOption} data-sq="surface" data-current={themeLook(t) === look || undefined} disabled={use.isPending} onClick={() => use.mutate(t)} title={t.name} style={{ background: t.colors.background, color: t.colors.text }} data-testid="saved-theme-option">
+              <span className={styles.themeName} style={{ fontFamily: `"${t.fonts.heading}", system-ui` }}>
+                {t.name}
+              </span>
+              <span className={styles.themeDots}>
+                {[t.colors.accent, t.colors.accent2, t.colors.accent3].map(c => (
+                  <i key={c} style={{ background: c }} />
+                ))}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : saved.isSuccess ? (
+        <p className={styles.hint}>Change this deck&apos;s colours or fonts, then save the theme to use it in your other decks.</p>
+      ) : saved.isError ? (
+        <p className={styles.hint}>Your themes didn&apos;t load: {saved.error.message}</p>
+      ) : null}
+      {naming !== null ? (
+        <form
+          className={styles.themeSave}
+          onSubmit={event => {
+            event.preventDefault();
+            if (naming.trim()) save.mutate(naming.trim());
+          }}
+        >
+          <input className={styles.textInput} value={naming} autoFocus maxLength={80} aria-label="Theme name" placeholder="Theme name" onChange={event => setNaming(event.target.value)} onKeyDown={event => { event.stopPropagation(); if (event.key === "Escape") setNaming(null); }} data-testid="theme-name" />
+          <div className={styles.buttonRow}>
+            <button type="button" className={styles.secondaryButton} data-sq="surface" onClick={() => setNaming(null)}>
+              Cancel
+            </button>
+            <button type="submit" className={styles.smallPrimary} data-sq="surface" disabled={!naming.trim() || save.isPending} data-testid="theme-save-confirm">
+              Save
+            </button>
+          </div>
+        </form>
+      ) : canSave && saved.isSuccess ? (
+        <button type="button" className={styles.secondaryButton} data-sq="surface" onClick={() => setNaming(suggestedThemeName(theme))} data-testid="theme-save">
+          <Plus size={14} aria-hidden="true" /> {label}
+        </button>
+      ) : null}
+    </PanelSection>
+  );
+}
+
 function ThemePanel() {
   const editor = useEditor();
   const deck = useDeck();
@@ -644,6 +725,7 @@ function ThemePanel() {
           ))}
         </div>
       </PanelSection>
+      <YourThemes />
       <PanelSection title="Fonts">
         <TextSetting label="Headings" value={theme.fonts.heading} onCommit={heading => set({ fonts: { ...theme.fonts, heading: heading || "Inter" } })} />
         <TextSetting label="Body" value={theme.fonts.body} onCommit={body => set({ fonts: { ...theme.fonts, body: body || "Inter" } })} />

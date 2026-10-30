@@ -836,6 +836,35 @@ impl Client {
         Ok(EventStream::new(resp, url.to_string()))
     }
 
+    // ---- themes ----------------------------------------------------------------------------
+
+    /// `GET /v1/themes`: your own themes, by name.
+    pub async fn themes(&self) -> Result<Vec<Value>> {
+        let v = self.get_json(&["themes"], &[]).await?;
+        Ok(v["themes"].as_array().cloned().unwrap_or_default())
+    }
+
+    /// `POST /v1/themes`: save a deck's current theme (it needs editor access) as one of your themes.
+    pub async fn save_theme(&self, deck: &str, name: Option<&str>) -> Result<Value> {
+        self.send_json(Method::POST, &["themes"], Some(&json!({ "deck": deck, "name": name }))).await
+    }
+
+    /// `PATCH /v1/themes/{id}`: rename a theme, or change its fonts or colours (`changes` holds `name`, `fonts`, `colors`).
+    pub async fn update_theme(&self, id: &str, changes: &Value) -> Result<Value> {
+        self.send_json(Method::PATCH, &["themes", id], Some(changes)).await
+    }
+
+    /// `DELETE /v1/themes/{id}`.
+    pub async fn delete_theme(&self, id: &str) -> Result<Value> {
+        self.send_json(Method::DELETE, &["themes", id], None).await
+    }
+
+    /// `POST /v1/themes/{id}/use`: copies the theme's fonts into the deck and returns `{ theme }`, ready to set as the
+    /// deck's theme with an `update_deck` op.
+    pub async fn use_theme(&self, id: &str, deck: &str) -> Result<Value> {
+        self.send_json(Method::POST, &["themes", id, "use"], Some(&json!({ "deck": deck }))).await
+    }
+
     // ---- reports ---------------------------------------------------------------------------
 
     /// `POST /v1/reports`: a bug report to the Silicon Present team, with an optional pull request.

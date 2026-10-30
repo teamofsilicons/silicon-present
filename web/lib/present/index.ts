@@ -12,3 +12,4 @@ export * from "./versions";
 export * from "./presentations";
 export * from "./files";
 export * from "./me";
+export * from "./themes";
