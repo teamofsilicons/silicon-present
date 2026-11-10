@@ -36,8 +36,15 @@ pub use state::{AppState, Deps};
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
 
+fn configure_tls() {
+    // Reqwest and Ting's WebSocket client enable different Rustls providers.
+    // Select one before any implicit TLS builder runs; preserve a host's choice.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 /// Connects to Postgres and runs the migrations.
 pub async fn connect(database_url: &str) -> anyhow::Result<sqlx::PgPool> {
+    configure_tls();
     let pool = PgPoolOptions::new()
         .max_connections(20)
         .acquire_timeout(Duration::from_secs(10))
@@ -63,6 +70,7 @@ fn accounts_client(cfg: &Config) -> anyhow::Result<AccountsClient> {
 
 /// The real adapters: Silicon Accounts, Silicon Ting (when configured) and the converter (when configured).
 pub fn real_deps(cfg: &Config) -> anyhow::Result<Deps> {
+    configure_tls();
     let client = accounts_client(cfg)?;
     if let Some(url) = &cfg.ting_url { ting_client::api_origin(url)?; }
     let http = reqwest::Client::builder().timeout(cfg.ting_timeout).redirect(reqwest::redirect::Policy::none()).build()?;
