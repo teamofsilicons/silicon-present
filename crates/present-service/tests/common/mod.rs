@@ -107,15 +107,22 @@ pub struct FakeTing {
     pub sent: Mutex<Vec<OutgoingTing>>,
     pub enrolled: Mutex<Vec<Uuid>>,
     pub fail_next: AtomicUsize,
+    pub transport_url: Mutex<Option<String>>,
 }
 
 #[async_trait]
 impl TingSender for FakeTing {
     async fn enrol(&self, account: Uuid, _token: &str) -> Result<(), SendFailure> {
+        let transport = self.transport_url.lock().unwrap().clone();
+        if let Some(url) = transport {
+            reqwest::Client::new().post(format!("{url}/v1/subscriptions"))
+                .bearer_auth("sap_test").json(&json!({"app_id":"present","for":account}))
+                .send().await.unwrap().error_for_status().unwrap();
+        }
         self.enrolled.lock().unwrap().push(account);
         Ok(())
     }
-    async fn send(&self, ting: &OutgoingTing) -> Result<(), SendFailure> {
+    async fn send(&self, ting: &OutgoingTing) -> Result<present_service::tings::SendOutcome, SendFailure> {
         if self.fail_next.load(Ordering::SeqCst) > 0 {
             self.fail_next.fetch_sub(1, Ordering::SeqCst);
             return Err(SendFailure {
@@ -123,8 +130,16 @@ impl TingSender for FakeTing {
                 message: "fake outage".into(),
             });
         }
+        let transport = self.transport_url.lock().unwrap().clone();
+        if let Some(url) = transport {
+            let response = reqwest::Client::new().post(format!("{url}/v1/tings"))
+                .bearer_auth("sap_test").json(&ting.body()).send().await.unwrap();
+            if !response.status().is_success() {
+                return Err(SendFailure { retryable: false, message: response.text().await.unwrap() });
+            }
+        }
         self.sent.lock().unwrap().push(ting.clone());
-        Ok(())
+        Ok(present_service::tings::SendOutcome::Accepted)
     }
 }
 
@@ -261,6 +276,14 @@ impl Stack {
         converter: bool,
         real_converter: Option<Arc<dyn Converter>>,
     ) -> Stack {
+        Self::start_full_with_receiver(ting, converter, real_converter, None).await
+    }
+
+    pub async fn start_with_receiver(url: &str) -> Stack {
+        Self::start_full_with_receiver(true, false, None, Some(url)).await
+    }
+
+    async fn start_full_with_receiver(ting: bool, converter: bool, real_converter: Option<Arc<dyn Converter>>, receiver_url: Option<&str>) -> Stack {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let db_name = format!(
             "present_t_{}_{}_{}",
@@ -299,7 +322,8 @@ impl Stack {
             ("PRESENT_ACCOUNTS_WEBHOOK_SECRET", "whsec_test".to_string()),
         ]
         .into();
-        let cfg = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
+        let mut cfg = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
+        cfg.ting_url = receiver_url.map(str::to_owned);
         let client = silicon_accounts_client::AccountsClient::builder()
             .base_url(accounts_url)
             .allow_insecure_http(true)
@@ -307,6 +331,7 @@ impl Stack {
             .unwrap();
         let directory = Arc::new(FakeDirectory::default());
         let ting_fake = Arc::new(FakeTing::default());
+        *ting_fake.transport_url.lock().unwrap() = receiver_url.map(str::to_owned);
         let converter_fake = Arc::new(FakeConverter::default());
         let deps = Deps {
             verifier: Arc::new(present_service::auth::AccountsTokenVerifier::new(

@@ -434,26 +434,26 @@ sleep 2
 if [[ -n "$TING_URL" ]]; then
   # The service delivers from its outbox in the background: give it a moment.
   for i in $(seq 1 40); do
-    TINGS=$(curl -s "$TING_URL/_tings?for=$UUID_editor&type=present.mention.received")
+    TINGS=$(curl -s "$TING_URL/_tings?for=$UUID_editor&type=present.mentionReceived")
     [[ "$(jq '.tings | length' <<<"$TINGS" 2>/dev/null)" -ge 1 ]] && break
     sleep 0.5
   done
-  is "Ting stand-in got present.mention.received for si:cli-editor" "$(jq -r '.tings[0].type' <<<"$TINGS")" "present.mention.received"
+  is "Ting stand-in got present.mentionReceived for si:cli-editor" "$(jq -r '.tings[0].type' <<<"$TINGS")" "present.mentionReceived"
   has "the mention ting carries the deck" "$TINGS" "$DECK"
   has "the mention ting carries the comment" "$TINGS" "make this simpler"
   ALL_TINGS=$(curl -s "$TING_URL/_tings")
-  has "present.comment.created reached the owner" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.comment.created"
-  has "present.comment.replied was sent" "$(jq -r '.tings[].type' <<<"$ALL_TINGS")" "present.comment.replied"
-  has "present.thread.resolved reached the thread's starter" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.thread.resolved"
-  has "present.deck.shared reached si:cli-viewer" "$(jq -r --arg u "$UUID_viewer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.deck.shared"
-  has "the Carbon got its mention" "$(jq -r --arg u "$(jq -r .uuid <<<"$CARBON_JSON")" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.mention.received"
+  has "present.commentCreated reached the owner" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.commentCreated"
+  has "present.commentReplied was sent" "$(jq -r '.tings[].type' <<<"$ALL_TINGS")" "present.commentReplied"
+  has "present.threadResolved reached the thread's starter" "$(jq -r --arg u "$UUID_writer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.threadResolved"
+  has "present.deckShared reached si:cli-viewer" "$(jq -r --arg u "$UUID_viewer" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.deckShared"
+  has "the Carbon got its mention" "$(jq -r --arg u "$(jq -r .uuid <<<"$CARBON_JSON")" '.tings[] | select(.for==$u) | .type' <<<"$ALL_TINGS")" "present.mentionReceived"
 else
   OUTBOX=$(psql_q "select type || ' ' || recipient || ' ' || state from ting_outbox order by id")
-  has "outbox has present.mention.received for si:cli-editor" "$OUTBOX" "present.mention.received $UUID_editor"
-  has "outbox has present.comment.created for the owner" "$OUTBOX" "present.comment.created $UUID_writer"
-  has "outbox has present.comment.replied" "$OUTBOX" "present.comment.replied"
-  has "outbox has present.thread.resolved" "$OUTBOX" "present.thread.resolved"
-  has "outbox has present.deck.shared for si:cli-viewer" "$OUTBOX" "present.deck.shared $UUID_viewer"
+  has "outbox has present.mentionReceived for si:cli-editor" "$OUTBOX" "present.mentionReceived $UUID_editor"
+  has "outbox has present.commentCreated for the owner" "$OUTBOX" "present.commentCreated $UUID_writer"
+  has "outbox has present.commentReplied" "$OUTBOX" "present.commentReplied"
+  has "outbox has present.threadResolved" "$OUTBOX" "present.threadResolved"
+  has "outbox has present.deckShared for si:cli-viewer" "$OUTBOX" "present.deckShared $UUID_viewer"
   echo "        (no Ting stand-in at tools/ting-standin: checked the service's ting_outbox)"
 fi
 

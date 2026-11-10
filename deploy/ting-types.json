@@ -1,0 +1,422 @@
+[
+  {
+    "type": "present.mentionReceived",
+    "description": "Someone mentioned you in a comment.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "deck",
+        "slide",
+        "on",
+        "thread",
+        "comment",
+        "actor"
+      ],
+      "properties": {
+        "deck": {
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "slide": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "on": {
+          "type": "object"
+        },
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "comment": {
+          "type": "object",
+          "required": [
+            "id",
+            "body"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        },
+        "actor": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "type": "present.commentCreated",
+    "description": "A comment was added to your deck.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "deck",
+        "slide",
+        "on",
+        "thread",
+        "comment",
+        "actor"
+      ],
+      "properties": {
+        "deck": {
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "slide": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "on": {
+          "type": "object"
+        },
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "comment": {
+          "type": "object",
+          "required": [
+            "id",
+            "body"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        },
+        "actor": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "type": "present.commentReplied",
+    "description": "Someone replied to a thread you participate in.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "deck",
+        "slide",
+        "on",
+        "thread",
+        "comment",
+        "actor"
+      ],
+      "properties": {
+        "deck": {
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "slide": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "on": {
+          "type": "object"
+        },
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "comment": {
+          "type": "object",
+          "required": [
+            "id",
+            "body"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        },
+        "actor": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "type": "present.threadResolved",
+    "description": "A thread you started was resolved.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "deck",
+        "slide",
+        "on",
+        "thread",
+        "comment",
+        "actor"
+      ],
+      "properties": {
+        "deck": {
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "slide": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "on": {
+          "type": "object"
+        },
+        "thread": {
+          "type": "object",
+          "required": [
+            "id",
+            "state",
+            "link"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "id",
+                "body"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actor": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "type": "present.deckShared",
+    "description": "A deck or folder was shared with you.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "resource",
+        "deck",
+        "role",
+        "by"
+      ],
+      "properties": {
+        "resource": {
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "name",
+            "link"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "deck",
+                "folder"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "link": {
+              "type": "string"
+            }
+          }
+        },
+        "deck": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "link"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "link": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "enum": [
+            "viewer",
+            "commenter",
+            "editor"
+          ]
+        },
+        "by": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  {
+    "type": "present.libraryChanged",
+    "description": "Refresh the open Present library, trash, or transfers view.",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false
+    }
+  }
+]

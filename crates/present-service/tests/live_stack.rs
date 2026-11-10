@@ -126,8 +126,8 @@ async fn real_accounts_tokens_lookups_and_ting_delivery() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     let list = tings["tings"].as_array().unwrap().clone();
-    assert!(list.iter().any(|t| t["type"] == "present.deck.shared" && t["for"] == silicon["uuid"]), "{tings}");
-    let m = list.iter().find(|t| t["type"] == "present.mention.received").expect("mention ting");
+    assert!(list.iter().any(|t| t["type"] == "present.deckShared" && t["for"] == silicon["uuid"]), "{tings}");
+    let m = list.iter().find(|t| t["type"] == "present.mentionReceived").expect("mention ting");
     assert_eq!(m["for"], carbon["uuid"]);
     assert_eq!(m["data"]["deck"]["id"], id.as_str());
     assert_eq!(m["data"]["comment"]["body"], mention.as_str());

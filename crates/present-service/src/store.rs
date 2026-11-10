@@ -220,14 +220,20 @@ pub async fn create_deck(
 
 /// Records an event for the history (renames, moves, sharing, trash, comment deletes, …).
 pub async fn event(st: &AppState, deck: Option<&str>, folder: Option<&str>, actor: Uuid, kind: &str, data: Value) -> ApiResult<()> {
+    let mut tx = st.pool.begin().await?;
     sqlx::query("insert into events (deck, folder, actor, kind, data) values ($1, $2, $3, $4, $5)")
         .bind(deck)
         .bind(folder)
         .bind(actor)
         .bind(kind)
-        .bind(data)
-        .execute(&st.pool)
+        .bind(&data)
+        .execute(&mut *tx)
         .await?;
+    if st.ting.is_some() {
+        crate::ting_sessions::enqueue_event(&mut tx, deck, folder, actor, kind, &data).await?;
+    }
+    tx.commit().await?;
+    st.ting_notify.notify_one();
     Ok(())
 }
 

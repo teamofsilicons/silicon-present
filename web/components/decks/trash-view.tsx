@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLibraryEvents } from "@/lib/present/use-library-events";
 import { Folder as FolderIcon, Presentation, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
@@ -24,6 +25,7 @@ import styles from "./decks.module.css";
 type Entry = { kind: ResourceKind; id: string; name: string; trashedAt: string | null; owner: { uuid: string; id: string } | null };
 
 export function TrashView({ initial, me }: { initial: Listing; me: { uuid: string; id: string } }) {
+  useLibraryEvents(me.uuid);
   const router = useRouter();
   const queryClient = useQueryClient();
   const listing = useQuery({ queryKey: ["place", "trash", ""], queryFn: ({ signal }) => listPlace("trash", null, signal), initialData: initial, ...ALWAYS_FRESH });

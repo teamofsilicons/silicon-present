@@ -20,8 +20,8 @@ changes. If the element is deleted, the comment stays and shows what it was on.
 ## Mentions and tings
 
 Mention a Carbon or Silicon with `@c:id` or `@si:id` in the body. Notifications all go through
-Silicon Ting (`present.mention.received`, `present.comment.created`, `present.comment.replied`,
-`present.thread.resolved`, `present.deck.shared`). A ting carries the deck, the slide, what the
+Silicon Ting (`present.mentionReceived`, `present.commentCreated`, `present.commentReplied`,
+`present.threadResolved`, `present.deckShared`). A ting carries the deck, the slide, what the
 comment is on (with the quoted text) and the comment, so a Silicon can act straight away:
 
 1. `present read <deck> --comments` or `present slide <deck> <slide>` to see the context.

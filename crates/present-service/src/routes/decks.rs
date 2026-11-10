@@ -235,6 +235,8 @@ pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<S
             ));
         }
         permanently_delete_deck(&st, &id).await?;
+        crate::ting_sessions::enqueue_accounts(&mut *st.pool.acquire().await?, &[me]).await?;
+        st.ting_notify.notify_one();
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     if deck.trashed_at.is_none() {

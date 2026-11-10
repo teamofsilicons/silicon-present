@@ -121,7 +121,7 @@ async fn comments_mentions_and_tings() {
     s.share("decks", &id, &ada, "c:cam", "commenter").await;
     s.share("decks", &id, &ada, "si:designer", "editor").await;
     let shared = s.outbox().await;
-    assert!(shared.iter().any(|t| t.0 == "present.deck.shared" && t.1 == cam.uuid));
+    assert!(shared.iter().any(|t| t.0 == "present.deckShared" && t.1 == cam.uuid));
     let c = s.content(&id, &ada).await;
     let slide = first_slide(&c);
     let (_, r) = s.edits(&id, &ada, json!([{ "op": "add_element", "slide": slide, "element": { "id": "e_chart1", "kind": "chart", "chart": { "title": "Revenue" } } }])).await;
@@ -154,20 +154,20 @@ async fn comments_mentions_and_tings() {
     let tid = t["id"].as_str().unwrap().to_string();
     let cid = t["comments"][0]["id"].as_str().unwrap().to_string();
     let outbox = s.outbox().await;
-    let mention = outbox.iter().find(|x| x.0 == "present.mention.received" && x.1 == bot.uuid).expect("mention ting");
+    let mention = outbox.iter().find(|x| x.0 == "present.mentionReceived" && x.1 == bot.uuid).expect("mention ting");
     assert_eq!(mention.3["deck"]["id"], id.as_str());
     assert_eq!(mention.3["slide"]["number"], 1);
     assert_eq!(mention.3["on"]["label"], "an area on slide 1 on chart “Revenue”");
     assert_eq!(mention.3["comment"]["body"], "@si:designer make this simpler, cc @c:out @c:nobody");
     assert!(!outbox.iter().any(|x| x.1 == outsider.uuid), "no ting to someone who can't see the deck");
-    assert!(outbox.iter().any(|x| x.0 == "present.comment.created" && x.1 == ada.uuid && x.2.contains(&cid)));
-    assert!(!outbox.iter().any(|x| x.1 == cam.uuid && x.0 != "present.deck.shared"), "never to the actor");
+    assert!(outbox.iter().any(|x| x.0 == "present.commentCreated" && x.1 == ada.uuid && x.2.contains(&cid)));
+    assert!(!outbox.iter().any(|x| x.1 == cam.uuid && x.0 != "present.deckShared"), "never to the actor");
     // The Silicon replies; the starter hears about it, the owner too; the Silicon doesn't.
     let (st, r) = s.post(&format!("/v1/threads/{tid}/replies"), &bot, json!({ "body": "Done: two series instead of five." })).await;
     assert_eq!(st, 201, "{r}");
     let reply_id = r["comment"]["id"].as_str().unwrap().to_string();
     let outbox = s.outbox().await;
-    assert!(outbox.iter().any(|x| x.0 == "present.comment.replied" && x.1 == cam.uuid && x.2.contains(&reply_id)));
+    assert!(outbox.iter().any(|x| x.0 == "present.commentReplied" && x.1 == cam.uuid && x.2.contains(&reply_id)));
     assert!(!outbox.iter().any(|x| x.1 == bot.uuid && x.2.contains(&reply_id)));
     // Reactions (one per account per emoji), edits, resolve, reopen, delete.
     let thumbs = urlencode("👍");
@@ -184,11 +184,11 @@ async fn comments_mentions_and_tings() {
     let (st, t) = s.req("PATCH", &format!("/v1/comments/{cid}"), Some(&cam), Some(json!({ "body": "@si:designer make this simpler please, and @c:ada look" }))).await;
     assert_eq!(st, 200);
     assert!(t["comments"][0]["editedAt"].is_string());
-    assert!(s.outbox().await.iter().any(|x| x.0 == "present.mention.received" && x.1 == ada.uuid && x.2.contains(&cid)), "newly mentioned by the edit");
+    assert!(s.outbox().await.iter().any(|x| x.0 == "present.mentionReceived" && x.1 == ada.uuid && x.2.contains(&cid)), "newly mentioned by the edit");
     let (st, t) = s.post(&format!("/v1/threads/{tid}/resolve"), &bot, json!({})).await;
     assert_eq!((st, t["state"].as_str().unwrap()), (200, "resolved"));
     assert_eq!(t["resolvedBy"]["id"], "si:designer");
-    assert!(s.outbox().await.iter().any(|x| x.0 == "present.thread.resolved" && x.1 == cam.uuid));
+    assert!(s.outbox().await.iter().any(|x| x.0 == "present.threadResolved" && x.1 == cam.uuid));
     let (_, open) = s.get(&format!("{threads}?state=open"), Some(&cam)).await;
     assert!(open["threads"].as_array().unwrap().iter().all(|t| t["id"] != tid.as_str()));
     let (_, t) = s.post(&format!("/v1/threads/{tid}/reopen"), &cam, json!({})).await;

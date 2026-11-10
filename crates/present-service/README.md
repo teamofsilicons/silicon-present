@@ -64,3 +64,17 @@ PRESENT_LIVE_CONVERTER_URL=http://127.0.0.1:4362 PRESENT_LIVE_CONVERTER_SECRET=s
 
 The Ting stand-in (`node tools/ting-standin/server.mjs`, port `TING_PORT`, default 4323) records every ting and
 subscription; tests read them at `GET /_tings` and `GET /_subscriptions`. See its header for the rest.
+
+## Ting 0.4 integration
+
+The service uses `silicon-ting-client` 0.4 for ephemeral receivers. Account notifications
+use two-part names, registered payload schemas and verified `from` attribution.
+`GET /v1/library/events` supplies authenticated, content-free refresh hints through
+server-bound Ting sessions; clients reconcile on `ready` and periodically.
+
+Migration 0006 preserves unsent legacy notifications as failed rows rather than
+changing potentially accepted requests under their original keys. See
+[`docs/accounts-and-ting.md`](../../docs/accounts-and-ting.md) for the upgrade and
+session lifecycle. `pnpm install` supplies the local Ting stand-in's dependencies.
+
+Focused verification: `cargo test -p present-service --test ting_contract --test ting_sessions`.

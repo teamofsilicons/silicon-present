@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLibraryEvents } from "@/lib/present/use-library-events";
 import { ArrowRightLeft, ChevronRight, ExternalLink, Folder as FolderIcon, FolderInput, FolderPlus, History as HistoryIcon, MonitorPlay, Pencil, Plus, Trash2, Upload, UserPlus } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { Progress } from "@/components/arc/progress/progress";
@@ -67,6 +68,7 @@ function roleOf(entry: Item, me: DecksViewProps["me"]) {
 }
 
 export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) {
+  const libraryRevision = useLibraryEvents(me.uuid);
   const router = useRouter();
   const queryClient = useQueryClient();
   const queryKey = ["place", scope, folder ?? "", me.uuid] as const;
@@ -97,7 +99,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
         .catch(error => { const failure = ApiError.from(error); if (failure.code !== "aborted") setFound({ q: searching, hits: null, error: failure }); });
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [searching]);
+  }, [searching, libraryRevision]);
   const current = searching && found?.q === searching ? found : null;
   const hits = searching ? current?.hits ?? (current?.error ? null : []) : null;
   const searchError = current?.error ?? null;

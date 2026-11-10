@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Silicon Ting stand-in for tests and end-to-end runs. It speaks Ting's current contract (0.3) closely enough for
+// Silicon Ting stand-in for tests and end-to-end runs. It speaks Ting's current contract (0.4) closely enough for
 // Silicon Present to deliver to it, and records everything it receives so tests can read it back.
 //
 //   POST /v1/subscriptions   Authorization: Bearer sap_… (User verification proof, scope subscriptions.register)
@@ -20,10 +20,12 @@
 //   GET    /health
 //
 // Env: TING_PORT (default 4323), TING_HOST (127.0.0.1), ACCOUNTS_API_URL, TING_APP_ID (ting), TING_APP_SECRET,
-// TING_VERIFY (on). No dependencies: node tools/ting-standin/server.mjs
+// TING_VERIFY (on). Run pnpm install, then node tools/ting-standin/server.mjs.
 
 import http from "node:http";
 import crypto from "node:crypto";
+import { WebSocketServer } from "ws";
+import Ajv from "ajv";
 
 const PORT = Number(process.env.TING_PORT ?? 4323);
 const HOST = process.env.TING_HOST ?? "127.0.0.1";
@@ -35,6 +37,9 @@ const MAX_BODY = 256 * 1024;
 
 const tings = [];
 const subscriptions = [];
+const catalog = new Map();
+const receivers = new Map();
+const ajv = new Ajv({ strict: false });
 let failNext = { count: 0, status: 503 };
 
 function send(res, status, body) {
@@ -104,6 +109,20 @@ const server = http.createServer(async (req, res) => {
       const t = url.searchParams.get("type");
       return send(res, 200, { tings: tings.filter((x) => (!f || x.for === f) && (!t || x.type === t)) });
     }
+    if (req.method === "GET" && path === "/_sessions") return send(res, 200, { sessions: [...receivers.keys()] });
+    if (req.method === "DELETE" && path === "/_sessions") {
+      for (const receiver of receivers.values()) receiver.ws.close();
+      return send(res, 200, { ok: true });
+    }
+    if (req.method === "POST" && path === "/v1/apps/present/types") {
+      const proof = await verifyProof(req, "types.manage");
+      if (!proof.ok) return error(res, 401, proof.code, proof.message, "Issue a types.manage proof.");
+      const { json: type } = await readBody(req);
+      if (!/^present\.[a-zA-Z0-9]+$/.test(type?.type) || !type.schema) return error(res, 400, "invalid_type", "Use a two-part type with a schema.", "");
+      if (catalog.has(type.type)) return error(res, 409, "type_exists", "The type exists.", "");
+      catalog.set(type.type, ajv.compile(type.schema));
+      return send(res, 201, type);
+    }
     if (req.method === "GET" && path === "/_subscriptions") return send(res, 200, { subscriptions });
     if (req.method === "DELETE" && path === "/_tings") {
       tings.length = 0;
@@ -140,30 +159,41 @@ const server = http.createServer(async (req, res) => {
       const v = await verifyProof(req, "tings.send");
       if (!v.ok) return error(res, v.status ?? 401, v.code, v.message, "Issue an App verification proof for ting with scope tings.send.");
       const t = body.json;
-      const allowed = new Set(["type", "for", "key", "data", "metadata"]);
+      const allowed = new Set(["type", "for", "from", "session_id", "key", "data", "metadata"]);
       const unknown = Object.keys(t).filter((k) => !allowed.has(k));
       if (unknown.length) return error(res, 400, "unknown_field", `Unknown field(s): ${unknown.join(", ")}.`, "Send only type, for, key, data, metadata.");
-      if (typeof t.type !== "string" || typeof t.for !== "string" || typeof t.key !== "string" || !t.key || Buffer.byteLength(t.key) > 200) {
+      if (typeof t.type !== "string" || (typeof t.for !== "string" && typeof t.session_id !== "string") || typeof t.key !== "string" || !t.key || Buffer.byteLength(t.key) > 200) {
         return error(res, 400, "invalid_request", "A ting needs type, for and a key of at most 200 bytes.", "Send { type, for, key, data, metadata }.");
       }
+      if (!/^present\.[A-Za-z0-9]+$/.test(t.type)) return error(res, 400, "invalid_type", "Use a two-part type.", "");
       const same = tings.find((x) => x.key === t.key && x.app === (v.proof.issuing_app?.id ?? v.proof.issuing_app ?? "present"));
       if (same) {
-        if (stable({ type: same.type, for: same.for, data: same.data }) !== stable({ type: t.type, for: t.for, data: t.data ?? {} })) {
+        if (stable({ type: same.type, for: same.for, from: same.from, session_id: same.session_id, data: same.data, metadata: same.metadata }) !== stable({ type: t.type, for: t.for, from: t.from, session_id: t.session_id, data: t.data ?? {}, metadata: t.metadata ?? {} })) {
           return error(res, 409, "idempotency_conflict", "This key was already used for a different ting.", "Use a new key for a new ting.");
         }
         return send(res, 200, { id: same.id, replayed: true });
       }
+      const validate = catalog.get(t.type);
+      if (!validate) return error(res, 404, "type_not_found", "Register the type first.", "");
+      if (!validate(t.data)) return error(res, 400, "invalid_data", "The payload does not match its schema.", "");
+      const receiver = t.session_id ? receivers.get(t.session_id) : null;
+      if (t.session_id && !receiver) return error(res, 404, "session_gone", "The session ended.", "");
+      if (receiver && !receiver.apps.includes("present")) return error(res, 403, "not_registered", "The receiver has not registered Present.", "");
+      if (!receiver && !subscriptions.some(s => s.for === t.for && s.app_id === "present")) return error(res, 403, "subscription_required", "The recipient needs an active subscription.", "");
       const rec = {
         id: crypto.randomUUID(),
         app: v.proof.issuing_app?.id ?? v.proof.issuing_app ?? "present",
         type: t.type,
-        for: t.for,
+        ...(t.for ? { for: t.for } : {}),
+        ...(t.from ? { from: t.from } : {}),
+        ...(t.session_id ? { session_id: t.session_id } : {}),
         key: t.key,
         data: t.data ?? {},
         metadata: t.metadata ?? {},
         received_at: new Date().toISOString(),
       };
       tings.push(rec);
+      receiver?.ws.send(JSON.stringify({ op: "tings", session_id: t.session_id, tings: [rec] }));
       return send(res, 201, { id: rec.id });
     }
     return error(res, 404, "not_found", `No route for ${req.method} ${path}.`, "See the header of tools/ting-standin/server.mjs.");
@@ -172,7 +202,26 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`ting stand-in listening on http://${HOST}:${PORT} (proof checks ${VERIFY ? "on via " + ACCOUNTS : "off"})`);
+const websocket = new WebSocketServer({ server, path: "/v1/ws", maxPayload: MAX_BODY });
+websocket.on("connection", ws => {
+  const id = crypto.randomUUID();
+  const receiver = { ws, apps: [] };
+  receivers.set(id, receiver);
+  ws.send(JSON.stringify({ op: "ready", protocol: "v1", session_id: id, receiver_id: id }));
+  ws.on("message", bytes => {
+    try {
+      const body = JSON.parse(bytes.toString());
+      if (body.op !== "register" || !Array.isArray(body.app_ids) || body.session_token) throw new Error("Only anonymous app registration is supported here.");
+      receiver.apps = body.app_ids;
+      ws.send(JSON.stringify({ op: "registered", request_id: body.request_id, session_id: id, for: null, app_ids: receiver.apps }));
+    } catch {
+      ws.close(1008, "Invalid registration");
+    }
+  });
+  ws.on("close", () => receivers.delete(id));
 });
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => server.close(() => process.exit(0)));
+
+server.listen(PORT, HOST, () => {
+  console.log(`ting stand-in listening on http://${HOST}:${server.address().port} (proof checks ${VERIFY ? "on via " + ACCOUNTS : "off"})`);
+});
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { for (const receiver of receivers.values()) receiver.ws.terminate(); websocket.close(); server.close(() => process.exit(0)); });

@@ -4,11 +4,10 @@
 //! request that caused it is retried) and a worker hands it to Ting, retrying with backoff. With no
 //! `PRESENT_TING_URL` tings stay in the outbox marked `ting_not_configured`.
 //!
-//! Ting's contract (0.3): each recipient is enrolled once with a User verification proof (scope
-//! `subscriptions.register`) → `POST {TING}/v1/subscriptions {app_id, for}`; tings are sent with an App
-//! verification proof (scope `tings.send`) → `POST {TING}/v1/tings {type, for, key, data, metadata}`.
+//! Ting 0.4: schema-validated two-part types, account notifications with verified
+//! actor attribution, and content-free hints addressed to ephemeral receiver sessions.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -26,7 +25,26 @@ pub struct OutgoingTing {
     pub recipient: Uuid,
     pub key: String,
     pub data: Value,
+    pub actor: Option<Uuid>,
+    /// Ephemeral delivery address; never used for account-wide collaboration notifications.
+    pub session_id: Option<String>,
 }
+
+impl OutgoingTing {
+    pub fn body(&self) -> Value {
+        let mut body = json!({"type": self.kind, "key": self.key, "data": self.data, "metadata": {}});
+        if let Some(session) = &self.session_id {
+            body["session_id"] = json!(session);
+        } else {
+            body["for"] = json!(self.recipient);
+            if let Some(actor) = self.actor { body["from"] = json!(actor); }
+        }
+        body
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendOutcome { Accepted, Blocked }
 
 /// Why a send failed, and whether trying again later can help.
 #[derive(Debug, Clone)]
@@ -39,7 +57,7 @@ pub struct SendFailure {
 pub trait TingSender: Send + Sync {
     /// Enrols an account with Ting so it can receive Present's tings. `access_token` is its Present token.
     async fn enrol(&self, account: Uuid, access_token: &str) -> Result<(), SendFailure>;
-    async fn send(&self, ting: &OutgoingTing) -> Result<(), SendFailure>;
+    async fn send(&self, ting: &OutgoingTing) -> Result<SendOutcome, SendFailure>;
 }
 
 /// The real sender.
@@ -50,17 +68,18 @@ pub struct HttpTingSender {
     pub app_id: String,
     pub app_secret: String,
     pub ting_app_id: String,
-    proof: Mutex<Option<(String, OffsetDateTime)>>,
+    proofs: Mutex<HashMap<String, (String, OffsetDateTime)>>,
+    registered: Mutex<bool>,
 }
 
 impl HttpTingSender {
     pub fn new(http: reqwest::Client, ting_url: String, accounts: AccountsClient, app_id: String, app_secret: String, ting_app_id: String) -> Self {
-        Self { http, ting_url, accounts, app_id, app_secret, ting_app_id, proof: Mutex::new(None) }
+        Self { http, ting_url, accounts, app_id, app_secret, ting_app_id, proofs: Mutex::new(HashMap::new()), registered: Mutex::new(false) }
     }
 
-    async fn app_proof(&self) -> Result<String, SendFailure> {
-        let mut cached = self.proof.lock().await;
-        if let Some((token, exp)) = cached.as_ref()
+    async fn app_proof(&self, scope: &str) -> Result<String, SendFailure> {
+        let mut cached = self.proofs.lock().await;
+        if let Some((token, exp)) = cached.get(scope)
             && *exp - time::Duration::seconds(60) > OffsetDateTime::now_utc()
         {
             return Ok(token.clone());
@@ -68,19 +87,41 @@ impl HttpTingSender {
         let app = self.accounts.as_app(self.app_id.clone(), self.app_secret.clone());
         let issued = app
             .issue_app_verification(
-                &IssueAppVerification { receiving_app: self.ting_app_id.clone(), scopes: vec!["tings.send".into()], access_ttl_seconds: None },
+                &IssueAppVerification { receiving_app: self.ting_app_id.clone(), scopes: vec![scope.into()], access_ttl_seconds: None },
                 None,
             )
             .await
             .map_err(|e| SendFailure { retryable: true, message: format!("issuing the App verification proof failed: {}", e.message()) })?;
         let token = issued.proof_token.expose().to_string();
         let exp = issued.expires_at.unwrap_or_else(|| OffsetDateTime::now_utc() + time::Duration::minutes(5));
-        *cached = Some((token.clone(), exp));
+        cached.insert(scope.to_string(), (token.clone(), exp));
         Ok(token)
     }
 
-    async fn forget_proof(&self) {
-        *self.proof.lock().await = None;
+    async fn forget_proof(&self, scope: &str, rejected: &str) {
+        let mut proofs = self.proofs.lock().await;
+        if proofs.get(scope).is_some_and(|(token, _)| token == rejected) { proofs.remove(scope); }
+    }
+
+    /// Register replacements before sending. Separate proof scope from ordinary publishing.
+    async fn ensure_types(&self) -> Result<(), SendFailure> {
+        let mut registered = self.registered.lock().await;
+        if *registered { return Ok(()); }
+        let proof = self.app_proof("types.manage").await?;
+        let types: Vec<Value> = serde_json::from_str(include_str!("../../../deploy/ting-types.json")).expect("bundled Ting catalog");
+        for kind in types {
+            let response = self.http.post(format!("{}/v1/apps/{}/types", self.ting_url, self.app_id))
+                .bearer_auth(&proof).json(&kind).send().await
+                .map_err(|_| SendFailure { retryable: true, message: "Ting type registration is unreachable".into() })?;
+            if response.status().is_success() { continue; }
+            let (status, code, _) = error_code(response).await;
+            if status == 409 && code == "type_exists" { continue; }
+            if status == 401 { self.forget_proof("types.manage", &proof).await; }
+            return Err(SendFailure { retryable: status >= 500 || status == 429 || status == 401,
+                message: format!("Ting refused type registration ({status} {code})") });
+        }
+        *registered = true;
+        Ok(())
     }
 }
 
@@ -119,33 +160,39 @@ impl TingSender for HttpTingSender {
             .send()
             .await
             .map_err(|e| SendFailure { retryable: true, message: format!("Ting is unreachable: {e}") })?;
-        if resp.status().is_success() || resp.status().as_u16() == 409 {
+        if resp.status().is_success() {
             return Ok(());
         }
         let (status, code, body) = error_code(resp).await;
         Err(SendFailure { retryable: status >= 500, message: format!("Ting refused the subscription ({status} {code}): {body}") })
     }
 
-    async fn send(&self, ting: &OutgoingTing) -> Result<(), SendFailure> {
-        let proof = self.app_proof().await?;
+    async fn send(&self, ting: &OutgoingTing) -> Result<SendOutcome, SendFailure> {
+        self.ensure_types().await?;
+        let proof = self.app_proof("tings.send").await?;
         let resp = self
             .http
             .post(format!("{}/v1/tings", self.ting_url))
             .bearer_auth(&proof)
-            .json(&json!({ "type": ting.kind, "for": ting.recipient, "key": ting.key, "data": ting.data, "metadata": {} }))
+            .json(&ting.body())
             .send()
             .await
             .map_err(|e| SendFailure { retryable: true, message: format!("Ting is unreachable: {e}") })?;
         if resp.status().is_success() {
-            return Ok(());
+            let receipt: Value = resp.json().await.map_err(|_| SendFailure { retryable: true, message: "Ting returned an unreadable receipt; retry the original key".into() })?;
+            if receipt["status"] == "blocked" { return Ok(SendOutcome::Blocked); }
+            if receipt["id"].as_str().is_some_and(|s| !s.is_empty()) && (receipt.get("status").is_none() || receipt["status"] == "accepted") {
+                return Ok(SendOutcome::Accepted);
+            }
+            return Err(SendFailure { retryable: true, message: "Ting returned an unrecognized receipt; retry the original key".into() });
         }
         let (status, code, body) = error_code(resp).await;
         if matches!(code.as_str(), "invalid_proof" | "unauthorized" | "proof_expired") || status == 401 {
-            self.forget_proof().await;
+            self.forget_proof("tings.send", &proof).await;
             return Err(SendFailure { retryable: true, message: format!("Ting refused the proof ({status} {code}); a new one will be used") });
         }
         // A recipient that hasn't been enrolled yet may be enrolled later (on their next request), so keep trying.
-        let retryable = status >= 500 || status == 429 || status == 404 || code.contains("subscri");
+        let retryable = code != "session_gone" && (status >= 500 || status == 429 || (ting.session_id.is_none() && (status == 404 || code == "recipient_not_registered" || code.contains("subscri"))));
         Err(SendFailure { retryable, message: format!("Ting refused the ting ({status} {code}): {body}") })
     }
 }
@@ -158,7 +205,7 @@ pub async fn enqueue(state: &AppState, kind: &str, recipient: Uuid, actor: Optio
     let initial = if state.ting.is_some() { "pending" } else { "ting_not_configured" };
     let key: String = key.chars().take(200).collect();
     sqlx::query(
-        "insert into ting_outbox (idempotency_key, type, recipient, payload, state) values ($1, $2, $3, $4, $5)
+        "insert into ting_outbox (idempotency_key, type, recipient, payload, state, actor) values ($1, $2, $3, $4, $5, $6)
          on conflict (idempotency_key) do nothing",
     )
     .bind(&key)
@@ -166,6 +213,7 @@ pub async fn enqueue(state: &AppState, kind: &str, recipient: Uuid, actor: Optio
     .bind(recipient)
     .bind(&data)
     .bind(initial)
+    .bind(actor)
     .execute(&state.pool)
     .await?;
     state.ting_notify.notify_one();
@@ -181,24 +229,33 @@ fn backoff(attempts: i32) -> i64 {
 /// Sends every due ting once. Returns how many were sent.
 pub async fn deliver_due(state: &AppState) -> Result<usize, sqlx::Error> {
     let Some(sender) = state.ting.clone() else { return Ok(0) };
-    let rows: Vec<(i64, String, String, Uuid, Value, i32)> = sqlx::query_as(
-        "update ting_outbox set next_attempt_at = now() + interval '120 seconds'
-         where id in (select id from ting_outbox where state = 'pending' and next_attempt_at <= now()
-                      order by id limit 25 for update skip locked)
-         returning id, idempotency_key, type, recipient, payload, attempts",
-    )
-    .fetch_all(&state.pool)
-    .await?;
+    sqlx::query("delete from ting_library_sessions where expires_at<=now()").execute(&state.pool).await?;
+    // A late retry outside Ting's deduplication window could send twice.
+    sqlx::query("update ting_outbox set state='failed', last_error='Ting idempotency window elapsed; reconcile sent history before resending' where state='pending' and created_at < now() - interval '13 days'")
+        .execute(&state.pool).await?;
+    // A dead session is terminal. Never fall back to the account or a replacement session.
+    sqlx::query("update ting_outbox o set state='failed', last_error='Ting receiver session ended' where state='pending' and session_id is not null and not exists(select 1 from ting_library_sessions s where s.session_id=o.session_id and s.expires_at>now())")
+        .execute(&state.pool).await?;
     let mut sent = 0;
-    for (id, key, kind, recipient, payload, attempts) in rows {
-        let ting = OutgoingTing { kind, recipient, key, data: payload };
+    for _ in 0..25 {
+        // Claim immediately before sending; a slow catalog/send must not let a
+        // later row's lease expire before this worker even reaches it.
+        let row: Option<(i64, String, String, Uuid, Value, i32, Option<Uuid>, Option<String>)> = sqlx::query_as(
+            "update ting_outbox set next_attempt_at = now() + interval '120 seconds'
+             where id in (select id from ting_outbox where state = 'pending' and next_attempt_at <= now()
+                          order by id limit 1 for update skip locked)
+             returning id, idempotency_key, type, recipient, payload, attempts, actor, session_id",
+        ).fetch_optional(&state.pool).await?;
+        let Some((id, key, kind, recipient, payload, attempts, actor, session_id)) = row else { break };
+        let ting = OutgoingTing { kind, recipient, key, data: payload, actor, session_id };
         match sender.send(&ting).await {
-            Ok(()) => {
-                sqlx::query("update ting_outbox set state = 'sent', sent_at = now(), attempts = attempts + 1, last_error = null where id = $1")
+            Ok(outcome) => {
+                sqlx::query("update ting_outbox set state = $2, sent_at = case when $2 = 'sent' then now() else null end, attempts = attempts + 1, last_error = null where id = $1")
                     .bind(id)
+                    .bind(if outcome == SendOutcome::Blocked { "blocked" } else { "sent" })
                     .execute(&state.pool)
                     .await?;
-                sent += 1;
+                sent += usize::from(outcome == SendOutcome::Accepted);
             }
             Err(f) => {
                 let attempts = attempts + 1;

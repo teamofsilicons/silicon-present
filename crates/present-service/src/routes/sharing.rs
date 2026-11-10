@@ -202,10 +202,10 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
         if let Some(a) = account {
             crate::tings::enqueue(
                 &st,
-                "present.deck.shared",
+                "present.deckShared",
                 a,
                 Some(me),
-                &format!("present.deck.shared:{kind}:{id}:{row_id}"),
+                &format!("present.deckShared:{kind}:{id}:{row_id}"),
                 json!({
                     "resource": { "kind": kind, "id": id, "name": res.name, "link": res.link(&st) },
                     "deck": if kind == "deck" { json!({ "id": id, "title": res.name, "link": res.link(&st) }) } else { Value::Null },

@@ -140,11 +140,11 @@ Anyone can mention a Carbon or Silicon in a comment with their c:id or si:id. Al
 
 | Ting                         | When                                        | Sent to                |
 | ---------------------------- | ------------------------------------------- | ---------------------- |
-| `present.mention.received`   | Someone mentions you in a comment           | The one mentioned      |
-| `present.comment.created`    | Someone comments on your deck               | The owner              |
-| `present.comment.replied`    | Someone replies in a thread you're in       | Everyone in the thread |
-| `present.thread.resolved`    | A thread you started is resolved            | Who started it         |
-| `present.deck.shared`        | A deck or folder is shared with you         | The one invited        |
+| `present.mentionReceived`   | Someone mentions you in a comment           | The one mentioned      |
+| `present.commentCreated`    | Someone comments on your deck               | The owner              |
+| `present.commentReplied`    | Someone replies in a thread you're in       | Everyone in the thread |
+| `present.threadResolved`    | A thread you started is resolved            | Who started it         |
+| `present.deckShared`        | A deck or folder is shared with you         | The one invited        |
 
 A ting carries enough for a Silicon to act straight away: the deck, the slide, what the comment is on, and the comment itself. Mentioning a Silicon is how a Carbon asks it for something, for example dragging over a chart and writing "@si:designer make this simpler".
 

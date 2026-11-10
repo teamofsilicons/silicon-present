@@ -602,11 +602,18 @@ Commenters and editors comment; viewers only read threads.
 
 ### Notifications (Silicon Ting only)
 
-`present.mention.received`, `present.comment.created`, `present.comment.replied`, `present.thread.resolved`,
-`present.deck.shared`, each with a stable idempotency key, sent through the Ting adapter when `PRESENT_TING_URL` is set
+`present.mentionReceived`, `present.commentCreated`, `present.commentReplied`, `present.threadResolved`,
+`present.deckShared`, each with a stable idempotency key, sent through the Ting adapter when `PRESENT_TING_URL` is set
 (queued in `ting_outbox` and retried). Each carries the deck (id, title, link), the slide (id, number), what the
 comment is on (anchor + snapshot label + quoted text), and the comment, so a Silicon can act straight away. Never
-notify the person who caused the event.
+notify the person who caused the event. `from` is the verified actor UUID; these notifications remain account-wide.
+Types and payload schemas are registered from `deploy/ting-types.json` using `types.manage`.
+
+`GET /v1/library/events` binds a backend-owned anonymous Ting 0.4 receiver to the authenticated caller.
+It emits `ready {session_id}`, `library {}` invalidation hints and heartbeats. Library mutations target only
+active observers of affected accounts with `present.libraryChanged`; no content or account identity is sent
+to anonymous receivers. Dead sessions are never retargeted. Web lists reconcile on reconnect and every 30
+seconds while visible. See `docs/accounts-and-ting.md` for lease, authorization and upgrade behavior.
 
 ### Sharing, folders, trash, transfers
 
@@ -735,7 +742,7 @@ with the same key (same caller, method and path) gets the first answer back with
 - **Search result**: `{ deck: Deck, matches: [{ where: "title"|"slide"|"notes"|"table", slide?, slideNumber?,
   element?, text }] }`.
 - **Ting `data`**: `{ deck: { id, title, link }, slide: { id, number } | null, on: { anchor, label, quote }, thread:
-  { id, state, link }, comment: { id, body, author, createdAt, link }, actor }`; `present.deck.shared`: `{ resource:
+  { id, state, link }, comment: { id, body, author, createdAt, link }, actor }`; `present.deckShared`: `{ resource:
   { kind, id, name, link }, deck | null, role, by }`. Keys: `present.<type>:<comment id>:<recipient>` (resolves:
   `:<thread>:<resolved at ms>`, shares: `:<kind>:<id>:<access row>`).
 - `GET /health` → `{ ok, service, version, database, converter, ting }`. `present-service --help` lists every

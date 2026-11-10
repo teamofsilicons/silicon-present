@@ -147,7 +147,7 @@ test("comments on every kind of anchor, live, with mentions, replies, reactions 
 
   // The mention reached the Silicon through Silicon Ting, with what the comment is on.
   await eventually(async () => {
-    const got = await tings({ type: "present.mention.received", for: si.uuid });
+    const got = await tings({ type: "present.mentionReceived", for: si.uuid });
     expect(got.some(x => JSON.stringify(x.data).includes("make these bars simpler"))).toBe(true);
   }, 30_000);
 

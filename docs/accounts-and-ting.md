@@ -87,25 +87,94 @@ Playwright Carbon sign-in: web kit `e2e/support.ts` (`signInOnHostedPages`, `req
 "Finish setup" / "Share and continue". 30 codes per network per 10 minutes: sign each Carbon in once and reuse
 `storageState`.
 
-## 3. Silicon Ting (0.3, proofs from Silicon Accounts)
+## 3. Silicon Ting 0.4
 
-1. **Enrol each recipient once** (lazily, in the background, on their first request to Present):
-   `app.issue_user_verification(&IssueUserVerification { subject_token: <their present access token>,
-   receiving_app: "ting", scopes: ["subscriptions.register"] }, Some(key))`, then `POST {TING}/v1/subscriptions` with
-   `Authorization: Bearer sap_…` and `{"app_id": "present", "for": "<uuid>"}` → `{ id }`.
-2. **Send**: `app.issue_app_verification(&IssueAppVerification { receiving_app: "ting", scopes: ["tings.send"] },
-   key)` (cache; replace 60 s before expiry or on `invalid_proof` / `unauthorized` / `proof_expired`), then
-   `POST {TING}/v1/tings` with `Authorization: Bearer sap_…` and
-   `{"type": "present.mention.received", "for": "<uuid>", "key": "<≤200 B idempotency key>", "data": {…}, "metadata": {}}`.
-   Unknown fields are rejected; 256 KiB max; keys dedupe for 14 days (`409 idempotency_conflict` if the content
-   changed under the same key).
-3. **Types** are registered once by an author of `present`: `ting types register --type present.comment.created
-   --description '…'` (`POST /v1/apps/present/types`).
+The receiver-session and notification contract was checked against Ting main
+`163e5ca6d6c160172ff0d19d0c9dcec63dad4dc0` on 2026-11-10. Present uses the published
+`silicon-ting-client` 0.4 for WebSocket receivers. Account sign-in sessions and
+Ting receiver sessions are separate: a receiver address exists only while its
+socket is active.
 
-Config: `PRESENT_TING_URL` (unset = delivery off; tings stay in `ting_outbox` as `ting_not_configured`; production
-`https://backend.ting.teamofsilicons.com`), `PRESENT_TING_APP_ID` (default `ting`),
-`PRESENT_TING_TIMEOUT_SECONDS` (15). A worker retries the outbox.
+### Account notifications
 
-Local stand-in: `tools/ting-standin/` (ours), speaking the current contract: verifies the Bearer proofs with
-`POST {ACCOUNTS_API}/v1/proofs/verify` using the seeded `ting` app's credentials, accepts subscriptions and tings,
-and lets tests read what arrived. DM's `scripts/dev_ting_stub.py` is stale (old `Authorization: Proof` contract).
+Mentions, comments, replies, resolved threads, and shares use `for: <account UUID>`
+and `from: <verified acting account UUID>`. They reach the account's eligible
+sessions and remain in Ting history. They never carry `session_id`. Names are
+`present.mentionReceived`, `present.commentCreated`, `present.commentReplied`,
+`present.threadResolved`, and `present.deckShared`.
+
+Each recipient is enrolled lazily, using a User verification proof scoped to
+`subscriptions.register`, then `POST /v1/subscriptions {app_id, for}`. Sends use
+an App verification proof scoped to `tings.send`. Proofs are cached independently
+by scope, replaced 60 seconds before expiry, and invalidated only if the rejected
+credential is still the cached one. New proof issuances never reuse a stable
+idempotency key that could replay an expired proof.
+
+Before its first send, each service process registers the six definitions in
+`deploy/ting-types.json` with a separate `types.manage` proof. Ting requires exactly
+two-part names and validates every payload against its registered JSON Schema.
+An existing type is accepted; a conflicting registration error is not treated as
+success. Future schema edits use Ting's authorized author flow, rather than
+silently overwriting a live catalog definition.
+
+A send is `{type, for, from?, key, data, metadata}`; data and metadata are objects,
+the request is at most 256 KiB, and the key is at most 200 bytes. Outbox retries
+preserve the original target, attribution, payload and key. A `blocked` receipt is
+terminal and stored as `blocked`, without a delivery timestamp. Retrying stops
+before Ting's 14-day deduplication window ends. Acceptance means Ting accepted the
+notification, not that the recipient read it.
+
+### Live library sessions
+
+`GET /v1/library/events` requires Present authentication and opens one anonymous
+Ting WebSocket, registers `app_ids: ["present"]`, and binds the returned receiver
+address to the caller on the backend. The caller cannot provide or adopt a Ting
+session address. There is no extra Ting sign-in, no browser credential, and no
+change to the account's notification preferences or subscriptions.
+
+The SSE stream begins with `ready: {session_id}` only after binding. Clients must
+then reconcile the library through ordinary authenticated reads. A library mutation
+queues `present.libraryChanged` for each affected account's active observers. Its
+wire body contains `session_id`, a stable key, `data: {}`, and `metadata: {}`; it
+contains no `for`, `from`, resource identifier, title, comment or result. Receiving
+this ting produces `library: {}` over SSE. All content and access checks remain in
+Present. These content-free invalidations have no notification sound or inbox UI.
+
+Affected observers include owners, acting accounts, direct and inherited members,
+removed members, old parent-folder members after moves, and transfer participants.
+Deck creation/import, rename, move, share changes, trash/restore and transfers
+invalidate open lists. Permanent deletion refreshes the owner's trash. Editor Yjs
+sync, presence, comments and presentation playback keep their existing streams.
+
+The service rechecks the Present token and renews a 45-second lease every 15 seconds.
+At most eight receivers can be attached per account across service processes.
+Disconnect drops both the socket and lease; a crash leaves at most the lease TTL.
+Streams end after four minutes so the web proxy can refresh authentication. Dead
+sessions and `session_gone` are terminal: their queued messages are never sent to
+a new session or broadcast to the account.
+
+Decks, search, trash and transfers pages open the stream while visible, coalesce
+bursts, reconnect with bounded exponential backoff and jitter, and reconcile after
+every new `ready`. They also reconcile every 30 seconds while visible, covering
+missed hints or unavailable Ting. Hiding or leaving the page closes its session.
+Native clients may consume the same SSE endpoint with their Present access token;
+`present ls` remains a one-shot command.
+
+### Upgrade and configuration
+
+`PRESENT_TING_URL` enables the integration (HTTPS; HTTP only on loopback). The
+sender does not follow redirects with credentials. `PRESENT_TING_APP_ID` defaults
+to `ting`; `PRESENT_TING_TIMEOUT_SECONDS` defaults to 15.
+
+Migration `0006_ting_sessions.sql` adds sender attribution, receiver addresses,
+leases and the terminal blocked state. Legacy unsent three-part notifications are
+preserved as failed rows for reconciliation. They are not renamed in place: an
+old request may already have been accepted before its response was lost. Inspect
+Ting sent history before deliberately resending an old event with a new type/key.
+Already sent historical rows remain unchanged.
+
+The local `tools/ting-standin` checks proof scopes, two-part names, registered
+schemas, subscription/session grants, exact idempotency fields and WebSocket
+receiver lifetime. Install workspace dependencies with `pnpm install` before
+running it. `TING_VERIFY=off` is restricted to local tests; it never changes the
+real service's authentication.

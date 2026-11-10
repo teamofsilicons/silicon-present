@@ -10,6 +10,10 @@ const stack=JSON.parse(readFileSync(`${root}/e2e/stack/test-stack.json`,'utf8'))
 const data=`${root}/.dev/final`;
 mkdirSync(`${data}/bin`,{recursive:true});
 const children=[];
+// The Ting stand-in starts empty each run. Reusing Present enrollment markers
+// with it would claim that subscriptions exist after the stand-in forgot them.
+const database=`present_final_${process.pid}_${randomBytes(4).toString('hex')}`;
+let databaseCreated=false;
 const args=process.argv.slice(2);
 const withScreens=args.includes('--screens');
 const withLiveService=args.includes('--service-live');
@@ -26,17 +30,24 @@ function run(command,args,extra={},cwd=root,name=command){
 }
 async function free(port){await new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',reject);server.listen(port,'127.0.0.1',()=>server.close(resolve));});}
 async function ready(url){for(let n=0;n<180;n++){try{const r=await fetch(url);if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,500));}throw new Error(`Not ready: ${url}`);}
-function finish(){for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}}}
+function finish(){
+ for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}}
+ if(databaseCreated){
+  spawnSync(`${process.env.PGBIN||'/opt/homebrew/opt/postgresql@16/bin'}/dropdb`,['-h','127.0.0.1','-p','5490','-U','present','--if-exists','--force',database],{stdio:'ignore'});
+  databaseCreated=false;
+ }
+}
 process.on('SIGTERM',()=>{finish();process.exit(143);});process.on('SIGINT',()=>{finish();process.exit(130);});
 try {
  for(const port of [4320,4321,4322,4323])await free(port);
- const db=spawnSync('bash',['scripts/dev-db.sh','create','present_final_codex'],{cwd:root,encoding:'utf8'});if(db.status!==0)throw new Error('Could not create final test database');
+ const db=spawnSync('bash',['scripts/dev-db.sh','create',database],{cwd:root,encoding:'utf8'});if(db.status!==0)throw new Error('Could not create final test database');
+ databaseCreated=true;
  const build=spawnSync('cargo',['build','-q','-p','present-service'],{cwd:root,env:{...process.env,CARGO_TARGET_DIR:`${root}/target`,CARGO_BUILD_JOBS:'4',CARGO_INCREMENTAL:'0'},encoding:'utf8'});if(build.status!==0)throw new Error(build.stderr);
  copyFileSync(`${root}/target/debug/present-service`,`${data}/bin/present-service`);
  run('node',['tools/ting-standin/server.mjs'],{TING_PORT:'4323',TING_APP_ID:'ting',TING_APP_SECRET:stack.apps.ting.app_secret},root,'ting');
  run('node',['node_modules/tsx/dist/cli.mjs','src/server.ts'],{CONVERTER_PORT:'4322',CONVERTER_SECRET:converterSecret},`${root}/renderer`,'converter');
  await Promise.all([ready('http://127.0.0.1:4322/health'),ready('http://127.0.0.1:4323/health')]);
- run(`${data}/bin/present-service`,[],{PRESENT_DATABASE_URL:'postgres://present@127.0.0.1:5490/present_final_codex',PRESENT_BIND:'127.0.0.1:4321',PRESENT_PUBLIC_URL:'http://127.0.0.1:4321',PRESENT_WEB_URL:env.PUBLIC_URL,PRESENT_DATA_DIR:data,PRESENT_APP_SECRET:env.APP_SECRET,PRESENT_IRIS_URL:'http://127.0.0.1:9745',PRESENT_CONVERTER_URL:'http://127.0.0.1:4322',CONVERTER_SECRET:converterSecret,PRESENT_TING_URL:'http://127.0.0.1:4323'},root,'service');
+ run(`${data}/bin/present-service`,[],{PRESENT_DATABASE_URL:`postgres://present@127.0.0.1:5490/${database}`,PRESENT_BIND:'127.0.0.1:4321',PRESENT_PUBLIC_URL:'http://127.0.0.1:4321',PRESENT_WEB_URL:env.PUBLIC_URL,PRESENT_DATA_DIR:data,PRESENT_APP_SECRET:env.APP_SECRET,PRESENT_IRIS_URL:'http://127.0.0.1:9745',PRESENT_CONVERTER_URL:'http://127.0.0.1:4322',CONVERTER_SECRET:converterSecret,PRESENT_TING_URL:'http://127.0.0.1:4323'},root,'service');
  await ready('http://127.0.0.1:4321/health');
  if(withLiveService){
   await free(4363);

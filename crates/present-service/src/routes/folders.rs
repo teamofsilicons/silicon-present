@@ -182,6 +182,8 @@ pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<S
         }
         sqlx::query("delete from access where resource_kind = 'folder' and resource_id = $1").bind(&id).execute(&st.pool).await?;
         sqlx::query("delete from folders where id = $1").bind(&id).execute(&st.pool).await?;
+        crate::ting_sessions::enqueue_accounts(&mut *st.pool.acquire().await?, &[me]).await?;
+        st.ting_notify.notify_one();
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     if folder.trashed_at.is_none() {

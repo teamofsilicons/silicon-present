@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLibraryEvents } from "@/lib/present/use-library-events";
 import { Check, Folder as FolderIcon, Presentation, X } from "lucide-react";
 import { Button } from "@/components/arc/button/button";
 import { LocalTime } from "@/components/foundation/time/local-time";
@@ -21,6 +22,7 @@ import styles from "./decks.module.css";
 const STATE_WORDS: Record<Transfer["state"], string> = { pending: "Waiting", accepted: "Accepted", declined: "Declined", cancelled: "Cancelled" };
 
 export function TransfersView({ initial, me }: { initial: Transfer[]; me: { uuid: string; id: string } }) {
+  useLibraryEvents(me.uuid);
   const router = useRouter();
   const queryClient = useQueryClient();
   const transfers = useQuery({ queryKey: ["transfers"], queryFn: ({ signal }) => listTransfers(signal), initialData: initial, ...ALWAYS_FRESH });

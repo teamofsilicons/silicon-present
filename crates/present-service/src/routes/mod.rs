@@ -158,6 +158,7 @@ pub fn router(st: AppState) -> Router {
     let r = Router::new()
         .route("/health", get(search::health))
         .route("/v1/me", get(search::me))
+        .route("/v1/library/events", get(crate::ting_sessions::events))
         .route("/v1/accounts/resolve", get(search::resolve))
         .route("/v1/accounts/webhook", post(search::accounts_webhook))
         .route("/v1/reports", post(reports::create))

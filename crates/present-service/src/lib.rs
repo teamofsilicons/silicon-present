@@ -20,6 +20,7 @@ pub mod routes;
 pub mod state;
 pub mod store;
 pub mod tings;
+pub mod ting_sessions;
 pub mod views;
 pub mod viewers;
 
@@ -63,7 +64,8 @@ fn accounts_client(cfg: &Config) -> anyhow::Result<AccountsClient> {
 /// The real adapters: Silicon Accounts, Silicon Ting (when configured) and the converter (when configured).
 pub fn real_deps(cfg: &Config) -> anyhow::Result<Deps> {
     let client = accounts_client(cfg)?;
-    let http = reqwest::Client::builder().timeout(cfg.ting_timeout).build()?;
+    if let Some(url) = &cfg.ting_url { ting_client::api_origin(url)?; }
+    let http = reqwest::Client::builder().timeout(cfg.ting_timeout).redirect(reqwest::redirect::Policy::none()).build()?;
     Ok(Deps {
         verifier: Arc::new(auth::AccountsTokenVerifier::new(client.clone(), &cfg.app_id, &cfg.accounts_url)),
         directory: Arc::new(accounts::AccountsAppDirectory { client: client.clone(), app_id: cfg.app_id.clone(), app_secret: cfg.app_secret.clone() }),

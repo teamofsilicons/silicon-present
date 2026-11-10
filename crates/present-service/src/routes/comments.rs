@@ -378,7 +378,7 @@ async fn notify_comment(st: &AppState, deck: &DeckRow, t: &ThreadRow, c: &Commen
             without_access.push(accounts::account_json(st, *m).await);
             continue;
         }
-        crate::tings::enqueue(st, "present.mention.received", *m, Some(actor), &format!("present.mention.received:{}:{m}", c.id), data.clone()).await?;
+        crate::tings::enqueue(st, "present.mentionReceived", *m, Some(actor), &format!("present.mentionReceived:{}:{m}", c.id), data.clone()).await?;
         notified.push(*m);
     }
     if !new_thread {
@@ -391,12 +391,12 @@ async fn notify_comment(st: &AppState, deck: &DeckRow, t: &ThreadRow, c: &Commen
             if notified.contains(&p) {
                 continue;
             }
-            crate::tings::enqueue(st, "present.comment.replied", p, Some(actor), &format!("present.comment.replied:{}:{p}", c.id), data.clone()).await?;
+            crate::tings::enqueue(st, "present.commentReplied", p, Some(actor), &format!("present.commentReplied:{}:{p}", c.id), data.clone()).await?;
             notified.push(p);
         }
     }
     if !notified.contains(&deck.owner) {
-        crate::tings::enqueue(st, "present.comment.created", deck.owner, Some(actor), &format!("present.comment.created:{}:{}", c.id, deck.owner), data).await?;
+        crate::tings::enqueue(st, "present.commentCreated", deck.owner, Some(actor), &format!("present.commentCreated:{}:{}", c.id, deck.owner), data).await?;
     }
     Ok(without_access)
 }
@@ -497,10 +497,10 @@ pub async fn resolve(State(st): State<AppState>, caller: Caller, Path(tid): Path
         let at = t.resolved_at.map(|x| x.unix_timestamp_nanos() / 1_000_000).unwrap_or_default();
         crate::tings::enqueue(
             &st,
-            "present.thread.resolved",
+            "present.threadResolved",
             t.created_by,
             Some(me),
-            &format!("present.thread.resolved:{tid}:{at}"),
+            &format!("present.threadResolved:{tid}:{at}"),
             json!({
                 "deck": ctx.deck, "slide": ctx.slide, "on": ctx.on, "thread": ctx.thread,
                 "comment": first.map(|(id, body)| json!({ "id": id, "body": body })),
@@ -574,10 +574,10 @@ pub async fn edit(State(st): State<AppState>, caller: Caller, Path(cid): Path<St
             }
             crate::tings::enqueue(
                 &st,
-                "present.mention.received",
+                "present.mentionReceived",
                 m,
                 Some(me),
-                &format!("present.mention.received:{cid}:{m}"),
+                &format!("present.mentionReceived:{cid}:{m}"),
                 json!({ "deck": ctx.deck, "slide": ctx.slide, "on": ctx.on, "thread": ctx.thread,
                         "comment": { "id": cid, "body": updated.body, "author": actor, "createdAt": ts(updated.created_at) }, "actor": actor }),
             )
