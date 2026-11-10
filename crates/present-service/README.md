@@ -78,3 +78,5 @@ changing potentially accepted requests under their original keys. See
 session lifecycle. `pnpm install` supplies the local Ting stand-in's dependencies.
 
 Focused verification: `cargo test -p present-service --test ting_contract --test ting_sessions`.
+
+The service selects Rustls's AWS-LC provider before connecting to Postgres or constructing the real adapters. The HTTP and Ting WebSocket clients enable different providers, so relying on implicit selection can panic only on production `wss://` connections. `PRESENT_TING_TLS_SMOKE_URL=https://backend.ting.teamofsilicons.com cargo test -p present-service --test ting_tls` also checks a credential-free receiver registration over real TLS.
