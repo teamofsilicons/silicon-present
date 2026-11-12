@@ -28,6 +28,7 @@ export interface PresentModeProps {
   title: string;
   deck: DeckJson;
   signedIn: boolean;
+  selfPaced?: boolean;
   initialSlide?: string | null;
 }
 
@@ -44,11 +45,9 @@ export function Stage({ deck, move, html = "live", label }: { deck: DeckJson; mo
   }, [move, css]);
   const playing = !!css && finished !== move;
   const outgoing = playing ? move.from : null;
-  const key = `${move.to.slide}`;
-
-  if (move.to.ended) {
-    return <div className={styles.end}><p>End of the presentation.</p><p className={styles.endHint}>Press Escape to leave, or ← to go back.</p></div>;
-  }
+  // Keep HTML slides mounted from the start, so their frames can load before they are shown and retain their state.
+  const hasMasterHtml = deck.master.elements.some(element => element.kind === "html");
+  const cached = deck.slides.filter(slide => slide.id === move.to.slide || (html === "live" && (slide.elements.some(element => element.kind === "html") || (hasMasterHtml && !slide.hideMaster))));
   return (
     <div className={styles.stage}>
       {outgoing && css ? (
@@ -56,16 +55,21 @@ export function Stage({ deck, move, html = "live", label }: { deck: DeckJson; mo
           <SlideView deck={deck} slide={outgoing.slide} step={outgoing.step} fit="contain" html="static" media="static" />
         </div>
       ) : null}
-      <div key={key} className={styles.layer} style={{ animation: playing && css ? css.in : undefined, zIndex: 1 }}>
-        <SlideView deck={deck} slide={move.to.slide} step={move.to.step} animate={move.animate} fit="contain" html={html} label={label} />
-      </div>
+      {cached.map(slide => {
+        const active = !move.to.ended && slide.id === move.to.slide;
+        return <div key={slide.id} className={styles.layer} aria-hidden={!active || undefined} inert={!active || undefined}
+          style={{ visibility: active ? "visible" : "hidden", animation: active && playing && css ? css.in : undefined, zIndex: 1 }}>
+          <SlideView deck={deck} slide={slide.id} step={active ? move.to.step : 0} animate={active && move.animate} fit="contain" html={html} label={active ? label : undefined} />
+        </div>;
+      })}
+      {move.to.ended ? <div className={styles.end}><p>End of the presentation.</p><p className={styles.endHint}>Press Escape to leave, or ← to go back.</p></div> : null}
     </div>
   );
 }
 
-export function PresentMode({ deckId, title, deck, signedIn, initialSlide }: PresentModeProps) {
+export function PresentMode({ deckId, title, deck, signedIn, initialSlide, selfPaced = false }: PresentModeProps) {
   const router = useRouter();
-  const controls = usePresentation(deck, deckId, { initialSlide });
+  const controls = usePresentation(deck, deckId, { initialSlide, sync: !selfPaced });
   const { move, position, index, visible, next, previous, firstSlide, lastSlide, goTo, followId, followBusy, startFollow, stopFollow } = controls;
   const root = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -221,7 +225,7 @@ export function PresentMode({ deckId, title, deck, signedIn, initialSlide }: Pre
           <span className={styles.counter}>{position.ended ? "End" : number ? `${number} / ${visible.length}` : "Skipped"}</span>
           <button type="button" className={styles.barButton} data-sq="surface" onClick={next} aria-label="Next"><ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" /></button>
           <span className={styles.barGap} />
-          {signedIn ? (
+          {signedIn && !selfPaced ? (
             <>
               <button type="button" className={styles.barText} data-sq="surface" onClick={() => window.open(`/decks/${encodeURIComponent(deckId)}/presenter`, `presenter-${deckId}`, "popup,width=1280,height=800")}>
                 <MonitorPlay size={16} strokeWidth={1.75} aria-hidden="true" />

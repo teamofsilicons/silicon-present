@@ -27,6 +27,35 @@ test.afterAll(async () => {
   await new Promise(resolve => server.close(resolve));
 });
 
+test("HTML slides preload, survive navigation, and recover when their frame reloads", async ({ browser }) => {
+  const ada = await signedIn(browser, "carbon");
+  try {
+    const deck = await createDeck(ada.context, "HTML navigation");
+    const first = (await call<{ slides: Array<{ id: string }> }>(ada.context, "GET", `/v1/decks/${deck}/content?format=json`)).body.slides[0]!.id;
+    await edit(ada.context, deck, [{ op: "add_slide", after: first, slide: { id: "s_htmlnav", layout: "blank", elements: [{
+      id: "e_htmlnav", kind: "html", x: 100, y: 100, w: 1000, h: 500,
+      html: '<div id="out">starting</div>', css: "", js: "if (location.hash !== '#again') { location.hash = 'again'; location.reload(); } else { document.getElementById('out').textContent = 'ready'; }",
+    }] } }]);
+    await openDeck(ada.page, deck);
+    const canvas = ada.page.getByTestId("slide-canvas");
+    const frame = canvas.locator('[data-element-id="e_htmlnav"] iframe');
+    await expect(frame).toHaveCount(1);
+    await expect(frame.contentFrame().locator("#out")).toHaveText("ready");
+    await frame.evaluate(node => { (node as HTMLIFrameElement & { marker?: string }).marker = "same frame"; });
+    await frame.contentFrame().locator("#out").evaluate(node => { node.textContent = "kept state"; });
+    const thumbs = ada.page.getByTestId("slide-thumb");
+    await thumbs.nth(1).click();
+    await expect(canvas).toHaveAttribute("data-slide-id", "s_htmlnav");
+    await expect(frame.contentFrame().locator("#out")).toHaveText("kept state");
+    await thumbs.nth(0).click();
+    await thumbs.nth(1).click();
+    await expect(frame.contentFrame().locator("#out")).toHaveText("kept state");
+    expect(await frame.evaluate(node => (node as HTMLIFrameElement & { marker?: string }).marker)).toBe("same frame");
+  } finally {
+    await ada.context.close();
+  }
+});
+
 test("an HTML element runs and fetches from the internet, but can't see the viewer or the page", async ({ browser }) => {
   const ada = await signedIn(browser, "carbon");
   const deck = await createDeck(ada.context, "Sandboxed");

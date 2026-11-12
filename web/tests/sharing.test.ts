@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError } from "../lib/errors";
 import { toAccess, toDeck, toDeckViewers } from "../lib/present/normalize";
-import { getDeckViewers, setPublic } from "../lib/present/sharing";
+import { getDeckViewers, presentationLink, setPublic } from "../lib/present/sharing";
+
+test("presentation links open the self-paced view", () => {
+  assert.equal(presentationLink("deck/one", "https://present.example"), "https://present.example/decks/deck%2Fone/present?view=1");
+});
 
 test("the email requirement is explicit, accepts wire spelling, and defaults off for older responses", () => {
   assert.equal(toDeck({ id: "deck", requireEmail: true }).requireEmail, true);

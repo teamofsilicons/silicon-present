@@ -37,6 +37,26 @@ test.afterAll(async () => {
   await me?.context.close();
 });
 
+test("HTML slides preload and keep their frame and state through navigation and the end screen", async () => {
+  const { page } = me;
+  await page.goto(`/decks/${deck}/present`);
+  const stage = page.getByTestId("present-stage");
+  const frame = stage.locator('.sp-el[data-sp-id="e_hre003"] iframe');
+  // This slide has not been opened yet, but its script has already run.
+  await expect(frame).toHaveCount(1);
+  await expect(frame.contentFrame().locator("#out")).toHaveText("HTML ran 2");
+  await frame.evaluate(node => { (node as HTMLIFrameElement & { marker?: string }).marker = "same frame"; });
+  await frame.contentFrame().locator("#out").evaluate(node => { node.textContent = "kept state"; });
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(stage).toHaveAttribute("data-slide", "s_pre003");
+  await expect(frame.contentFrame().locator("#out")).toHaveText("kept state");
+  expect(await frame.evaluate(node => (node as HTMLIFrameElement & { marker?: string }).marker)).toBe("same frame");
+});
+
 test("keys step through animations, skip the skipped slide, and reach the end", async () => {
   const { page } = me;
   await page.goto(`/decks/${deck}/present`);
@@ -65,6 +85,29 @@ test("keys step through animations, skip the skipped slide, and reach the end", 
   await page.keyboard.press("Home");
   await expect(stage).toHaveAttribute("data-slide", "s_pre001");
   await expect(page.getByRole("toolbar", { name: "Presentation" }).getByText("1 / 3")).toBeAttached();
+});
+
+test("a self-paced presentation link stays independent of the presenter", async () => {
+  const { page, context } = me;
+  await page.goto(`/decks/${deck}/present`);
+  const viewer = await context.newPage();
+  try {
+    await viewer.goto(`/decks/${deck}/present?view=1`);
+    const stage = viewer.getByTestId("present-stage");
+    await expect(stage).toHaveAttribute("data-slide", "s_pre001");
+    await expect(viewer.getByRole("button", { name: "Presenter view" })).toHaveCount(0);
+    await viewer.getByRole("button", { name: "Next", exact: true }).click();
+    await viewer.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(stage).toHaveAttribute("data-slide", "s_pre003");
+    await expect(page.getByTestId("present-stage")).toHaveAttribute("data-slide", "s_pre001");
+    await page.keyboard.press("End");
+    await expect(page.getByTestId("present-stage")).toHaveAttribute("data-slide", "s_pre004");
+    await expect(stage).toHaveAttribute("data-slide", "s_pre003");
+    await viewer.getByRole("button", { name: "Previous", exact: true }).click();
+    await expect(stage).toHaveAttribute("data-slide", "s_pre001");
+  } finally {
+    await viewer.close();
+  }
 });
 
 test("normal presentation keeps its title and Exit visible without advancing from the bars", async () => {

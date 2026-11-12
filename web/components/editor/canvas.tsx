@@ -518,20 +518,24 @@ export function Canvas({ phone = false }: { phone?: boolean }) {
             {masterElements.map(element => (
               <SlideElement key={`m-${element.id}`} element={element} theme={deck.theme} muted={!slide.isMaster} />
             ))}
-            {elements.map(element => (
+            {(slide.isMaster ? [...deck.slides, slide] : deck.slides).flatMap(item => item.elements
+              .map((element, order) => ({ element, order, active: item.id === slide.id, slideId: item.id }))
+              .filter(item => item.active || item.element.kind === "html")).map(({ element, order, active, slideId }) => (
               <SlideElement
-                key={element.id}
+                key={`${slideId}/${element.id}`}
                 element={element}
                 theme={deck.theme}
-                box={ui.preview?.[element.id] ?? null}
-                hideText={editingEl?.id === element.id}
-                hidden={insideEl?.id === element.id}
-                html={paused[element.id] || insideEl?.id === element.id ? "static" : "live"}
+                box={active ? ui.preview?.[element.id] ?? null : null}
+                hideText={active && editingEl?.id === element.id}
+                hidden={active && insideEl?.id === element.id}
+                inactive={!active}
+                order={order + 1}
+                html={paused[element.id] || (active && insideEl?.id === element.id) ? "static" : "live"}
                 runKey={runKeys[element.id] ?? 0}
-                placeholder={canEdit && !commenting}
+                placeholder={active && canEdit && !commenting}
               />
             ))}
-            {drawing && drawing.slideId === slide.id && ui.shapeArmed ? <div data-testid="shape-draw-preview" aria-hidden="true" style={{ position: "absolute", inset: 0, opacity: 0.75, pointerEvents: "none" }}>
+            {drawing && drawing.slideId === slide.id && ui.shapeArmed ? <div data-testid="shape-draw-preview" aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: elements.length + 2, opacity: 0.75, pointerEvents: "none" }}>
               <SlideElement element={drawing.element} theme={deck.theme} />
             </div> : null}
           </div>

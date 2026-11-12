@@ -7,14 +7,15 @@
  * is dragged.
  *
  * HTML elements run in /sandbox/html frames (the same sandbox and protocol as lib/slides/sandbox.ts: a srcdoc frame
- * would inherit this site's CSP, which only runs scripts with its nonce). Here each frame keeps its document on the
- * node and is (re)loaded by an effect that can run twice (React's strict mode) without losing it.
+ * would inherit this site's CSP, which only runs scripts with its nonce). The shared sandbox handshake retains each
+ * frame's document across effect restarts and frame reloads.
  *
  * Empty text boxes show a quiet "Click to add text" to editors, as slide editors do; it is never part of the slide.
  */
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { renderElementHtml } from "@silicon-present/render";
 import type { Element, Theme } from "@silicon-present/deck";
+import { liveHtmlElements } from "@/lib/slides/sandbox";
 import styles from "./editor.module.css";
 
 export interface ElementBox {
@@ -42,10 +43,10 @@ interface Props {
   placeholder?: boolean;
   /** Not drawn (an HTML element being edited inside: its edit frame is drawn on top instead). */
   hidden?: boolean;
+  /** Keep an off-slide HTML element mounted without showing or interacting with it. */
+  inactive?: boolean;
+  order?: number;
 }
-
-const READY = "present:sandbox-ready";
-let loads = 0;
 
 function inner(element: Element, theme: Theme, hideText: boolean, html: "live" | "static"): string {
   const atOrigin = { ...element, x: 0, y: 0, rotation: 0, style: { ...element.style, opacity: undefined } } as Element;
@@ -54,49 +55,23 @@ function inner(element: Element, theme: Theme, hideText: boolean, html: "live" |
   return renderElementHtml(atOrigin, theme, { links: false, placeholders: true, html, media: "static", includeCss: false, googleFonts: false });
 }
 
-type DocFrame = HTMLIFrameElement & { __presentDoc?: string };
-
-/** Loads every HTML element frame under `root` from /sandbox/html and hands it its document. */
-function runFrames(root: HTMLElement): () => void {
-  const frames = Array.from(root.querySelectorAll<DocFrame>("iframe.sp-html"));
-  const waiting = new Map<DocFrame, string>();
-  for (const frame of frames) {
-    const doc = frame.getAttribute("srcdoc") ?? frame.__presentDoc;
-    if (doc === undefined) continue;
-    frame.__presentDoc = doc;
-    frame.removeAttribute("srcdoc");
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.dataset.live = "";
-    waiting.set(frame, doc);
-    frame.src = `/sandbox/html?load=${++loads}`;
-  }
-  if (!waiting.size) return () => undefined;
-  const onMessage = (event: MessageEvent) => {
-    if (!event.data || event.data.type !== READY) return;
-    for (const [frame, doc] of waiting) {
-      if (frame.contentWindow !== event.source) continue;
-      waiting.delete(frame);
-      frame.contentWindow?.postMessage({ type: "present:html", doc }, "*");
-    }
-  };
-  window.addEventListener("message", onMessage);
-  return () => window.removeEventListener("message", onMessage);
-}
-
 function isEmptyText(element: Element): boolean {
   if (element.kind !== "text") return false;
   return element.text.paragraphs.every(p => p.runs.every(r => !r.text.trim()));
 }
 
-export const SlideElement = memo(function SlideElement({ element, theme, box, hideText = false, html = "live", runKey = 0, muted = false, placeholder = false, hidden = false }: Props) {
+export const SlideElement = memo(function SlideElement({ element, theme, box, hideText = false, html = "live", runKey = 0, muted = false, placeholder = false, hidden = false, inactive = false, order }: Props) {
   const b = box ?? element;
   // Size changes re-render the inside (a table's rows, a shape's path); position and rotation never do.
   const sized = useMemo(() => ({ ...element, w: b.w, h: b.h }) as Element, [element, b.w, b.h]);
   const markup = useMemo(() => inner(sized, theme, hideText, html), [sized, theme, hideText, html]);
   const ref = useRef<HTMLDivElement>(null);
+  const previousRun = useRef(runKey);
   useLayoutEffect(() => {
     if (element.kind !== "html" || html !== "live" || !ref.current) return;
-    return runFrames(ref.current);
+    const restart = previousRun.current !== runKey;
+    previousRun.current = runKey;
+    return liveHtmlElements(ref.current, restart);
   }, [markup, element.kind, html, runKey]);
   const opacity = element.style?.opacity;
   const empty = placeholder && !hideText && isEmptyText(element);
@@ -113,7 +88,8 @@ export const SlideElement = memo(function SlideElement({ element, theme, box, hi
         width: b.w,
         height: b.h,
         transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined,
-        visibility: hidden ? "hidden" : undefined,
+        visibility: hidden || inactive ? "hidden" : undefined,
+        zIndex: order,
         opacity: muted ? 0.55 : typeof opacity === "number" && opacity < 1 ? Math.max(0, opacity) : undefined,
       }}
     >

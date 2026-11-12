@@ -45,3 +45,8 @@ export async function resolveAccount(q: string, signal?: AbortSignal): Promise<A
 export function deckLink(id: string, origin: string = typeof window === "undefined" ? "" : window.location.origin): string {
   return `${origin}/decks/${encodeURIComponent(id)}`;
 }
+
+/** A self-paced presentation, subject to the same access settings as the deck. */
+export function presentationLink(id: string, origin: string = typeof window === "undefined" ? "" : window.location.origin): string {
+  return `${deckLink(id, origin)}/present?view=1`;
+}

@@ -57,7 +57,8 @@ function writeFollow(deck: string, id: string | null) {
   }
 }
 
-export function usePresentation(deck: DeckJson, deckId: string, options: { initialSlide?: string | null; canFollow?: boolean } = {}) {
+export function usePresentation(deck: DeckJson, deckId: string, options: { initialSlide?: string | null; canFollow?: boolean; sync?: boolean } = {}) {
+  const sync = options.sync ?? true;
   const visible = useMemo(() => deck.slides.filter(slide => !slide.skipped), [deck]);
   const stepsOf = useCallback((slide: Slide | undefined) => (slide ? slideSteps(slide).steps : 0), []);
   const first = (options.initialSlide && deck.slides.find(slide => slide.id === options.initialSlide)) || visible[0] || deck.slides[0];
@@ -78,7 +79,7 @@ export function usePresentation(deck: DeckJson, deckId: string, options: { initi
 
   const tellService = useCallback((to: Position) => {
     const id = followRef.current;
-    if (!id || to.ended) return;
+    if (!sync || !id || to.ended) return;
     movePresentation(id, to.slide, to.step).catch(error => {
       const failure = ApiError.from(error);
       // A presentation someone stopped elsewhere: stop sending.
@@ -87,7 +88,7 @@ export function usePresentation(deck: DeckJson, deckId: string, options: { initi
         writeFollow(deckId, null);
       } else notifyError(failure, "Followers could not be moved along");
     });
-  }, [deckId]);
+  }, [deckId, sync]);
 
   /** A move made here: show it, tell the other windows and the followers. */
   const go = useCallback((next: Move) => {
@@ -130,7 +131,7 @@ export function usePresentation(deck: DeckJson, deckId: string, options: { initi
 
   // Other windows presenting this deck.
   useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") return;
+    if (!sync || typeof BroadcastChannel === "undefined") return;
     sender.current = crypto.randomUUID();
     const bc = new BroadcastChannel(`present-sync:${deckId}`);
     channel.current = bc;
@@ -148,7 +149,7 @@ export function usePresentation(deck: DeckJson, deckId: string, options: { initi
       bc.close();
       channel.current = null;
     };
-  }, [deckId]);
+  }, [deckId, sync]);
 
   // A window that joins late hears the others' position: answer a hello with where we are.
   const positionRef = useRef(position);
@@ -166,14 +167,15 @@ export function usePresentation(deck: DeckJson, deckId: string, options: { initi
     };
     bc.addEventListener("message", answer);
     return () => bc.removeEventListener("message", answer);
-  }, [deckId]);
+  }, [deckId, sync]);
 
   // A follow link started in this tab before a reload.
   useEffect(() => {
+    if (!sync) return;
     const kept = readFollow(deckId);
     // After hydration (the server cannot read this tab's storage), as a callback rather than during the effect.
     if (kept) void Promise.resolve().then(() => setFollowId(kept));
-  }, [deckId]);
+  }, [deckId, sync]);
 
   const startFollow = useCallback(async () => {
     if (followRef.current) return followRef.current;

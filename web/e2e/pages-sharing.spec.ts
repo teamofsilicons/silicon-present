@@ -111,9 +111,15 @@ test("the public link opens signed out, and stops working when made private", as
   const dialog = await openShare(owner.page, title);
   const publicSwitch = dialog.getByRole("switch", { name: "Anyone with the link" });
   await expect(publicSwitch).not.toBeChecked();
+  await expect(dialog.getByText(/Turn on Anyone with the link/)).toBeVisible();
   await publicSwitch.click();
   await expect(publicSwitch).toBeChecked();
-  await expect(dialog.getByText(`/decks/${deck}`)).toBeVisible();
+  await expect(dialog.getByTitle(`${BASE}/decks/${deck}`, { exact: true })).toBeVisible();
+  const presentationLink = await dialog.getByTitle(`${BASE}/decks/${deck}/present?view=1`).getAttribute("title");
+  expect(presentationLink).toBe(`${BASE}/decks/${deck}/present?view=1`);
+  await owner.context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await dialog.getByRole("button", { name: "Copy presentation link" }).click();
+  await expect.poll(() => owner.page.evaluate(() => navigator.clipboard.readText())).toBe(presentationLink);
   await owner.page.keyboard.press("Escape");
 
   const stranger = await browser.newContext({ baseURL: BASE });
@@ -121,8 +127,8 @@ test("the public link opens signed out, and stops working when made private", as
   const content = await page.request.get(`${BASE}/api/v1/decks/${deck}/content?format=json`);
   expect(content.status()).toBe(200);
   expect(((await content.json()) as { slides: unknown[] }).slides.length).toBe(1);
-  await page.goto(`/decks/${deck}/present`);
-  await expect(page).toHaveURL(new RegExp(`/decks/${deck}/present$`));
+  await page.goto(presentationLink!);
+  await expect(page).toHaveURL(new RegExp(`/decks/${deck}/present\\?view=1$`));
   await expect(page.getByTestId("present-stage")).toHaveAttribute("data-slide", "s_shr001");
   // The deck page itself opens signed out (the editor's view mode).
   await page.goto(`/decks/${deck}`);
@@ -131,7 +137,7 @@ test("the public link opens signed out, and stops working when made private", as
   await call(owner.context, "PUT", `/v1/decks/${deck}/public`, { mode: "off" });
   const closed = await page.request.get(`${BASE}/api/v1/decks/${deck}/content?format=json`);
   expect([401, 403, 404]).toContain(closed.status());
-  await page.goto(`/decks/${deck}/present`);
+  await page.goto(presentationLink!);
   await page.waitForURL(url => !url.href.startsWith(`${BASE}/decks/`), { timeout: 30_000 });
   expect(page.url()).toMatch(/\/authorize|\/auth\/sign-in/);
   await stranger.close();

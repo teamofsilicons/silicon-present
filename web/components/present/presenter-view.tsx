@@ -12,7 +12,7 @@ import { Button } from "@/components/arc/button/button";
 import { CopyButton } from "@/components/arc/copy-button/copy-button";
 import { SlideStyles, SlideView } from "@/components/slides/slide-view";
 import { followPath } from "@/lib/present/presentations";
-import { presentKeys } from "./present-mode";
+import { presentKeys, Stage } from "./present-mode";
 import { usePresentation } from "./use-presentation";
 import styles from "./present.module.css";
 
@@ -26,7 +26,7 @@ function clock(ms: number): string {
 
 export function PresenterView({ deckId, title, deck }: { deckId: string; title: string; deck: DeckJson }) {
   const controls = usePresentation(deck, deckId);
-  const { position, slide, index, visible, steps, next, previous, firstSlide, lastSlide, followId, followBusy, startFollow, stopFollow } = controls;
+  const { move, position, slide, index, visible, steps, next, previous, firstSlide, lastSlide, followId, followBusy, startFollow, stopFollow } = controls;
   const [started, setStarted] = useState(() => Date.now());
   const [pausedAt, setPausedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -76,8 +76,8 @@ export function PresenterView({ deckId, title, deck }: { deckId: string; title: 
             {position.ended ? "End of the presentation" : index >= 0 ? `Slide ${index + 1} of ${visible.length}` : "A skipped slide"}
             {steps && !position.ended ? ` · step ${position.step} of ${steps}` : ""}
           </p>
-          <div className={styles.frame} data-sq="clip">
-            {position.ended ? <div className={styles.nextEnd}>End of the presentation</div> : <SlideView deck={deck} slide={position.slide} step={position.step} html="live" label="Current slide" />}
+          <div className={`${styles.frame} ${styles.presenterStage}`} data-sq="clip" style={{ aspectRatio: `${deck.size.width} / ${deck.size.height}` }}>
+            <Stage deck={deck} move={{ ...move, transition: false, animate: false }} label="Current slide" />
           </div>
           <div className={styles.controls}>
             <Button variant="secondary" onClick={previous}><ChevronLeft size={16} strokeWidth={1.75} aria-hidden="true" />Previous</Button>

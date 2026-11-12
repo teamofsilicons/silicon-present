@@ -28,7 +28,7 @@ import { ApiError } from "@/lib/errors";
 import { formatDate, formatDateTime, formatTime } from "@/lib/format";
 import { parseAccountId } from "@/lib/ids";
 import { notifyError } from "@/lib/notify";
-import { changeRole, deckLink, getAccess, getDeckViewers, invite, removeMember, setPublic } from "@/lib/present/sharing";
+import { changeRole, deckLink, getAccess, getDeckViewers, invite, presentationLink, removeMember, setPublic } from "@/lib/present/sharing";
 import { can, ROLE_WORDS, type Access, type DeckViewer, type Member, type MyRole, type PublicMode, type ResourceKind, type Role } from "@/lib/present/types";
 import styles from "./share.module.css";
 
@@ -190,6 +190,7 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
   }
 
   const link = deckLink(id);
+  const presentLink = presentationLink(id);
   const publicMode = access?.public ?? "off";
   const what = kind === "deck" ? "deck" : "folder";
 
@@ -300,6 +301,15 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
               <Link2 size={16} strokeWidth={1.75} aria-hidden="true" className={styles.linkIcon} />
               <span className={styles.link} title={link}>{link}</span>
               <CopyButton value={link} label="Copy link" variant="outline" />
+            </div>
+            <div className={styles.presentationLink}>
+              <span className={styles.publicLabel}>Presentation link</span>
+              <span className={styles.meta}>{publicMode === "off" ? "Opens directly in presentation mode. Turn on Anyone with the link to let anyone view it." : access.requireEmail ? "Opens directly in presentation mode after the visitor provides an email. Viewers navigate at their own pace." : "Opens directly in presentation mode. Viewers navigate at their own pace."}</span>
+              <div className={styles.linkRow}>
+                <Link2 size={16} strokeWidth={1.75} aria-hidden="true" className={styles.linkIcon} />
+                <span className={styles.link} title={presentLink}>{presentLink}</span>
+                <CopyButton value={presentLink} label="Copy presentation link" variant="outline" />
+              </div>
             </div>
           </section>
         ) : null}

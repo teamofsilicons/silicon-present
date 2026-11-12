@@ -41,6 +41,8 @@
 .linkRow { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--border-subtle); padding-top: 12px; }
 .linkIcon { flex: none; color: var(--text-muted); }
 .link { min-width: 0; flex: 1; overflow: hidden; color: var(--text-secondary); font-family: var(--font-mono); font-size: .8125rem; text-overflow: ellipsis; white-space: nowrap; }
+.presentationLink { display: grid; min-width: 0; gap: var(--space-2); border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.presentationLink .linkRow { border-top: 0; padding-top: 0; }
 
 .viewerHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .viewerHelp { margin: 0; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.5; }

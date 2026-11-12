@@ -18,14 +18,7 @@ const READY = "present:sandbox-ready";
 /** Each swapped frame's document, for as long as the frame exists. */
 const documents = new WeakMap<HTMLIFrameElement, string>();
 
-export function liveHtmlElements(root: HTMLElement): () => void {
-  for (const frame of Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.sp-html[srcdoc]"))) {
-    documents.set(frame, frame.getAttribute("srcdoc") ?? "");
-    frame.removeAttribute("srcdoc");
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.dataset.live = "";
-    frame.src = "/sandbox/html";
-  }
+export function liveHtmlElements(root: HTMLElement, restart = false): () => void {
   const onMessage = (event: MessageEvent) => {
     if (!event.data || event.data.type !== READY || !event.source) return;
     const frame = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe[data-live]")).find(item => item.contentWindow === event.source);
@@ -36,5 +29,16 @@ export function liveHtmlElements(root: HTMLElement): () => void {
     (event.source as Window).postMessage({ type: "present:html", doc }, "*");
   };
   window.addEventListener("message", onMessage);
+  for (const frame of Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.sp-html"))) {
+    if (frame.hasAttribute("srcdoc")) {
+      documents.set(frame, frame.getAttribute("srcdoc") ?? "");
+      frame.removeAttribute("srcdoc");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.dataset.live = "";
+      frame.src = "/sandbox/html";
+    } else if (restart && documents.has(frame)) {
+      frame.src = "/sandbox/html";
+    }
+  }
   return () => window.removeEventListener("message", onMessage);
 }
