@@ -48,6 +48,9 @@ test("HTML elements run in an iframe sandboxed to scripts only (never same-origi
   }
   const stat = renderSlideHtml(every(), "s_000003", { html: "static" });
   assert.ok(!stat.includes("<iframe"));
+  const deferred = renderSlideHtml(every(), "s_000003", { deferHtmlDocument: true });
+  assert.match(deferred, /<iframe[^>]* data-sp-document="/);
+  assert.doesNotMatch(deferred, /<iframe[^>]* srcdoc="/);
 });
 
 test("master elements sit under slide elements unless hideMaster", () => {

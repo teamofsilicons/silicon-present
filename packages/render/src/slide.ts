@@ -18,6 +18,8 @@ export interface RenderOptions {
   animate?: boolean;
   /** "live": HTML elements run in sandboxed iframes (default). "static": a quiet code placeholder (cheap thumbnails). */
   html?: "live" | "static";
+  /** Hold the escaped HTML in data-sp-document until a browser host has connected its sandbox. */
+  deferHtmlDocument?: boolean;
   /** "interactive": media with controls and autoplay (default). "static": posters/first frames, no controls. */
   media?: "interactive" | "static";
   /** Element and text links are clickable. Default true. */
@@ -353,7 +355,8 @@ function elementInner(e: Element, theme: Theme, opts: RenderOptions): string {
       }
       // sandbox="allow-scripts" and nothing else: an opaque origin, so the element can never read the viewer's cookies,
       // storage or the page around it, never navigate the page or open popups; it can still fetch from the internet.
-      return `<div class="sp-in" style="${escapeHtml(css.join(";"))}"><iframe class="sp-html" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="" loading="eager" scrolling="no" title="HTML element" srcdoc="${escapeHtml(htmlElementDoc(e, theme))}"></iframe></div>`;
+      const documentAttribute = opts.deferHtmlDocument ? "data-sp-document" : "srcdoc";
+      return `<div class="sp-in" style="${escapeHtml(css.join(";"))}"><iframe class="sp-html" sandbox="allow-scripts" referrerpolicy="no-referrer" allow="" loading="eager" scrolling="no" title="HTML element" ${documentAttribute}="${escapeHtml(htmlElementDoc(e, theme))}"></iframe></div>`;
     }
     default:
       return `<div class="sp-in"></div>`;

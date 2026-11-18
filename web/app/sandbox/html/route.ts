@@ -4,8 +4,7 @@
  * rest of the deck).
  *
  * Why a page of its own: a `srcdoc` iframe inherits the CSP of the page around it, and this site's pages only run
- * scripts with their nonce, so an element's own JS would never run. lib/slides/sandbox.ts turns each rendered
- * `<iframe class="sp-html" sandbox="allow-scripts" srcdoc>` into `<iframe sandbox="allow-scripts" src="/sandbox/html">`
+ * scripts with their nonce. lib/slides/sandbox.ts sets each deferred frame's src to /sandbox/html
  * and hands it the element's document by postMessage once it loads. The frame is still sandboxed without
  * allow-same-origin, so it runs in an opaque origin: no cookies, no storage of this site, no access to the page.
  *

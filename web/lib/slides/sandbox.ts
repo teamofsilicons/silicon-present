@@ -1,9 +1,6 @@
 /**
- * Runs a rendered slide's HTML elements live (browser only). `@silicon-present/render` draws each HTML element as
- * `<iframe class="sp-html" sandbox="allow-scripts" srcdoc="…">`; a srcdoc frame inherits this site's CSP (scripts by
- * nonce only), so its JS would never run. `liveHtmlElements(root)` swaps each one for a frame of /sandbox/html (same
- * sandbox, its own permissive policy, an opaque origin) and posts it the element's document whenever that page says it
- * is ready.
+ * With deferHtmlDocument, the renderer stores each document in an inert attribute. The web host loads
+ * /sandbox/html in the opaque frame and sends the document when the sandbox signals readiness.
  *
  *   const stop = liveHtmlElements(container);     // after putting renderSlideHtml(...) into container
  *   stop();                                        // when the container is replaced or unmounted
@@ -30,8 +27,10 @@ export function liveHtmlElements(root: HTMLElement, restart = false): () => void
   };
   window.addEventListener("message", onMessage);
   for (const frame of Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.sp-html"))) {
-    if (frame.hasAttribute("srcdoc")) {
-      documents.set(frame, frame.getAttribute("srcdoc") ?? "");
+    const html = frame.getAttribute("data-sp-document") ?? frame.getAttribute("srcdoc");
+    if (html !== null) {
+      documents.set(frame, html);
+      frame.removeAttribute("data-sp-document");
       frame.removeAttribute("srcdoc");
       frame.setAttribute("sandbox", "allow-scripts");
       frame.dataset.live = "";

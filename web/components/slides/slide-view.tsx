@@ -84,7 +84,7 @@ function SlideViewInner({ deck, slide, step = "all", animate = false, html = "li
   // its root (below), so HTML elements keep running instead of reloading at every click.
   const markup = useMemo(() => {
     try {
-      return renderSlideHtml(deck, slide, { assetUrl, step: 0, animate: false, html: renderedHtml, media, links, includeCss: false });
+      return renderSlideHtml(deck, slide, { assetUrl, step: 0, animate: false, html: renderedHtml, deferHtmlDocument: true, media, links, includeCss: false });
     } catch (error) {
       return `<div style="padding:40px;font:24px system-ui;color:#5c6370">${String((error as Error).message).replace(/</g, "&lt;")}</div>`;
     }

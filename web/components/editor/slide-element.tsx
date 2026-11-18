@@ -52,7 +52,7 @@ function inner(element: Element, theme: Theme, hideText: boolean, html: "live" |
   const atOrigin = { ...element, x: 0, y: 0, rotation: 0, style: { ...element.style, opacity: undefined } } as Element;
   if (hideText && (atOrigin.kind === "text" || atOrigin.kind === "shape")) (atOrigin as { text: unknown }).text = { paragraphs: [] };
   if (hideText && atOrigin.kind === "table") (atOrigin as { cells: unknown }).cells = atOrigin.cells.map(row => row.map(cell => ({ ...cell, text: { paragraphs: [] } })));
-  return renderElementHtml(atOrigin, theme, { links: false, placeholders: true, html, media: "static", includeCss: false, googleFonts: false });
+  return renderElementHtml(atOrigin, theme, { links: false, placeholders: true, html, deferHtmlDocument: true, media: "static", includeCss: false, googleFonts: false });
 }
 
 function isEmptyText(element: Element): boolean {

@@ -87,7 +87,7 @@ results folder, the signed-in Carbons (`test-results/.auth-<port>`) and the `nex
   Frames exist only near the visible viewport; scrolling away stops their scripts. `html="static"` remains the
   explicit code-placeholder mode for paused content.
 - **HTML elements must run through `/sandbox/html`**: a `srcdoc` iframe inherits this site's CSP (scripts by nonce
-  only), so an element's JS would never run in place. After putting `renderSlideHtml(...)` markup in the page, call
+  only). Render with `deferHtmlDocument: true` so each document is inert until its sandbox loads. After mounting the markup, call
   `liveHtmlElements(container)` from `lib/slides/sandbox.ts` (it returns a cleanup). The frames stay
   `sandbox="allow-scripts"` with an opaque origin. Images, video, audio and Google fonts load from anywhere (CSP).
 - **Editing inside an HTML element** (double-click it, or Edit inside in the design panel): `components/editor/html-inside.tsx`

@@ -46,7 +46,8 @@ test("HTML previews render in the strip, grid, home and history without escaping
     await me.page.screenshot({ path: test.info().outputPath("html-grid-preview.png") });
 
     await me.page.goto("/decks");
-    const card = me.page.getByRole("img", { name: `First slide of ${title}`, exact: true });
+    const entry = me.page.getByRole("listitem").filter({ has: me.page.getByRole("link", { name: title, exact: true }) });
+    const card = entry.locator('[role="img"]');
     await rendered(card, "Updated HTML preview");
     // Clicking the HTML area opens the deck instead of clicking the embedded Play button.
     await card.click();

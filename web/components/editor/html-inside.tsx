@@ -69,7 +69,7 @@ export const HtmlInside = memo(function HtmlInside({ element, theme }: { element
   // The box (its fill, border, corners) as the element draws it, with no document: the frame below gets the source.
   const markup = useMemo(() => {
     const empty = { ...element, html: "", css: "", js: "", x: 0, y: 0, rotation: 0, style: { ...element.style, opacity: undefined } } as Element;
-    return renderElementHtml(empty, theme, { links: false, html: "live", includeCss: false, googleFonts: false });
+    return renderElementHtml(empty, theme, { links: false, html: "live", deferHtmlDocument: true, includeCss: false, googleFonts: false });
     // Only what changes the box redraws it (and reloads the frame); the source travels by message.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [element.w, element.h, element.style, theme]);
@@ -88,7 +88,7 @@ export const HtmlInside = memo(function HtmlInside({ element, theme }: { element
   useLayoutEffect(() => {
     const node = ref.current?.querySelector<HTMLIFrameElement>("iframe.sp-html");
     if (!node) return;
-    node.removeAttribute("srcdoc");
+    node.removeAttribute("data-sp-document");
     node.setAttribute("sandbox", "allow-scripts");
     node.setAttribute("title", "Editing the HTML element");
     node.dataset.testid = "html-inside-frame";
