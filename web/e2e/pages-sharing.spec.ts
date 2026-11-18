@@ -97,7 +97,7 @@ test("make the friend an editor: they can rename and invite; an email invite wai
   const rename = friend.page.getByRole("dialog", { name: "Rename deck" });
   await rename.getByLabel("Title").fill(`${title} (edited)`);
   await rename.getByRole("button", { name: "Rename" }).click();
-  await expect(friend.page.getByRole("link", { name: `${title} (edited)` })).toBeVisible();
+  await expect(friend.page.getByRole("link", { name: `${title} (edited)`, exact: true })).toBeVisible();
   // An editor can invite, and cannot transfer, move or trash what is not theirs.
   await friend.page.getByRole("button", { name: `More actions for ${title} (edited)` }).click();
   await expect(friend.page.getByRole("menuitem", { name: "Share" })).toBeVisible();

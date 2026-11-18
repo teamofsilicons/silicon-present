@@ -179,7 +179,7 @@ export function DecksView({ scope, folder, path, initial, me }: DecksViewProps) 
     const mine = deck.owner?.uuid === me.uuid || deck.owner?.id === me.id;
     return (
       <li key={deck.id} className={styles.deckCard} data-sq="surface" data-kind="deck">
-        <Link className={styles.previewLink} href={href} prefetch={false} aria-label={`Open ${name}`} tabIndex={-1}>
+        <Link className={styles.previewLink} href={href} prefetch={false} aria-hidden="true" tabIndex={-1}>
           <DeckThumbnail deck={deck} accountId={me.uuid} />
         </Link>
         <div className={styles.cardBody}>

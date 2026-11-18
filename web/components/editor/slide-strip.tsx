@@ -139,7 +139,7 @@ export function SlideStrip() {
       { label: "New slide", shortcut: keyLabel("Mod+M"), onSelect: () => editor.addSlide("title-body", id) },
       { label: "Duplicate slide", onSelect: () => editor.duplicateSlide(id) },
       { label: slide.skipped ? "Don't skip slide" : "Skip slide", onSelect: () => editor.updateSlide(id, { skipped: !slide.skipped }) },
-      { label: slide.section !== null ? "Rename section" : "Start a section here", separatorBefore: true, onSelect: () => {
+      { label: slide.section !== null ? "Rename section" : "Start a section here", separatorBefore: true, restoreFocus: false, onSelect: () => {
           if (slide.section === null) editor.updateSlide(id, { section: "New section" });
           setRenaming(id);
         } },

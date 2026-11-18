@@ -45,7 +45,8 @@ export function RecipientPicker({
   const list = useId();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const q = useDelayedText(value.trim());
+  const searchText = selected && value.trim() === selected.id ? "" : value.trim();
+  const q = useDelayedText(searchText);
   const isEmail = !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q);
   const results = useQuery({
     queryKey: ["people", q],
@@ -59,7 +60,7 @@ export function RecipientPicker({
     enabled: !selected && (isEmail || /^(si|c):[\w.-]{3,}$/i.test(q)),
     retry: false,
   });
-  const fresh = q === value.trim();
+  const fresh = q === searchText;
   const remote = results.data?.items ?? [];
   const matches: Person[] = allowed
     ? [

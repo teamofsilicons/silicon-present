@@ -56,7 +56,11 @@
 @keyframes palette-fade-in { from { opacity: 0; } }
 @keyframes palette-fade-out { to { opacity: 0; } }
 
-@media (max-width: 559px) {
+@media (max-width: 760px) {
+  .brand { flex: none; }
+  .pill { min-width: 0; flex-shrink: 1; }
+  .pill > nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .pill > nav::-webkit-scrollbar { display: none; }
   .wordmark > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .navLink { padding: 0 10px; }
 }
