@@ -67,3 +67,5 @@
 
 /* Without the invite line (a viewer's dialog) the list starts at the top. */
 .status + .block { margin-top: 0; }
+
+.contactsLink { display: inline-flex; min-height: 32px; align-items: center; align-self: flex-start; }

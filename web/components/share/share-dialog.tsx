@@ -219,7 +219,7 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
           </form>
         ) : null}
 
-        {canShare && <a href="/contacts">Manage contacts</a>}
+        {canShare && <a className={styles.contactsLink} href="/contacts">Manage contacts</a>}
         {access && <GroupSharing kind={kind} id={id} editable={!!canShare}/>}
         {access ? (
           <section className={styles.block} aria-labelledby={`${listId}-people`}>
