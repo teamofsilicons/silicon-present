@@ -18,6 +18,7 @@ let deckId = "";
 async function audit(page: Page, label: string) {
   // The library and editor keep an event stream open for the lifetime of the page.
   await page.waitForLoadState("load");
+  await expect(page, label).toHaveTitle(/\S/);
   // Measure the page at rest: a panel fading in has its text at partial opacity, which is not what anyone reads.
   await page.waitForFunction(() => document.getAnimations().every(animation => animation.playState !== "running"), undefined, { timeout: 5_000 }).catch(() => undefined);
   await page.waitForTimeout(500);

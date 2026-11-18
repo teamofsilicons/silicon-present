@@ -223,6 +223,13 @@ async fn standalone_people_team_sharing_and_ting() {
     assert_eq!(resp.headers()["access-control-allow-origin"], "*");
     let doc = s.get("/openapi.json", None).await;
     assert_eq!(doc.1["openapi"], "3.1.0");
+    for kind in ["decks", "folders"] {
+        let resource = format!("/v1/{kind}/{{id}}");
+        let deletion = &doc.1["paths"][&resource]["delete"]["responses"];
+        assert!(deletion.get("200").is_some() && deletion.get("204").is_some());
+        let invitation = &doc.1["paths"][format!("{resource}/access")]["post"]["responses"];
+        assert!(invitation.get("201").is_some() && invitation.get("200").is_some());
+    }
     assert_eq!(s.get("/v1/people", None).await.0, 401);
     let revoked = s.person("c:revoked");
     let wrong = s.person("c:wrongtype");

@@ -229,6 +229,25 @@
                 "type": "null"
               }
             ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "deck",
+                  "folder"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            }
           }
         }
       },
@@ -398,6 +417,10 @@
           },
           "followUrl": {
             "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -410,9 +433,35 @@
           "name": {
             "type": "string"
           },
-          "theme": {
+          "fonts": {
             "type": "object",
             "additionalProperties": true
+          },
+          "colors": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "customFonts": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -494,8 +543,23 @@
                   "type": "string"
                 },
                 "capabilities": {
-                  "type": "object",
-                  "additionalProperties": true
+                  "$ref": "#/components/schemas/OrganizationCapabilities"
+                },
+                "logo_url": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "member_count": {
+                  "type": "integer"
+                },
+                "team_count": {
+                  "type": "integer"
                 }
               }
             }
@@ -549,6 +613,30 @@
             "items": {
               "type": "string"
             }
+          },
+          "slidesAdded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "elementsAdded": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slide": {
+                  "type": "string"
+                },
+                "element": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "replacements": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -573,6 +661,38 @@
               "message",
               "hint"
             ]
+          }
+        }
+      },
+      "OrganizationCapabilities": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "boolean"
+          },
+          "admin": {
+            "type": "boolean"
+          },
+          "manage_admins": {
+            "type": "boolean"
+          },
+          "team_structure": {
+            "type": "boolean"
+          },
+          "team_members": {
+            "type": "boolean"
+          },
+          "team_admins_manage": {
+            "type": "boolean"
+          },
+          "team_settings": {
+            "type": "boolean"
+          },
+          "team_admins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -747,6 +867,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -849,7 +978,7 @@
       },
       "delete": {
         "summary": "Trash or permanently delete a deck",
-        "description": "Owner. Permanent deletion requires the exact title or name and prior trash. It returns 204.",
+        "description": "Owner. Trashing returns the updated deck. Permanent deletion requires prior trash and confirmation of the exact title.",
         "operationId": "delete_v1_decks_id",
         "tags": [
           "decks"
@@ -890,7 +1019,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Trash or permanently delete a deck",
+            "description": "Moved to trash or already trashed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -898,6 +1027,9 @@
                 }
               }
             }
+          },
+          "204": {
+            "description": "Permanently deleted."
           },
           "default": {
             "description": "See error.code, message and hint.",
@@ -1061,7 +1193,17 @@
         },
         "responses": {
           "201": {
-            "description": "Invite a Carbon or Silicon",
+            "description": "New grant or pending invitation created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Existing grant updated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1752,7 +1894,7 @@
       },
       "delete": {
         "summary": "Trash or permanently delete a folder",
-        "description": "Owner. Permanent deletion requires the exact title or name and prior trash. It returns 204.",
+        "description": "Owner. Trashing returns the updated folder. Permanent deletion requires prior trash and confirmation of the exact name.",
         "operationId": "delete_v1_folders_id",
         "tags": [
           "folders"
@@ -1793,7 +1935,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Trash or permanently delete a folder",
+            "description": "Moved to trash or already trashed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1801,6 +1943,9 @@
                 }
               }
             }
+          },
+          "204": {
+            "description": "Permanently deleted."
           },
           "default": {
             "description": "See error.code, message and hint.",
@@ -1964,7 +2109,17 @@
         },
         "responses": {
           "201": {
-            "description": "Invite a Carbon or Silicon",
+            "description": "New grant or pending invitation created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Existing grant updated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2931,7 +3086,30 @@
                   "properties": {
                     "org": {
                       "type": "object",
-                      "additionalProperties": true
+                      "properties": {
+                        "org_id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "logo_url": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "created_at": {
+                          "type": "integer"
+                        }
+                      }
                     },
                     "teams": {
                       "type": "array",
@@ -2948,8 +3126,7 @@
                       }
                     },
                     "capabilities": {
-                      "type": "object",
-                      "additionalProperties": true
+                      "$ref": "#/components/schemas/OrganizationCapabilities"
                     }
                   }
                 }
@@ -3005,7 +3182,24 @@
                 "type": "object",
                 "properties": {
                   "action": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "update",
+                      "publishing_policy_update",
+                      "team_create",
+                      "team_update",
+                      "team_delete",
+                      "team_member_add",
+                      "team_member_remove",
+                      "team_admin_set",
+                      "admin_set",
+                      "member_update",
+                      "invite",
+                      "invite_cancel",
+                      "invite_resend",
+                      "member_remove",
+                      "policy_update"
+                    ]
                   },
                   "name": {
                     "type": "string"
@@ -3134,7 +3328,12 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "accept",
+                "decline",
+                "cancel"
+              ]
             }
           },
           {
@@ -3376,6 +3575,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -3449,6 +3657,15 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -4251,6 +4468,15 @@
                 "all"
               ]
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5365,6 +5591,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5454,6 +5689,15 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5553,6 +5797,15 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5619,6 +5872,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5740,6 +6002,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
@@ -5899,6 +6170,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Present-Viewer-Email",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Viewer email for a public deck that requires collection when the signed-in profile does not supply an email."
           }
         ],
         "responses": {
