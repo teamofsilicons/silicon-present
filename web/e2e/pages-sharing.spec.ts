@@ -55,7 +55,7 @@ test("invite as viewer: the friend sees it in Shared with me and can only look",
 
   await friend.page.goto("/decks?scope=shared");
   await expect(friend.page.getByRole("heading", { level: 1, name: "Shared with me" })).toBeVisible();
-  await expect(friend.page.getByRole("link", { name: title })).toBeVisible();
+  await expect(friend.page.getByRole("link", { name: title, exact: true })).toBeVisible();
   await expect(friend.page.getByText(`Owner ${owner.id}`).first()).toBeVisible();
 
   // A viewer sees who has access but cannot invite or change anything.
@@ -149,7 +149,7 @@ test("removing the friend takes their access away", async () => {
   await expect(dialog.getByRole("button", { name: `Remove ${friend.id}` })).toHaveCount(0);
   await owner.page.keyboard.press("Escape");
   await friend.page.goto("/decks?scope=shared");
-  await expect(friend.page.getByRole("link", { name: title })).toHaveCount(0);
+  await expect(friend.page.getByRole("link", { name: title, exact: true })).toHaveCount(0);
 });
 
 test("sharing a folder shares what is in it", async () => {
@@ -159,10 +159,10 @@ test("sharing a folder shares what is in it", async () => {
   await call(owner.context, "POST", `/v1/folders/${folder}/access`, { to: friend.id, role: "commenter" });
   await friend.page.goto("/decks?scope=shared");
   await friend.page.getByRole("link", { name: `Shared plans ${run}`, exact: true }).click();
-  await expect(friend.page.getByRole("link", { name: `Inside the folder ${run}` })).toBeVisible();
+  await expect(friend.page.getByRole("link", { name: `Inside the folder ${run}`, exact: true })).toBeVisible();
   // The folder's deck is inside the folder, not also at the top.
   await friend.page.goto("/decks?scope=shared");
-  await expect(friend.page.getByRole("link", { name: `Inside the folder ${run}` })).toHaveCount(0);
+  await expect(friend.page.getByRole("link", { name: `Inside the folder ${run}`, exact: true })).toHaveCount(0);
   // A commenter (through the folder) can comment on the deck and cannot change it.
   const thread = await call(friend.context, "POST", `/v1/decks/${inside}/threads`, { anchor: { kind: "slide", slide: "s_fol001" }, body: "Looks good" });
   expect([200, 201]).toContain(thread.status);
@@ -194,9 +194,9 @@ test("transfers: offered, declined, offered again and accepted; another cancelle
   await friend.page.getByRole("button", { name: `Accept ${gift}` }).click();
   await expect(friend.page.getByRole("button", { name: `Accept ${gift}` })).toHaveCount(0);
   await friend.page.goto("/decks");
-  await expect(friend.page.getByRole("link", { name: gift })).toBeVisible();
+  await expect(friend.page.getByRole("link", { name: gift, exact: true })).toBeVisible();
   await owner.page.goto("/decks");
-  await expect(owner.page.getByRole("link", { name: gift })).toHaveCount(0);
+  await expect(owner.page.getByRole("link", { name: gift, exact: true })).toHaveCount(0);
 
   const other = `Maybe ${run}`;
   const otherId = await createDeck(owner.context, other);

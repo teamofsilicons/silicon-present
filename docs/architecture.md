@@ -507,7 +507,7 @@ presence to 16 KiB, and asset/import uploads to 512 MiB.
 
 ### Accounts
 
-Every request carries a Silicon Accounts access token (`Authorization: Bearer`, EdDSA JWT, `aud` = `present`) verified
+Every request carries a Silicon Accounts access token (`Authorization: Bearer`, EdDSA JWT, `aud` = `present`) introspected with Accounts for current access-token type, client and subject, and verified
 locally against `{ACCOUNTS_URL}/.well-known/jwks.json` with the official `silicon-accounts-client` crate. Carbons and
 Silicons are stored by their Accounts uuid (`sub`) and shown by their current c:id / si:id, display name and pfp, which
 the service caches and refreshes from Accounts. Reading a public deck (and its assets, renders, exports and a
@@ -518,7 +518,7 @@ presentation of it) works without a token.
 - `decks`, `folders`: id, owner uuid, creator uuid, title/name, parent folder, public mode (`off|view|comment|edit`),
   trashed_at, created/updated.
 - `access`: (resource kind, resource id, account uuid or pending email) → role (`editor|commenter|viewer`), who invited.
-  Effective role = max(owner, direct, every ancestor folder, public mode for signed-in callers).
+  Effective roles combine ownership, individual grants, verified organization and team grants, ancestor folders and signed-in public access.
 - `deck_updates`: (deck, seq, yjs update bytes, author uuid, origin `edit|ops|restore|import|create|undo`, summary,
   touched slide ids, created_at). Append only, never deleted while the deck exists.
 - `deck_snapshots`: full Yjs state every 200 updates, to read old versions fast.
@@ -532,13 +532,13 @@ presentation of it) works without a token.
 Content updates are applied and validated on a trial document, persisted, and only then installed in the live room
 and broadcast. A database failure leaves the existing room, document and subscribers intact.
 
-### Live editing (no websockets; everything goes through the web's API proxy)
+### Live editing over HTTP and server-sent events
 
 - `GET /v1/decks/{id}/live?sv=<base64 state vector>` is a server-sent event stream. First event `sync`:
   `{ update: base64 (everything the client lacks), sv: base64 (the server's state vector), version }`. Then `update`:
   `{ update, author: Account, version, origin, summary?, touched: [slideId] }`, `presence`: `{ session, account,
   slide, selection: [elementId], cursor: {x,y} | null, color }`, `presence_left`: `{ session }`, `comments`:
-  `{ thread }` when threads change, `deck` (below), and a `ping` every 20 s. The proxy ends a stream after 5 minutes;
+  `{ thread }` when threads change, `deck` (below), and a `ping` every 2 s. The service ends a deck stream after 5 minutes;
   clients reconnect with their state vector.
 - `deck` carries deck fields that changed. `title`, `folder` and `publicMode` go to every stream of the deck. `role`
   goes to each stream whose caller's effective role changed, with the new role (`owner`, `editor`, `commenter` or

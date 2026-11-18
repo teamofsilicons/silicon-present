@@ -9,7 +9,10 @@ import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, use
 import { Avatar } from "@/components/arc/avatar/avatar";
 import { kindNoun } from "@/lib/format";
 import type { LiveAccount } from "@/lib/live/types";
-import { resolveAccounts } from "@/lib/editor/comments";
+import {useQueries,useQuery} from "@tanstack/react-query";
+import {findPeople,fuzzyMatch} from "@/lib/present/people";
+import {resolveAccount} from "@/lib/present/sharing";
+import {PersonChip,useDelayedText} from "@/components/people/recipient-picker";
 import styles from "./comments.module.css";
 
 export interface MentionInputHandle {
@@ -33,8 +36,11 @@ const TOKEN = /(^|\s)@([a-z]{0,2}:?[a-z0-9._-]*)$/i;
 export const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput({ value, onChange, onSubmit, onCancel, members, placeholder, label, autoFocus, rows = 2 }, ref) {
   const area = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<string | null>(null);
-  const [resolved, setResolved] = useState<LiveAccount[]>([]);
+  const delayed=useDelayedText(query??"");
+  const search=useQuery({queryKey:["people",delayed],queryFn:({signal})=>findPeople(delayed,signal),enabled:query!==null,retry:false});
   const [active, setActive] = useState(0);
+  const handles=Array.from(new Set(Array.from(value.matchAll(/@((?:c|si):[a-z0-9][a-z0-9._-]{2,})(?=\s|$)/gi),m=>m[1]!))).slice(0,24);
+  const previews=useQueries({queries:handles.map(id=>({queryKey:["recipient",id],queryFn:({signal}:{signal:AbortSignal})=>resolveAccount(id,signal),retry:false}))});
   const listId = useId();
   useImperativeHandle(ref, () => ({ focus: () => area.current?.focus() }), []);
 
@@ -42,32 +48,12 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(function Menti
     if (autoFocus) area.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 
-  // Ask the service about an id that looks complete enough (c:a, si:wr...).
-  useEffect(() => {
-    if (query === null || !/^(c|si):.+/i.test(query)) {
-      setResolved([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void resolveAccounts(query).then(setResolved);
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const suggestions = useMemo(() => {
-    if (query === null) return [];
-    const q = query.toLowerCase();
-    const seen = new Set<string>();
-    const out: LiveAccount[] = [];
-    for (const account of [...members, ...resolved]) {
-      if (seen.has(account.id)) continue;
-      const hay = `${account.id} ${account.display_name ?? ""}`.toLowerCase();
-      if (q && !hay.includes(q.replace(/^@/, ""))) continue;
-      seen.add(account.id);
-      out.push(account);
-    }
-    return out.slice(0, 6);
-  }, [query, members, resolved]);
+  const suggestions=useMemo(()=>{
+    if(query===null)return [];
+    const fromContacts:LiveAccount[]=(delayed===query?search.data?.items??[]:[]).map(a=>({...a,display_name:a.displayName,pfp_url:a.pfpUrl}));
+    const matches=members.filter(a=>fuzzyMatch(query,{...a,displayName:a.display_name??"",pfpUrl:a.pfp_url??null})&&!fromContacts.some(p=>p.uuid===a.uuid));
+    return [...fromContacts,...matches].slice(0,8);
+  },[members,query,delayed,search.data]);
 
   const updateQuery = (text: string, caret: number) => {
     const match = TOKEN.exec(text.slice(0, caret));
@@ -104,7 +90,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(function Menti
       }
       if (event.key === "Enter" || event.key === "Tab") {
         event.preventDefault();
-        pick(suggestions[active]!);
+        pick(suggestions[active] ?? suggestions[0]!);
         return;
       }
     }
@@ -143,6 +129,7 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(function Menti
         aria-autocomplete="list"
         aria-controls={listId}
       />
+      {previews.some(p=>p.data) && <div aria-label="Mentioned people">{previews.map((p,i)=>p.data ? <PersonChip key={handles[i]} account={p.data}/> : null)}</div>}
       {query !== null && suggestions.length > 0 ? (
         <ul id={listId} className={styles.suggestions} role="listbox" aria-label="People to mention" data-sq="surface">
           {suggestions.map((account, index) => (

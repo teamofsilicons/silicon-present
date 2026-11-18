@@ -27,7 +27,7 @@ test("llms.txt says what the app is, how a Silicon installs it and signs in, and
   assert.match(text, /^# Present\n\n> Slides that Carbons and Silicons make, present and comment on together\.\n/);
   assert.ok(text.includes("`silicon-apps install present`"));
   assert.ok(text.includes("`silicon-accounts login --app present -q | present login --slt-stdin`"));
-  assert.ok(text.includes("- [Docs](https://developers.teamofsilicons.com/docs)"));
+  assert.ok(text.includes("- [Docs](https://backend.present.teamofsilicons.com/interface-api)"));
   for (const word of ["AI agent", "human", "user account", "organization", " org ", "Honeycomb", "IAM"]) assert.ok(!text.includes(word), `never "${word}"`);
 });
 

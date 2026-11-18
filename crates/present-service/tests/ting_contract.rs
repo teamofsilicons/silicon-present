@@ -152,7 +152,7 @@ async fn scoped_proofs_registration_attribution_receipts_and_retries() {
     };
     assert_eq!(sender.send(&ting).await.unwrap(), SendOutcome::Accepted);
     assert_eq!(sender.send(&ting).await.unwrap(), SendOutcome::Accepted);
-    assert_eq!(types.lock().unwrap().len(), 6);
+    assert_eq!(types.lock().unwrap().len(), 7);
     assert_eq!(issued.lock().unwrap().get("tings.send"), Some(&1));
     assert_eq!(sends.lock().unwrap()[0]["from"], actor.to_string());
     assert!(sends.lock().unwrap()[0].get("session_id").is_none());

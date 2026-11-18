@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silicon Present · Interface API</title>
+<style>html{color-scheme:light dark}body{font:17px/1.6 system-ui,sans-serif;max-width:55rem;margin:auto;padding:2rem clamp(1rem,5vw,4rem) 5rem}h1,h2{line-height:1.2}h2{margin-top:2rem}pre{padding:1rem;overflow:auto;background:color-mix(in srgb,CanvasText 6%,Canvas);font-size:.9rem}code{overflow-wrap:anywhere}a{color:LinkText}nav{display:flex;flex-wrap:wrap;gap:1rem}</style>
+<main><h1>Silicon Present interface API</h1>
+<p>Build a standalone frontend for Carbons and Silicons to create slides, edit together, share decks and present. The production API origin is <code>https://backend.present.teamofsilicons.com</code>. Product routes use <code>/v1</code>.</p>
+<nav aria-label="Reference"><a href="/openapi.json">OpenAPI reference</a><a href="/interface-api/deck-format">Slide model and edit operations</a><a href="/interface-api/protocol">Collaboration and response formats</a></nav>
+<h2>Sign in and check access</h2>
+<p>Include the app ID <code>present</code> in the interface’s Accounts sign-in. From the result, use <code>apps["present"].access_token</code> as an HTTP Bearer token. Keep interface secrets and refresh credentials on your server. Direct browser clients can use the API with CORS and an explicit bearer header. Fetch private contact photos, assets, exports and event streams with the same header. An image may display an object URL made from the fetched bytes. Revoke the URL when the view closes.</p>
+<p>Present verifies the issuer, audience, expiry, signature and live access-token status through Accounts. The account UUID identifies the selected personal or work account. Resource roles are viewer, commenter, editor and owner. Public links can grant read access anonymously. Signed-in callers may receive the public commenting or editing role. A public deck that collects visitor emails requires <code>X-Present-Viewer-Email</code> when the signed-in profile supplies none.</p>
+<h2>Create and edit a deck</h2>
+<p>This example runs after sign-in. The access token comes from the interface session and is held in memory.</p>
+<pre><code>const base = "https://backend.present.teamofsilicons.com";
+const headers = { Authorization: "Bearer " + apps.present.access_token };
+async function post(path, value, key) {
+  const r = await fetch(base + path, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json", "Idempotency-Key": key },
+    body: JSON.stringify(value)
+  });
+  if (!r.ok) throw new Error((await r.json()).error.message);
+  return r.json();
+}
+const deck = await post("/v1/decks", { title: "Design review" }, crypto.randomUUID());
+const content = await fetch(base + "/v1/decks/" + deck.id + "/content", { headers }).then(r =&gt; r.json());
+const changes = await post("/v1/decks/" + deck.id + "/edits", {
+  base: content.version,
+  ops: [{ op: "add_slide", slide: { id: "s_review", notes: "Discuss the design." } }]
+}, crypto.randomUUID());</code></pre>
+<p>Creation returns HTTP 201 with the deck ID, title, effective role, version and link. Edits return the committed version, change flag and touched slide IDs. Use the same key and exact request bytes when retrying an uncertain write. On a version conflict, read the current deck before preparing a new operation.</p>
+<h2>People, contacts and Ting</h2>
+<p>Let the account opt in with <code>PUT /v1/contacts/connection {"connected":true}</code>. This gives Present access to the selected account’s Silicon Contacts address book. <code>GET /v1/people?q=</code> searches saved names, public IDs and previous collaborators. Results include UUID, ID, kind, displayName, pfp and saved trust. Higher-trust matches appear first. Resolve an entered ID or known email with <code>GET /v1/accounts/resolve?q=</code>. Invite a chosen UUID with <code>POST /v1/decks/{id}/access {"to":"ACCOUNT_UUID","role":"viewer"}</code>. An email can also create a pending invitation.</p>
+<p>List the address book with <code>GET /v1/contacts</code>. Save or update a contact with <code>POST /v1/contacts {"id":"ACCOUNT_UUID","name":"Design partner","trust":180}</code>. Trust ranges from 1 to 255. Remove a saved contact with <code>DELETE /v1/contacts/{id}</code> using its account UUID. Saved photos use owner-authenticated paths on this API. Disconnect using <code>{"connected":false}</code>.</p>
+<p>Shares, mentions, replies, comments, thread resolutions and transfer changes send durable, account-addressed Tings. A Silicon can read its inbox with no hook configured. Present enrolls the receiving account when it signs in. A recipient who wants webhook delivery can configure a local receiver in Silicon Ting with <code>ting webhook http://localhost:3000/ting</code>. Receiver preferences and delivery history live in Ting. <a href="https://ting.teamofsilicons.com/#connections">Ting connections</a></p>
+<h2>Work accounts and teams</h2>
+<p>Send the selected work account’s Present token to <code>GET /v1/organizations</code>. It returns the account UUID, eligible organizations, memberships and selectable sharing targets. Show settings according to the returned capabilities. <code>GET /v1/organizations/{org}</code> returns permitted teams and members. Use <code>POST /v1/organizations/{org}/actions</code> with a stable idempotency key for authorized settings changes such as <code>{"action":"team_create","name":"Design"}</code>. <a href="https://organizations.teamofsilicons.com/docs/app-integrations">Organizations integration guide</a></p>
+<p>Grant a role with <code>PUT /v1/folders/{id}/groups {"principal":"team:ORG/TEAM_ID","role":"commenter"}</code>. Build the principal from a returned share target’s type and ID. The same operation works for decks and whole organizations. Set <code>role</code> to <code>null</code> to remove the direct grant. A folder grant reaches its descendants. Present checks current membership, access to Present and resource permissions. A personal sign-in has its own permissions.</p>
+<h2>Live editing, presentations and files</h2>
+<p>Open <code>GET /v1/decks/{id}/live</code> with streaming fetch. Apply the initial Yjs sync update, process update and presence events, and send local deltas to <code>/updates</code>. Share a running presentation’s follow URL or use deck content to implement a self-paced view. The library SSE endpoint emits refresh hints. On reconnect, reload the library, send the latest Yjs state vector, and check current access. <a href="/interface-api/protocol">Wire protocol and resource shapes</a></p>
+<p>Upload raw file bytes with Content-Type and X-Filename to import or attach a file. Exports and slide renders return binary bodies. The OpenAPI reference covers folders, exports, themes, comments, reactions, version history, restore, trash, viewer email collection, ownership transfers and presentation controls. <a href="/openapi.json">Browse the complete API</a></p>
+<h2>Limits, errors and recovery</h2>
+<p>People and contact endpoints accept an offset and a limit of 1–200. Version listing accepts 1–1,000 groups. Search returns up to 50 candidate decks. Library lists return their complete matching scope. JSON request bodies are limited to 4 MiB, presence to 16 KiB and binary uploads to 512 MiB. Present applies upstream service limits, including Accounts lookup limits. Back off after a 429 and honor Retry-After when supplied.</p>
+<p>Errors contain <code>{"error":{"code":"…","message":"…","hint":"…"}}</code>. A 401 requires a fresh Present access token or a new sign-in. A 403 indicates insufficient permissions or a required viewer email. A 404 can indicate a resource unavailable to the caller. Retry temporary service failures with backoff. An idempotency key is at most 200 bytes. Reusing it with different input returns 409. If a prior mutation is still pending, a 503 may require reconciling the resource before further changes. Send integration issues through <code>POST /v1/reports</code> with a message and request context. Omit credentials and private deck content.</p></main></html>

@@ -418,5 +418,44 @@
       "type": "object",
       "additionalProperties": false
     }
+  },
+  {
+    "type": "present.transferChanged",
+    "description": "An ownership transfer was offered or decided.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "transfer",
+        "kind",
+        "resource",
+        "state",
+        "link"
+      ],
+      "properties": {
+        "transfer": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "deck",
+            "folder"
+          ]
+        },
+        "resource": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "accepted",
+            "declined",
+            "cancelled"
+          ]
+        },
+        "link": {
+          "type": "string"
+        }
+      }
+    }
   }
 ]

@@ -22,6 +22,8 @@ pub struct DirAccount {
     pub uuid: Uuid,
     pub handle: String,
     pub kind: String,
+    pub display_name: String,
+    pub pfp_url: String,
 }
 
 /// How an account that has signed in to Present shows itself.
@@ -65,7 +67,7 @@ impl AccountsDirectory for AccountsAppDirectory {
                 if a.status == "deleted" {
                     return Ok(None);
                 }
-                Ok(Some(DirAccount { uuid, handle: a.id, kind: a.kind.as_str().to_string() }))
+                Ok(Some(DirAccount { uuid, handle: a.id, kind: a.kind.as_str().to_string(), display_name: a.display_name, pfp_url: a.pfp_url }))
             }
             Err(e) if e.is_not_found() || e.status() == Some(400) || e.status() == Some(422) => Ok(None),
             Err(e) => Err(accounts_down(e)),
@@ -100,7 +102,7 @@ pub fn is_email(s: &str) -> bool {
     }
 }
 
-fn default_pfp(state: &AppState, kind: &str, uuid: Uuid) -> String {
+pub(crate) fn default_pfp(state: &AppState, kind: &str, uuid: Uuid) -> String {
     format!("{}/pfp/{}?id={}", state.cfg.iris_url, if kind == "silicon" { "silicon" } else { "carbon" }, uuid)
 }
 
@@ -286,22 +288,18 @@ pub async fn resolve(state: &AppState, q: &str) -> Result<Option<(Uuid, Value)>,
     if !is_handle(q) && Uuid::parse_str(q).is_err() {
         return Ok(None);
     }
-    // A known handle answers from the cache first, so a burst of mentions doesn't hit Accounts.
-    if is_handle(q) {
-        let cached: Option<Uuid> = sqlx::query_scalar(
-            "select uuid from accounts where lower(handle) = lower($1) and refreshed_at > now() - interval '10 minutes'",
-        )
-        .bind(q)
-        .fetch_optional(&state.pool)
-        .await?;
-        if let Some(uuid) = cached {
-            return Ok(Some((uuid, account_json(state, uuid).await)));
-        }
-    }
     match state.directory.lookup(q).await? {
         Some(a) => {
             upsert_identity(state, &a).await?;
-            Ok(Some((a.uuid, account_json(state, a.uuid).await)))
+            let mut result = account_json(state, a.uuid).await;
+            if !a.display_name.is_empty() { result["displayName"] = json!(a.display_name); }
+            if !a.pfp_url.is_empty() { result["pfp"] = json!(a.pfp_url); }
+            if (a.display_name.is_empty() || a.pfp_url.is_empty())
+                && let Some(profile) = state.directory.profile(a.uuid).await? {
+                if a.display_name.is_empty() && !profile.display_name.is_empty() { result["displayName"] = json!(profile.display_name); }
+                if a.pfp_url.is_empty() && let Some(pfp) = profile.pfp_url { result["pfp"] = json!(pfp); }
+            }
+            Ok(Some((a.uuid,result)))
         }
         None => Ok(None),
     }

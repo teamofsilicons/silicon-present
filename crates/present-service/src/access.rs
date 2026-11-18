@@ -87,6 +87,14 @@ async fn compute(
     .bind(&folder_ids)
     .fetch_all(&st.pool)
     .await?;
+    let candidates: Vec<(String,String)> = sqlx::query_as("select principal, role from group_access where
+        (resource_kind=$1 and resource_id=$2) or (resource_kind='folder' and resource_id=any($3))")
+        .bind(kind).bind(id).bind(&folder_ids).fetch_all(&st.pool).await?;
+    let mut roles = roles;
+    if !candidates.is_empty() {
+        let keys=crate::routes::organizations::groups(st,uuid).await?;
+        roles.extend(candidates.into_iter().filter(|(k,_)|keys.contains(k)).map(|(_,role)|role));
+    }
     let shared = roles.iter().filter_map(|r| Role::parse(r)).max().unwrap_or(Role::None);
     // Being the owner of a folder above means you own what's inside (it was created there for you).
     let folder_owner = chain.iter().any(|f| f.owner == uuid);

@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Copy, Eye, GitCompareArrows, History as HistoryIcon, Pencil, RotateCcw, Undo2 } from "lucide-react";
 import type { DeckJson } from "@silicon-present/deck";
+import {RecipientPicker} from "@/components/people/recipient-picker";
 import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
 import { Select } from "@/components/arc/select/select";
@@ -428,7 +429,7 @@ function UndoAccountDialog({ deck, since, versions, onClose, onDone }: { deck: D
   return (
     <Dialog open onOpenChange={open => !open && onClose()}>
       <DialogContent title="Undo one account's changes" description={`Since version ${since.version}${since.name ? ` (“${since.name}”)` : ""}.`}>
-        <UndoBody authors={authors} account={account} setAccount={setAccount} since={since} chosen={chosen} onClose={onClose} onConfirm={async () => {
+        <UndoBody authors={authors} setAccount={setAccount} since={since} chosen={chosen} onClose={onClose} onConfirm={async () => {
           if (!chosen) return;
           await undoAccount(deck.id, chosen.uuid, since.version);
           await onDone(`${chosen.id}'s changes since version ${since.version} are undone.`);
@@ -438,7 +439,8 @@ function UndoAccountDialog({ deck, since, versions, onClose, onDone }: { deck: D
   );
 }
 
-function UndoBody({ authors, account, setAccount, since, chosen, onClose, onConfirm }: { authors: Account[]; account: string; setAccount: (value: string) => void; since: Version; chosen: Account | undefined; onClose: () => void; onConfirm: () => Promise<void> }) {
+function UndoBody({ authors, setAccount, since, chosen, onClose, onConfirm }: { authors: Account[]; setAccount: (value: string) => void; since: Version; chosen: Account | undefined; onClose: () => void; onConfirm: () => Promise<void> }) {
+  const [draft,setDraft]=useState(chosen?.id??"");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   if (!authors.length) {
@@ -451,7 +453,7 @@ function UndoBody({ authors, account, setAccount, since, chosen, onClose, onConf
   }
   return (
     <>
-      <Select label="Whose changes" options={authors.map(item => ({ value: item.uuid, label: `${item.id}${item.displayName ? ` (${item.displayName})` : ""}` }))} value={account} onValueChange={setAccount} />
+      <RecipientPicker label="Whose changes" value={draft} selected={chosen} allowed={authors} onChange={(value,person)=>{setDraft(value);setAccount(person?.uuid??authors.find(a=>a.id===value)?.uuid??"");}}/>
       <p className={styles.dialogText}>Everything {chosen?.id ?? "they"} changed after version {since.version} goes away; everyone else&apos;s changes stay. It becomes a new version, so it can be undone too.</p>
       {error ? <ErrorAlert error={error} /> : null}
       <div className={styles.dialogActions}>

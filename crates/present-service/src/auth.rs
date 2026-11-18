@@ -35,12 +35,16 @@ pub trait TokenVerifier: Send + Sync {
 pub struct AccountsTokenVerifier {
     client: AccountsClient,
     options: VerifyOptions,
+    app_id: String,
+    app_secret: String,
     jwks: RwLock<Option<(Jwks, Instant)>>,
 }
 
 impl AccountsTokenVerifier {
-    pub fn new(client: AccountsClient, app_id: &str, issuer: &str) -> Self {
-        Self { client, options: VerifyOptions::for_app(app_id).with_issuer(issuer), jwks: RwLock::new(None) }
+    pub fn new(client: AccountsClient, app_id: &str, issuer: &str, app_secret: &str) -> Self {
+        let mut options = VerifyOptions::for_app(app_id).with_issuer(issuer);
+        options.leeway_seconds = 0;
+        Self { client, options, app_id: app_id.into(), app_secret: app_secret.into(), jwks: RwLock::new(None) }
     }
 
     async fn fetch(&self) -> Result<Jwks, ApiError> {
@@ -108,6 +112,13 @@ impl TokenVerifier for AccountsTokenVerifier {
                 "Sign in again with `present login`.",
             )
         })?;
+        let live = self.client.as_app(&self.app_id, &self.app_secret).introspect(token).await
+            .map_err(|_| ApiError::unavailable("accounts_unreachable", "Silicon Accounts could not verify this sign-in.", "Retry shortly."))?;
+        if !live.active || live.token_type.as_deref() != Some("access_token")
+            || live.client_id.as_deref() != Some(&self.app_id) || live.sub.as_deref() != Some(&claims.sub)
+        {
+            return Err(ApiError::unauthorized("token_inactive", "This Present access token is inactive or invalid.", "Get a current access token for present."));
+        }
         Ok(VerifiedToken {
             uuid,
             handle: claims.id.clone().filter(|s| !s.is_empty()),
@@ -120,6 +131,7 @@ impl TokenVerifier for AccountsTokenVerifier {
 /// A signed-in caller (the request must carry a valid token).
 #[derive(Debug, Clone)]
 pub struct Caller {
+    pub token: silicon_accounts_client::Secret,
     pub uuid: Uuid,
     pub handle: Option<String>,
 }
@@ -150,9 +162,10 @@ fn bearer(parts: &Parts) -> Result<Option<String>, ApiError> {
 }
 
 pub async fn caller_from_parts(parts: &Parts, state: &AppState) -> Result<Option<Caller>, ApiError> {
+    if let Some(caller) = parts.extensions.get::<Caller>() { return Ok(Some(caller.clone())); }
     let Some(token) = bearer(parts)? else { return Ok(None) };
     let verified = state.verifier.verify(&token).await?;
-    let caller = Caller { uuid: verified.uuid, handle: verified.handle.clone() };
+    let caller = Caller { token: silicon_accounts_client::Secret::new(token), uuid: verified.uuid, handle: verified.handle.clone() };
     crate::accounts::on_signed_in(state, verified).await;
     Ok(Some(caller))
 }

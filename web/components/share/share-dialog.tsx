@@ -19,7 +19,9 @@ import { Globe, Link2, Lock, Mail, RefreshCw, Trash2, UserPlus } from "lucide-re
 import { Button } from "@/components/arc/button/button";
 import { CopyButton } from "@/components/arc/copy-button/copy-button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
-import { Input } from "@/components/arc/input/input";
+import { RecipientPicker } from "@/components/people/recipient-picker";
+import { GroupSharing } from "@/components/people/organization-settings";
+import type { Account } from "@/lib/present/types";
 import { Select } from "@/components/arc/select/select";
 import { Switch } from "@/components/arc/switch/switch";
 import { AccountChip } from "@/components/foundation/account/account-chip";
@@ -77,6 +79,7 @@ export function ShareDialog(props: ShareDialogProps) {
 function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: knownRole, onChanged }: ShareDialogProps) {
   const [access, setAccess] = useState<Access | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
+  const [selected, setSelected] = useState<Account|null>(null);
   const [draft, setDraft] = useState("");
   const [role, setRole] = useState<Role>("editor");
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -129,7 +132,8 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
     setInviting(true);
     setInviteError(null);
     try {
-      await invite(kind, id, check.to, role);
+      await invite(kind, id, selected?.uuid ?? check.to, role);
+      setSelected(null);
       setDraft("");
       await after(check.to.includes("@") ? `Invited ${check.to} as ${ROLE_WORDS[role].label.toLowerCase()}. They get an email to join.` : `${check.to} can now open it as ${ROLE_WORDS[role].label.toLowerCase()}.`);
     } catch (error) {
@@ -203,16 +207,7 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
         {access && canShare ? (
           <form className={styles.invite} onSubmit={submitInvite} noValidate>
             <div className={styles.inviteField}>
-              <Input
-                label="Invite"
-                placeholder="c:ada, si:writer or an email"
-                value={draft}
-                onChange={event => { setDraft(event.target.value); setInviteError(null); }}
-                error={inviteError ?? undefined}
-                autoComplete="off"
-                spellCheck={false}
-                autoCapitalize="none"
-              />
+              <RecipientPicker label="Invite" value={draft} selected={selected} email placeholder="Name, account ID or email" error={inviteError ?? undefined} onChange={(v,a)=>{setDraft(v);setSelected(a??null);setInviteError(null);}}/>
             </div>
             <div className={styles.inviteRole}>
               <Select label="Role" options={ROLE_OPTIONS} value={role} onValueChange={value => setRole(value as Role)} />
@@ -224,6 +219,8 @@ function ShareDialogBody({ kind, id, name, open, onOpenChange, selfId, role: kno
           </form>
         ) : null}
 
+        {canShare && <a href="/contacts">Manage contacts</a>}
+        {access && <GroupSharing kind={kind} id={id} editable={!!canShare}/>}
         {access ? (
           <section className={styles.block} aria-labelledby={`${listId}-people`}>
             <h3 id={`${listId}-people`} className={styles.heading}>People with access</h3>

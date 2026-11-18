@@ -75,7 +75,7 @@ pub fn real_deps(cfg: &Config) -> anyhow::Result<Deps> {
     if let Some(url) = &cfg.ting_url { ting_client::api_origin(url)?; }
     let http = reqwest::Client::builder().timeout(cfg.ting_timeout).redirect(reqwest::redirect::Policy::none()).build()?;
     Ok(Deps {
-        verifier: Arc::new(auth::AccountsTokenVerifier::new(client.clone(), &cfg.app_id, &cfg.accounts_url)),
+        verifier: Arc::new(auth::AccountsTokenVerifier::new(client.clone(), &cfg.app_id, &cfg.accounts_url, &cfg.app_secret)),
         directory: Arc::new(accounts::AccountsAppDirectory { client: client.clone(), app_id: cfg.app_id.clone(), app_secret: cfg.app_secret.clone() }),
         ting: cfg.ting_url.clone().map(|url| {
             Arc::new(tings::HttpTingSender::new(http.clone(), url, client.clone(), cfg.app_id.clone(), cfg.app_secret.clone(), cfg.ting_app_id.clone()))

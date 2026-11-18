@@ -21,15 +21,12 @@ import styles from "./comments.module.css";
 
 export const REACTIONS = ["👍", "❤️", "🎉", "😄", "👀", "✅"];
 
-const memberCache = new Map<string, Promise<LiveAccount[]>>();
-
 export function useMembers(deckId: string, enabled: boolean): LiveAccount[] {
   const [members, setMembers] = useState<LiveAccount[]>([]);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    if (!memberCache.has(deckId)) memberCache.set(deckId, deckMembers(deckId));
-    void memberCache.get(deckId)!.then(list => {
+    void deckMembers(deckId).then(list => {
       if (alive) setMembers(list);
     });
     return () => {

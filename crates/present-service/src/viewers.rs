@@ -125,6 +125,10 @@ pub async fn middleware(State(st): State<AppState>, req: Request, next: Next) ->
         Ok(caller) => caller,
         Err(error) => return error.into_response(),
     };
+    let stream_caller = caller.clone();
+    let stream_state = st.clone();
+    let response = crate::routes::organizations::scope(caller.clone(), async move {
+    if let Some(c) = &caller && let Err(e) = crate::routes::organizations::check_work(&st,c).await { return e.into_response(); }
     if let Some(caller) = &caller { parts.extensions.insert(caller.clone()); }
     let account = caller.as_ref().map(|c| c.uuid);
     let viewer = match identity(&st, account, &parts.headers).await {
@@ -159,7 +163,32 @@ pub async fn middleware(State(st): State<AppState>, req: Request, next: Next) ->
             if let Err(error) = record(&st, deck, account, &viewer).await { return error.into_response(); }
         }
     }
-    if deck.is_some() { response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store")); }
+    if deck.is_some() || account.is_some() { response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-store")); }
+    response
+    }).await;
+    if response.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("text/event-stream"))
+        && let Some(c) = stream_caller {
+        use futures::StreamExt;
+        let (parts, body) = response.into_parts();
+        let mut input = body.into_data_stream();
+        let wrapped = async_stream::stream! {
+            let mut last = std::time::Instant::now();
+            loop {
+                // A stream polls its body after the request handler returns. Restore the actor for
+                // each poll so team membership and a work account's app policy stay live.
+                let next = crate::routes::organizations::scope(Some(c.clone()),async {
+                    if last.elapsed() >= std::time::Duration::from_secs(10) {
+                        if !stream_state.verifier.verify(c.token.expose()).await.is_ok_and(|v| v.uuid==c.uuid) {return None;}
+                        last=std::time::Instant::now();
+                    }
+                    if crate::routes::organizations::check_work(&stream_state,&c).await.is_err() {return None;}
+                    input.next().await
+                }).await;
+                match next { Some(chunk) => yield chunk, None => break }
+            }
+        };
+        return Response::from_parts(parts, axum::body::Body::from_stream(wrapped));
+    }
     response
 }
 

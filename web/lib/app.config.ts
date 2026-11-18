@@ -3,7 +3,7 @@
  * and its landing page's words. Everything else reads from here. It is bundled into the browser: never put a secret
  * here.
  */
-import { ArrowRightLeft, Eye, FileText, Folder, History, MessageSquareText, Presentation, ScanEye, Share2, TerminalSquare, Trash2 } from "lucide-react";
+import { ContactRound, Building2, ArrowRightLeft, Eye, FileText, Folder, History, MessageSquareText, Presentation, ScanEye, Share2, TerminalSquare, Trash2 } from "lucide-react";
 import type { AppConfig } from "./app-config.types";
 
 export const appConfig: AppConfig = {
@@ -19,10 +19,12 @@ export const appConfig: AppConfig = {
   nav: [
     { href: "/decks", label: "Decks", icon: Presentation, keywords: ["home", "slides", "folders", "shared", "mine"] },
     { href: "/transfers", label: "Transfers", icon: ArrowRightLeft, keywords: ["owner", "accept", "decline", "move"] },
+    { href: "/contacts", label: "Contacts", icon: ContactRound, keywords: ["people", "trust"] },
+    { href: "/organizations", label: "Organizations", icon: Building2, keywords: ["teams", "settings", "work"] },
     { href: "/trash", label: "Trash", icon: Trash2, keywords: ["deleted", "restore", "bin"] },
   ],
   links: {
-    docs: "https://developers.teamofsilicons.com/docs",
+    docs: "https://backend.present.teamofsilicons.com/interface-api",
     store: "https://apps.teamofsilicons.com/apps/present",
   },
   signIn: { scopes: ["email"] },

@@ -24,7 +24,16 @@ export function parseAccountId(input: string): IdCheck {
   const match = /^(c|si):(.*)$/.exec(text);
   if (!match) return { ok: false, message: `"${input.trim()}" has no c: or si: in front. Use c:${text.replace(/^[^:]*:/, "")} for a Carbon or si:${text.replace(/^[^:]*:/, "")} for a Silicon.` };
   const [, prefix, handle] = match as unknown as [string, "c" | "si", string];
-  if (handle.length < 3 || handle.length > 30) return { ok: false, message: `The handle "${handle}" is ${handle.length} character${handle.length === 1 ? "" : "s"}; it must be 3 to 30.` };
+  const [local, organization, ...extra] = handle.split(".");
+  const max = 30;
+  if (organization !== undefined) {
+    if (!extra.length && local && local.length >= 3 && local.length <= max && HANDLE.test(local) &&
+        organization.length >= 3 && organization.length <= 30 && HANDLE.test(organization)) {
+      return { ok: true, value: { id: text, kind: prefix === "c" ? "carbon" : "silicon", handle } };
+    }
+    return { ok: false, message: "Enter the full work account ID, including its organization." };
+  }
+  if (handle.length < 3 || handle.length > max) return { ok: false, message: `The handle "${handle}" is ${handle.length} character${handle.length === 1 ? "" : "s"}; it must be 3 to ${max}.` };
   if (!HANDLE.test(handle)) {
     const index = [...handle].findIndex(char => !/[a-z0-9_-]/.test(char));
     return { ok: false, message: `The handle "${handle}" contains "${handle[index]}" at position ${index + 1}; only a-z, 0-9, "-" and "_" are allowed.` };

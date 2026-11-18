@@ -46,6 +46,10 @@ export function oneOf(value: unknown, key: string): Json {
   return value;
 }
 
+export function contactPhoto(url: string | null): string | null {
+  return url?.startsWith("/v1/contacts/photos/") ? "/api"+url : url;
+}
+
 export function toAccount(value: unknown): Account | null {
   if (typeof value === "string") return value ? { uuid: value, id: value, kind: value.startsWith("si:") ? "silicon" : "carbon", displayName: "", pfpUrl: null } : null;
   if (!isObject(value)) return null;
@@ -56,7 +60,7 @@ export function toAccount(value: unknown): Account | null {
   const kind: AccountKind = rawKind === "silicon" || id.startsWith("si:") ? "silicon" : "carbon";
   const name = str(pick(value, "displayName", "name")) ?? "";
   // The service shows the id as the name when the account has none: keep the name empty then, so it is not shown twice.
-  return { uuid, id: id || uuid, kind, displayName: name === id ? "" : name, pfpUrl: str(pick(value, "pfpUrl", "pfp", "photo", "avatarUrl")) };
+  return { uuid, id: id || uuid, kind, displayName: name === id ? "" : name, pfpUrl: contactPhoto(str(pick(value, "pfpUrl", "pfp", "photo", "avatarUrl"))) };
 }
 
 const roles = new Set(["owner", "editor", "commenter", "viewer"]);

@@ -28,6 +28,7 @@ pub struct Inner {
     pub cfg: Config,
     pub pool: PgPool,
     pub http: reqwest::Client,
+    pub accounts_client: silicon_accounts_client::AccountsClient,
     pub verifier: Arc<dyn TokenVerifier>,
     pub directory: Arc<dyn AccountsDirectory>,
     pub ting: Option<Arc<dyn TingSender>>,
@@ -63,9 +64,10 @@ impl AppState {
         mac.update(b"silicon-present asset urls");
         let asset_key = mac.finalize().into_bytes().to_vec();
         AppState(Arc::new(Inner {
+            accounts_client: crate::accounts_client(&cfg).expect("validated Accounts configuration"),
             cfg,
             pool,
-            http: reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().expect("http client"),
+            http: reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(std::time::Duration::from_secs(120)).build().expect("http client"),
             verifier: deps.verifier,
             directory: deps.directory,
             ting: deps.ting,

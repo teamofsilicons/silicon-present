@@ -47,16 +47,17 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Extension(viewer):
             }
             "shared" => sqlx::query_as(sql!(
                 "with recursive shared_folders as (
-                   select resource_id as id from access where account = $1 and resource_kind = 'folder'
+                   select id from (select resource_id as id from access where account=$1 and resource_kind='folder' union select resource_id from group_access where principal=any($2) and resource_kind='folder') seeds
                    union
                    select f.id from folders f join shared_folders s on f.parent = s.id)
                  select {DECK_COLUMNS} from decks
                  where owner <> $1 and trashed_at is null and (
-                   id in (select resource_id from access where account = $1 and resource_kind = 'deck')
+                   id in (select resource_id from access where account=$1 and resource_kind='deck' union select resource_id from group_access where principal=any($2) and resource_kind='deck')
                    or folder in (select id from shared_folders))
                  order by updated_at desc"
             ))
             .bind(me)
+            .bind(super::organizations::groups(&st,me).await?)
             .fetch_all(&st.pool)
             .await?,
             "trash" => sqlx::query_as(sql!("select {DECK_COLUMNS} from decks where owner = $1 and trashed_at is not null order by trashed_at desc"))
@@ -249,6 +250,7 @@ pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<S
 
 pub async fn permanently_delete_deck(st: &AppState, id: &str) -> ApiResult<()> {
     let assets: Vec<String> = sqlx::query_scalar("select id from assets where deck = $1").bind(id).fetch_all(&st.pool).await?;
+    sqlx::query("delete from group_access where resource_kind = 'deck' and resource_id = $1").bind(id).execute(&st.pool).await?;
     sqlx::query("delete from access where resource_kind = 'deck' and resource_id = $1").bind(id).execute(&st.pool).await?;
     sqlx::query("delete from transfers where resource_kind = 'deck' and resource_id = $1").bind(id).execute(&st.pool).await?;
     sqlx::query("delete from decks where id = $1").bind(id).execute(&st.pool).await?;

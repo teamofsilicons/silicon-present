@@ -1,0 +1,83 @@
+.picker {
+  position: relative;
+  min-width: 0;
+}
+.options {
+  position: absolute;
+  z-index: 8;
+  inset-inline: 0;
+  top: auto;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 17rem;
+  overflow: auto;
+  --sq-r: 14px;
+  --sq-fill: var(--surface, Canvas);
+  background: var(--surface, Canvas);
+  color: var(--text, CanvasText);
+  box-shadow: 0 5px 20px #0002;
+}
+.options li,
+.row {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+}
+.options li {
+  cursor: pointer;
+}
+.options li[aria-selected="true"] {
+  background: var(--fill-hover, color-mix(in srgb, currentColor 8%, transparent));
+}
+.preview {
+  margin-top: 6px;
+}
+.section {
+  display: grid;
+  gap: 14px;
+  margin-block: 24px;
+  max-width: 46rem;
+}
+.section h2,
+.section h3,
+.section p {
+  margin: 0;
+}
+.section h2 {
+  font-size: 1.25rem;
+}
+.section h3 {
+  font-size: 1rem;
+}
+.form {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+}
+.form button,
+.section > button {
+  justify-self: start;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.row {
+  border-bottom: 1px solid var(--border, #8884);
+  flex-wrap: wrap;
+}
+.row small,
+.options small {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

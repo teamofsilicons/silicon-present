@@ -199,6 +199,13 @@ impl TingSender for HttpTingSender {
 
 /// Queues a ting. Never for the person who caused it; the key makes a retried request queue it once.
 pub async fn enqueue(state: &AppState, kind: &str, recipient: Uuid, actor: Option<Uuid>, key: &str, data: Value) -> Result<(), sqlx::Error> {
+    let mut conn = state.pool.acquire().await?;
+    enqueue_in(&mut conn,state,kind,recipient,actor,key,data).await?;
+    state.ting_notify.notify_one();
+    Ok(())
+}
+
+pub async fn enqueue_in(conn: &mut sqlx::PgConnection, state: &AppState, kind: &str, recipient: Uuid, actor: Option<Uuid>, key: &str, data: Value) -> Result<(), sqlx::Error> {
     if Some(recipient) == actor {
         return Ok(());
     }
@@ -214,9 +221,8 @@ pub async fn enqueue(state: &AppState, kind: &str, recipient: Uuid, actor: Optio
     .bind(&data)
     .bind(initial)
     .bind(actor)
-    .execute(&state.pool)
+    .execute(conn)
     .await?;
-    state.ting_notify.notify_one();
     Ok(())
 }
 

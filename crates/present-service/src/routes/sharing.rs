@@ -113,13 +113,15 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Path((plural, id))
             members.push(member_json(&st, r, Some(f)).await);
         }
     }
-    Ok(Json(json!({
+    let mut response=json!({
         "owner": accounts::account_json(&st, res.owner).await,
         "publicMode": res.public_mode,
         "requireEmail": res.require_email,
         "role": res.access.role.as_str(),
         "members": members,
-    })))
+    });
+    super::people::personalize_access(&st,&caller,&mut response).await?;
+    Ok(Json(response))
 }
 
 #[derive(Deserialize)]
@@ -167,6 +169,7 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
     if account == Some(res.owner) {
         return Err(ApiError::conflict("already_owner", format!("`{to}` owns this {kind}, so it already has every right."), "Invite someone else."));
     }
+    let mut tx = st.pool.begin().await?;
     let row: (i64, bool) = if let Some(a) = account {
         sqlx::query_as(
             "insert into access (resource_kind, resource_id, account, role, invited_by) values ($1, $2, $3, $4, $5)
@@ -178,7 +181,7 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
         .bind(a)
         .bind(role.as_str())
         .bind(me)
-        .fetch_one(&st.pool)
+        .fetch_one(&mut *tx)
         .await?
     } else {
         sqlx::query_as(
@@ -191,17 +194,16 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
         .bind(&email)
         .bind(role.as_str())
         .bind(me)
-        .fetch_one(&st.pool)
+        .fetch_one(&mut *tx)
         .await?
     };
     let (row_id, inserted) = row;
     let (deck_ev, folder_ev) = if kind == "deck" { (Some(id.as_str()), None) } else { (None, Some(id.as_str())) };
-    store::event(&st, deck_ev, folder_ev, me, if inserted { "shared" } else { "role_changed" }, json!({ "to": account.map(|a| a.to_string()).or(email.clone()), "role": role.as_str() })).await?;
     let by = accounts::account_json(&st, me).await;
     if inserted {
         if let Some(a) = account {
-            crate::tings::enqueue(
-                &st,
+            crate::tings::enqueue_in(
+                &mut tx, &st,
                 "present.deckShared",
                 a,
                 Some(me),
@@ -214,7 +216,13 @@ pub async fn invite(State(st): State<AppState>, caller: Caller, Path((plural, id
                 }),
             )
             .await?;
-        } else if let Some(e) = &email {
+        }
+    }
+    tx.commit().await?;
+    st.ting_notify.notify_one();
+    store::event(&st, deck_ev, folder_ev, me, if inserted { "shared" } else { "role_changed" }, json!({ "to": account.map(|a| a.to_string()).or(email.clone()), "role": role.as_str() })).await?;
+    if inserted {
+        if let Some(e) = &email {
             let who = by["id"].as_str().unwrap_or("Someone").to_string();
             crate::mail::queue_email(
                 &st,
@@ -390,6 +398,7 @@ pub async fn start_transfer(State(st): State<AppState>, caller: Caller, Path((pl
         return Err(ApiError::bad_request("transfer_to_self", format!("You already own this {kind}."), "Transfer it to someone else."));
     }
     let tid = crate::ids::new_id();
+    let mut tx = st.pool.begin().await?;
     let row: Option<TransferRow> = sqlx::query_as(sql!(
         "insert into transfers (id, resource_kind, resource_id, from_account, to_account) values ($1, $2, $3, $4, $5)
          on conflict (resource_kind, resource_id) where state = 'pending' do nothing returning {TRANSFER_COLUMNS}"
@@ -399,7 +408,7 @@ pub async fn start_transfer(State(st): State<AppState>, caller: Caller, Path((pl
     .bind(&id)
     .bind(me)
     .bind(to_uuid)
-    .fetch_optional(&st.pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some(row) = row else {
         return Err(ApiError::conflict(
@@ -408,6 +417,10 @@ pub async fn start_transfer(State(st): State<AppState>, caller: Caller, Path((pl
             "Cancel it first (POST /v1/transfers/{id}/cancel), then start a new one.",
         ));
     };
+    crate::tings::enqueue_in(&mut tx,&st,"present.transferChanged",to_uuid,Some(me),&format!("present.transferChanged:{tid}:pending"),
+        json!({"transfer":tid,"kind":kind,"resource":id,"state":"pending","link":format!("{}/transfers",st.cfg.web_url)})).await?;
+    tx.commit().await?;
+    st.ting_notify.notify_one();
     let (d, f) = if kind == "deck" { (Some(id.as_str()), None) } else { (None, Some(id.as_str())) };
     store::event(&st, d, f, me, "transfer.started", json!({ "transfer": tid, "to": to_uuid })).await?;
     Ok((StatusCode::CREATED, Json(transfer_json(&st, &row).await)).into_response())
@@ -494,6 +507,9 @@ pub async fn decide_transfer(State(st): State<AppState>, caller: Caller, Path((t
         .bind(new_state)
         .fetch_one(&mut *tx)
         .await?;
+    let recipient=if me==t.from_account {t.to_account} else {t.from_account};
+    crate::tings::enqueue_in(&mut tx,&st,"present.transferChanged",recipient,Some(me),&format!("present.transferChanged:{tid}:{new_state}"),
+        json!({"transfer":tid,"kind":t.resource_kind,"resource":t.resource_id,"state":new_state,"link":format!("{}/transfers",st.cfg.web_url)})).await?;
     tx.commit().await?;
     let (d, f) = if t.resource_kind == "deck" { (Some(t.resource_id.as_str()), None) } else { (None, Some(t.resource_id.as_str())) };
     store::event(&st, d, f, me, &format!("transfer.{new_state}"), json!({ "transfer": tid, "from": t.from_account, "to": t.to_account })).await?;

@@ -51,6 +51,8 @@ pub struct Config {
     pub app_id: String,
     pub app_secret: String,
     pub iris_url: String,
+    pub contacts_url: reqwest::Url,
+    pub organizations_url: reqwest::Url,
     pub converter_url: Option<String>,
     pub converter_secret: Option<String>,
     pub ting_url: Option<String>,
@@ -108,6 +110,18 @@ impl Config {
                 Duration::from_secs(15)
             }
         };
+        let mut origin = |key: &str, default: &str| {
+            let value = get(key).unwrap_or_else(|| default.into());
+            let url = reqwest::Url::parse(&value).ok().filter(|u| {
+                let local = matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+                u.has_host() && (u.scheme() == "https" || (local && u.scheme() == "http")) && u.username().is_empty()
+                    && u.password().is_none() && u.query().is_none() && u.fragment().is_none() && u.path() == "/"
+            });
+            if url.is_none() { problems.push(format!("{key} must be an HTTPS origin (HTTP on loopback).")); }
+            url
+        };
+        let contacts_url = origin("PRESENT_CONTACTS_URL","https://contacts.teamofsilicons.com");
+        let organizations_url = origin("PRESENT_ORGANIZATIONS_URL","https://organizations.teamofsilicons.com");
         if !problems.is_empty() {
             return Err(problems);
         }
@@ -121,6 +135,8 @@ impl Config {
             accounts_url,
             app_id: get("PRESENT_APP_ID").unwrap_or_else(|| "present".into()),
             app_secret,
+            organizations_url: organizations_url.expect("validated Organizations origin"),
+            contacts_url: contacts_url.expect("validated Contacts origin"),
             iris_url: get("PRESENT_IRIS_URL").map(trim_url).unwrap_or_else(|| "https://iris.teamofsilicons.com".into()),
             converter_url,
             converter_secret,

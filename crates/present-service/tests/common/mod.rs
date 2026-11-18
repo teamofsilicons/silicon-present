@@ -57,6 +57,8 @@ impl FakeDirectory {
                 uuid,
                 handle: handle.into(),
                 kind: kind.into(),
+                display_name: String::new(),
+                pfp_url: String::new(),
             },
             profile,
         ));
@@ -253,6 +255,17 @@ async fn serve_jwks(jwks: Value) -> String {
             async move { axum::Json(j) }
         }),
     );
+    let app = app.route("/v1/oauth/introspect", axum::routing::post(|axum::Form(form): axum::Form<HashMap<String, String>>| async move {
+        let part = form.get("token").and_then(|token| token.split('.').nth(1)).unwrap_or("");
+        let claims: Value = serde_json::from_slice(&base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(part).unwrap_or_default()).unwrap_or_default();
+        axum::Json(json!({"active": claims["id"] != "c:revoked", "token_type": if claims["id"] == "c:wrongtype" { "refresh_token" } else { "access_token" }, "sub":claims["sub"], "client_id":claims["aud"]}))
+    }));
+    let app=app.route("/v1/proofs/user-verification",axum::routing::post(|axum::Json(body):axum::Json<Value>| async move {
+        assert_eq!(body["receiving_app"],"silicon-contacts");
+        let token=body["subject_token"].as_str().unwrap();
+        let scope=if body["scopes"].as_array().unwrap().contains(&json!("contacts.write")) {"write"} else {"read"};
+        axum::Json(json!({"proof_token":format!("test-{scope}-{token}")}))
+    }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -276,14 +289,18 @@ impl Stack {
         converter: bool,
         real_converter: Option<Arc<dyn Converter>>,
     ) -> Stack {
-        Self::start_full_with_receiver(ting, converter, real_converter, None).await
+        Self::start_full_with_receiver(ting, converter, real_converter, None, None).await
     }
 
     pub async fn start_with_receiver(url: &str) -> Stack {
-        Self::start_full_with_receiver(true, false, None, Some(url)).await
+        Self::start_full_with_receiver(true, false, None, Some(url), None).await
     }
 
-    async fn start_full_with_receiver(ting: bool, converter: bool, real_converter: Option<Arc<dyn Converter>>, receiver_url: Option<&str>) -> Stack {
+    pub async fn with_integrations(url: &str) -> Stack {
+        Self::start_full_with_receiver(true, true, None, None, Some(url)).await
+    }
+
+    async fn start_full_with_receiver(ting: bool, converter: bool, real_converter: Option<Arc<dyn Converter>>, receiver_url: Option<&str>, integrations: Option<&str>) -> Stack {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let db_name = format!(
             "present_t_{}_{}_{}",
@@ -323,6 +340,7 @@ impl Stack {
         ]
         .into();
         let mut cfg = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
+        if let Some(url)=integrations {cfg.contacts_url=url.parse().unwrap();cfg.organizations_url=url.parse().unwrap();}
         cfg.ting_url = receiver_url.map(str::to_owned);
         let client = silicon_accounts_client::AccountsClient::builder()
             .base_url(accounts_url)
@@ -335,7 +353,7 @@ impl Stack {
         let converter_fake = Arc::new(FakeConverter::default());
         let deps = Deps {
             verifier: Arc::new(present_service::auth::AccountsTokenVerifier::new(
-                client, "present", ISSUER,
+                client, "present", ISSUER, "sa_app_test",
             )),
             directory: directory.clone(),
             ting: if ting {

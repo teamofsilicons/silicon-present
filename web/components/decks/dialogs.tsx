@@ -10,6 +10,8 @@ import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
 import { Input } from "@/components/arc/input/input";
 import { ApiError } from "@/lib/errors";
+import { RecipientPicker } from "@/components/people/recipient-picker";
+import type { Account } from "@/lib/present/types";
 import { parseAccountId } from "@/lib/ids";
 import { listPlace } from "@/lib/present/decks";
 import type { Folder, ResourceKind } from "@/lib/present/types";
@@ -156,6 +158,7 @@ export interface TransferDialogProps {
 
 /** Offer a deck or folder to another Carbon or Silicon; it moves only once they accept. */
 export function TransferDialog({ kind, name, selfId, onClose, onTransfer }: TransferDialogProps) {
+  const [selected,setSelected] = useState<Account|null>(null);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -167,7 +170,7 @@ export function TransferDialog({ kind, name, selfId, onClose, onTransfer }: Tran
     if (parsed.value.id === selfId.toLowerCase()) return setError(`It is already yours. Type the id of the Carbon or Silicon to give it to.`);
     setBusy(true);
     try {
-      await onTransfer(parsed.value.id);
+      await onTransfer(selected?.uuid ?? parsed.value.id);
     } catch (failure) {
       const problem = ApiError.from(failure);
       setError([problem.message, problem.hint].filter(Boolean).join(" "));
@@ -180,7 +183,7 @@ export function TransferDialog({ kind, name, selfId, onClose, onTransfer }: Tran
     <Dialog open onOpenChange={open => !open && onClose()}>
       <DialogContent title={`Transfer “${name}”`} description={`The ${kind} becomes theirs once they accept, with its full history${kind === "folder" ? " and everything in it" : ""}. Until then you can cancel.`}>
         <form className={styles.form} onSubmit={submit} noValidate>
-          <Input label="Give it to" placeholder="c:ada or si:writer" value={value} onChange={event => { setValue(event.target.value); setError(null); }} error={error ?? undefined} autoFocus autoComplete="off" spellCheck={false} autoCapitalize="none" />
+          <RecipientPicker label="Give it to" value={value} selected={selected} onChange={(v,a)=>{setValue(v);setSelected(a??null);setError(null);}} error={error??undefined} autoFocus/>
           <div className={styles.formActions}>
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
             <Button type="submit" loading={busy} disabled={busy}>Offer transfer</Button>

@@ -1,3 +1,4 @@
+import { contactPhoto } from "../present/normalize";
 /**
  * Reads the service's JSON into the editor's shapes. Lenient on purpose: snake_case or camelCase, an account as an
  * object or missing, a role under `role`, `my_role` or `access.role`.
@@ -24,7 +25,7 @@ export function readAccount(value: unknown): LiveAccount | null {
     id: id || uuid,
     kind: kind === "silicon" ? "silicon" : "carbon",
     display_name: (pick(o, "display_name", "displayName", "name") as string | undefined) ?? null,
-    pfp_url: (pick(o, "pfp_url", "pfpUrl", "pfp", "photo") as string | undefined) ?? null,
+    pfp_url: contactPhoto((pick(o, "pfp_url", "pfpUrl", "pfp", "photo") as string | undefined) ?? null),
   };
 }
 

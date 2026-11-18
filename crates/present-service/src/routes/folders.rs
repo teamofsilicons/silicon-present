@@ -43,9 +43,10 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Q(q): Q<ListQuery>
             // Folders shared directly (what's inside them is reached by opening them).
             "shared" => sqlx::query_as(sql!(
                 "select {FOLDER_COLUMNS} from folders where owner <> $1 and trashed_at is null and
-                   id in (select resource_id from access where account = $1 and resource_kind = 'folder') order by name"
+                   id in (select resource_id from access where account=$1 and resource_kind='folder' union select resource_id from group_access where principal=any($2) and resource_kind='folder') order by name"
             ))
             .bind(me)
+            .bind(super::organizations::groups(&st,me).await?)
             .fetch_all(&st.pool)
             .await?,
             "trash" => sqlx::query_as(sql!("select {FOLDER_COLUMNS} from folders where owner = $1 and trashed_at is not null order by trashed_at desc"))
@@ -180,6 +181,7 @@ pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<S
         for d in decks {
             crate::routes::decks::permanently_delete_deck(&st, &d).await?;
         }
+        sqlx::query("with recursive below(id) as (select id from folders where id=$1 union all select f.id from folders f join below b on f.parent=b.id) delete from group_access where resource_kind='folder' and resource_id in (select id from below)").bind(&id).execute(&st.pool).await?;
         sqlx::query("delete from access where resource_kind = 'folder' and resource_id = $1").bind(&id).execute(&st.pool).await?;
         sqlx::query("delete from folders where id = $1").bind(&id).execute(&st.pool).await?;
         crate::ting_sessions::enqueue_accounts(&mut *st.pool.acquire().await?, &[me]).await?;

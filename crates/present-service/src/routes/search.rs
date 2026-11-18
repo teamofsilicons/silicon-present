@@ -46,16 +46,17 @@ pub async fn search(State(st): State<AppState>, caller: Caller, Extension(viewer
     // Candidates: decks the caller owns, was shared directly, or through a folder; then the role check decides.
     let rows: Vec<DeckRow> = sqlx::query_as(sql!(
         "with recursive shared_folders as (
-           select resource_id as id from access where account = $1 and resource_kind = 'folder'
+           select id from (select resource_id as id from access where account=$1 and resource_kind='folder' union select resource_id from group_access where principal=any($3) and resource_kind='folder') seeds
            union select f.id from folders f join shared_folders s on f.parent = s.id)
          select {DECK_COLUMNS} from decks
          where trashed_at is null and (title ilike $2 or search_text ilike $2) and (
-           owner = $1 or id in (select resource_id from access where account = $1 and resource_kind = 'deck')
+           owner = $1 or id in (select resource_id from access where account=$1 and resource_kind='deck' union select resource_id from group_access where principal=any($3) and resource_kind='deck')
            or folder in (select id from shared_folders))
          order by updated_at desc limit 50"
     ))
     .bind(me)
     .bind(&pattern)
+    .bind(super::organizations::groups(&st,me).await?)
     .fetch_all(&st.pool)
     .await?;
     let mut results = Vec::new();
@@ -111,12 +112,12 @@ pub struct ResolveQuery {
     q: Option<String>,
 }
 
-pub async fn resolve(State(st): State<AppState>, _caller: Caller, Q(params): Q<ResolveQuery>) -> ApiResult<Json<Value>> {
+pub async fn resolve(State(st): State<AppState>, caller: Caller, Q(params): Q<ResolveQuery>) -> ApiResult<Json<Value>> {
     let q = params.q.unwrap_or_default().trim().to_string();
     if accounts::is_email(&q) {
         let email = q.to_lowercase();
         let account = match accounts::find_by_email(&st, &email).await? {
-            Some(uuid) => Some(accounts::account_json(&st, uuid).await),
+            Some(uuid) => super::people::resolved(&st,&caller,&uuid.to_string()).await?,
             None => None,
         };
         return Ok(Json(json!({ "query": q, "email": email, "account": account })));
@@ -124,8 +125,8 @@ pub async fn resolve(State(st): State<AppState>, _caller: Caller, Q(params): Q<R
     if !accounts::is_handle(&q) && uuid::Uuid::parse_str(&q).is_err() {
         return Err(ApiError::bad_request("invalid_query", format!("`{q}` isn't a c:id, si:id, uuid or email address."), "Send ?q=c:name, ?q=si:name or ?q=name@example.com."));
     }
-    match accounts::resolve(&st, &q).await? {
-        Some((_, a)) => Ok(Json(json!({ "query": q, "account": a }))),
+    match super::people::resolved(&st, &caller, &q).await? {
+        Some(a) => Ok(Json(json!({ "query": q, "account": a }))),
         None => Err(ApiError::not_found("account_not_found", format!("There is no Carbon or Silicon `{q}` on Silicon Accounts."), "Check the spelling of the c:id or si:id.")),
     }
 }

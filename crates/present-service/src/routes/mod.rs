@@ -1,8 +1,11 @@
 //! The HTTP API (docs/architecture.md, "The service").
 
 pub mod comments;
+pub mod people;
+pub mod organizations;
 pub mod decks;
 pub mod files;
+mod interface;
 pub mod folders;
 pub mod live;
 pub mod presentations;
@@ -40,6 +43,8 @@ async fn idempotency(State(st): State<AppState>, req: Request, next: Next) -> Re
     if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
         return next.run(req).await;
     }
+    // Organizations binds retries to its own current permissions and original action.
+    if req.uri().path().starts_with("/v1/organizations/") { return next.run(req).await; }
     let Some(key) = req.headers().get("idempotency-key").and_then(|v| v.to_str().ok()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) else {
         return next.run(req).await;
     };
@@ -53,6 +58,11 @@ async fn idempotency(State(st): State<AppState>, req: Request, next: Next) -> Re
         Ok(None) => return next.run(Request::from_parts(parts, body)).await,
         Err(e) => return e.into_response(),
     };
+    if parts.uri.path() == "/v1/contacts" || (parts.method == Method::DELETE && parts.uri.path().starts_with("/v1/contacts/")) {
+        match people::connected(&st,caller.uuid).await {
+            Ok(true)=>{},Ok(false)=>return people::consent_required().into_response(),Err(e)=>return e.into_response()
+        }
+    }
     parts.extensions.insert(caller.clone());
     let method = parts.method.to_string();
     let path = parts.uri.path_and_query().map(|p| p.to_string()).unwrap_or_default();
@@ -92,6 +102,12 @@ async fn idempotency(State(st): State<AppState>, req: Request, next: Next) -> Re
         if status == 0 {
             return ApiError::unavailable("idempotency_pending", "The earlier request is still running or its outcome needs checking.",
                 "Retry this same request and key after it finishes. If this persists, inspect the deck before making another edit.").into_response();
+        }
+        if let ["v1", collection @ ("decks" | "folders"), id, "groups"] = parts.uri.path().trim_matches('/').split('/').collect::<Vec<_>>().as_slice() {
+            let kind = if *collection == "decks" { "deck" } else { "folder" };
+            if let Err(error) = sharing::load(&st, kind, id, caller.uuid, crate::access::Need::Edit).await {
+                return error.into_response();
+            }
         }
         let mut resp = Response::new(Body::from(body));
         *resp.status_mut() = axum::http::StatusCode::from_u16(status as u16).unwrap_or(axum::http::StatusCode::OK);
@@ -204,11 +220,17 @@ pub fn router(st: AppState) -> Router {
         .route("/v1/presentations/{id}/live", get(presentations::live));
     let r = both!(r, "/v1/decks", "decks");
     let r = both!(r, "/v1/folders", "folders");
-    r.fallback(not_found)
+    r.merge(interface::routes()).merge(people::routes()).merge(organizations::routes())
+        .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn_with_state(st.clone(), idempotency))
         .layer(middleware::from_fn_with_state(st.clone(), crate::viewers::middleware))
         .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
+        .layer(tower_http::cors::CorsLayer::new()
+            .allow_origin(tower_http::cors::Any)
+            .allow_methods([Method::GET, Method::HEAD, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
+            .allow_headers(["authorization","content-type","idempotency-key","x-filename","x-present-viewer-email","accept","range"].map(axum::http::HeaderName::from_static))
+            .expose_headers(["content-disposition","idempotent-replayed","retry-after","content-range"].map(axum::http::HeaderName::from_static)))
         .with_state(st)
 }
 
